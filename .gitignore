@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+build/
+**/shared/third_party/
+.tmp/
+*.log
+.DS_Store
