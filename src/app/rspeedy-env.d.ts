@@ -4,4 +4,4 @@
 
 /// <reference types="@lynx-js/rspeedy/client" />
 
-import type {} from '@catus/native-input';
+import type {} from '@catus/native';

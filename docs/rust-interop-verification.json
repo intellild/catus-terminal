@@ -9,12 +9,15 @@
   },
   "nativeBuild": {
     "driver": "@napi-rs/cli 3.10.5 -> Cargo -> build.rs -> CMake",
+    "npmPackage": "@catus/native",
+    "rustCrate": "catus-native",
+    "cppSources": "native/cxx",
     "rustCrateType": "cdylib",
-    "cppArchive": "libcatus_native_views.a",
+    "cppArchive": "libcatus_native.a",
     "finalLinkOwner": "Cargo/Rust",
     "nodeApiEntryOwner": "Rust/napi-rs",
     "registrationRetention": "cdylib-only -Wl,-force_load,<C++ archive>",
-    "artifact": "native/native-input/dist/darwin/arm64/native-input.node"
+    "artifact": "native/dist/darwin/arm64/catus-native.node"
   },
   "result": {
     "passed": true,

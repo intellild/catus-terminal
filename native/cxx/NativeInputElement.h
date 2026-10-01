@@ -12,7 +12,7 @@
 #endif
 
 #include <lynx_native_view.h>
-#include "catus-rust/src/lib.rs.h"
+#include "catus-native/src/lib.rs.h"
 
 class NativeInputElementView : public lynx::pub::LynxNativeView {
  public:

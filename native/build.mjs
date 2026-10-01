@@ -2,9 +2,9 @@ import { NapiCli } from '@napi-rs/cli';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { copyFile } from 'node:fs/promises';
-import { rustTarget } from '../../../scripts/rust-target.mjs';
+import { rustTarget } from '../scripts/rust-target.mjs';
 
-const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+const packageRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export async function buildNative({ nativeView = true } = {}) {
   if (process.platform !== 'darwin') throw new Error('The native view currently supports macOS only');
@@ -13,7 +13,7 @@ export async function buildNative({ nativeView = true } = {}) {
     : path.join(rustTarget, 'napi-smoke');
   const build = await new NapiCli().build({
     cwd: packageRoot,
-    manifestPath: 'rust/Cargo.toml',
+    manifestPath: 'Cargo.toml',
     targetDir: rustTarget,
     outputDir,
     dts: 'index.d.ts',
@@ -23,9 +23,9 @@ export async function buildNative({ nativeView = true } = {}) {
   });
   await build.task;
   if (nativeView) {
-    await copyFile(path.join(outputDir, 'index.d.ts'), path.join(packageRoot, 'types/rust.d.ts'));
+    await copyFile(path.join(outputDir, 'index.d.ts'), path.join(packageRoot, 'index.d.ts'));
   }
-  return path.join(outputDir, 'native-input.node');
+  return path.join(outputDir, 'catus-native.node');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

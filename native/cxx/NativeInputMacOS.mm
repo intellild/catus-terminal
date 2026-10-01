@@ -1,4 +1,4 @@
-#include "shared/elements/NativeInputElement.h"
+#include "NativeInputElement.h"
 
 #import <Cocoa/Cocoa.h>
 
@@ -31,9 +31,9 @@ NSString* NSStringFromStdString(const std::string& value) {
   return result != nil ? result : @"";
 }
 
-class NativeInputElementNativeUIView : public NativeInputElementView {
+class NativeInputMacOSView : public NativeInputElementView {
  public:
-  explicit NativeInputElementNativeUIView(void* opaque)
+  explicit NativeInputMacOSView(void* opaque)
       : NativeInputElementView(opaque) {
     RunOnMainThreadSync(^{
       input_ = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -56,7 +56,7 @@ class NativeInputElementNativeUIView : public NativeInputElementView {
     });
   }
 
-  ~NativeInputElementNativeUIView() override {
+  ~NativeInputMacOSView() override {
     RunOnMainThreadSync(^{
       delegate_.onInput = nil;
       input_.delegate = nil;
@@ -135,6 +135,6 @@ class NativeInputElementNativeUIView : public NativeInputElementView {
 
 }  // namespace
 
-lynx_native_view_t* CreateNativeInputElementNativeUINativeView(void* opaque) {
-  return (new NativeInputElementNativeUIView(opaque))->native_view();
+lynx_native_view_t* CreateNativeInputMacOSView(void* opaque) {
+  return (new NativeInputMacOSView(opaque))->native_view();
 }

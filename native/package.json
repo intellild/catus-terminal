@@ -1,0 +1,49 @@
+{
+  "name": "@catus/native",
+  "version": "0.0.1",
+  "description": "Project-specific Rust exports and native Lynx components for Catus Terminal",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./index.cjs",
+  "types": "./index.d.cts",
+  "exports": {
+    ".": {
+      "types": "./index.d.cts",
+      "default": "./index.cjs"
+    },
+    "./lynxtron": {
+      "types": "./index.d.cts",
+      "default": "./index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "cxx",
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "build.mjs",
+    "index.cjs",
+    "index.d.cts",
+    "index.d.ts",
+    "elements.d.ts",
+    "src",
+    "lynx.lib.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "napi": {
+    "binaryName": "catus-native"
+  },
+  "devDependencies": {
+    "@lynx-js/lynx-library-headers": "0.0.28",
+    "@napi-rs/cli": "^3.10.5"
+  },
+  "private": true,
+  "peerDependencies": {
+    "@lynx-js/types": "^4.3.0"
+  }
+}

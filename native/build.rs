@@ -22,15 +22,12 @@ fn main() {
         "x86_64" => "x86_64",
         other => panic!("Unsupported native view architecture: {other}"),
     };
-    let package_root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .parent()
-        .unwrap()
-        .to_owned();
+    let package_root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let cpp_build = out_dir.join("native-views");
+    let cpp_build = out_dir.join("cxx");
     run(Command::new("cmake")
         .arg("-S")
-        .arg(package_root.join("lynxtron"))
+        .arg(package_root.join("cxx"))
         .arg("-B")
         .arg(&cpp_build)
         .arg("-DCMAKE_BUILD_TYPE=Release")
@@ -45,14 +42,14 @@ fn main() {
         .arg("--config")
         .arg("Release")
         .arg("--target")
-        .arg("catus_native_views"));
+        .arg("catus_native"));
 
     // Only the Node-API cdylib needs Lynx views. Keep their host-specific
     // symbols out of Rust unit-test executables and downstream rlib users.
     // force_load also retains the constructor-only registration object.
     println!(
         "cargo:rustc-cdylib-link-arg=-Wl,-force_load,{}",
-        cpp_build.join("lib/libcatus_native_views.a").display()
+        cpp_build.join("lib/libcatus_native.a").display()
     );
     for framework in [
         "AppKit",
@@ -63,11 +60,7 @@ fn main() {
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
-    for input in [
-        "lynxtron/CMakeLists.txt",
-        "shared/CMakeLists.txt",
-        "shared/elements",
-    ] {
+    for input in ["cxx", "package.json", "../package-lock.json"] {
         println!(
             "cargo:rerun-if-changed={}",
             package_root.join(input).display()

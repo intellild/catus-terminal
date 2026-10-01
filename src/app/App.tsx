@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from '@lynx-js/react';
-import type { NativeInputEvent } from '@catus/native-input';
-import type { RustCounter } from '@catus/native-input/lynxtron';
+import type { NativeInputEvent } from '@catus/native';
+import type { RustCounter } from '@catus/native/lynxtron';
 import { verifyRustInterop } from './rustInterop';
 import './App.css';
 

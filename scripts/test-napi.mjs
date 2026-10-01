@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildNative } from '../native/native-input/lynxtron/build.mjs';
+import { buildNative } from '../native/build.mjs';
 
 // Build through napi-rs with the view disabled for this isolated Node process.
 // The application artifact keeps the C++ view and is verified in Lynxtron.

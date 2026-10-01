@@ -6,20 +6,17 @@
           "os": "darwin",
           "arch": "arm64",
           "files": [
-            "dist/darwin/arm64/native-input.node"
+            "dist/darwin/arm64/catus-native.node"
           ]
         },
         {
           "os": "darwin",
           "arch": "x64",
           "files": [
-            "dist/darwin/x64/native-input.node"
+            "dist/darwin/x64/catus-native.node"
           ]
         }
       ]
-    },
-    "macos": {
-      "sourceDir": "shared"
     }
   }
 }

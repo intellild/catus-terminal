@@ -1,4 +1,4 @@
-import type { RustCounter } from '@catus/native-input/lynxtron';
+import type { RustCounter } from '@catus/native/lynxtron';
 
 export interface RustSnapshot {
   nativeId: string;

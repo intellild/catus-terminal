@@ -1,7 +1,7 @@
 # Catus Terminal — Lynxtron native 组件示例
 
-使用官方 `@lynx-js/create-lynxtron@0.0.28` 初始化，使用官方
-`create-lynx-library` 创建组件库，通过 AutoLink 加载 `<native-input>`。
+使用官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
+workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`。
 当前组件实现针对 macOS，底层为真正可编辑的 AppKit `NSTextField`。
 
 ## 环境与运行
@@ -41,30 +41,30 @@ npm run pack        # 本机 macOS 应用打包，不发布
 
 ## Rust 对象与 native view
 
-`native/native-input/rust` 使用 napi-rs 导出 `RustCounter` 类，使用 cxx 导出
+`native` 使用 napi-rs 导出 `RustCounter` 类，使用 cxx 导出
 opaque Rust `CounterHandle` 及其方法。napi-rs 驱动 Cargo 构建 Rust `cdylib`，
-将 C++ view 静态库链接进同一个 `native-input.node`，保证进程内只有一个实例注册表。
+将 C++ view 静态库链接进同一个 `catus-native.node`，保证进程内只有一个实例注册表。
 
 ```text
-npm run build:native → lynxtron/build.mjs
+npm run build:native → native/build.mjs
   napi-rs CLI 调用 Cargo，生成 TypeScript 声明和 .node 文件
        ↓
-rust/build.rs
+native/build.rs
   napi_build::setup() 配置 Node-API 动态链接
   cxx_build 生成桥接头文件和 C++ 桥接静态库
        ↓
-lynxtron/CMakeLists.txt
-  编译 C++ / Objective-C++ view → libcatus_native_views.a
+native/cxx/CMakeLists.txt
+  编译 C++ / Objective-C++ view → libcatus_native.a
        ↓
 Cargo / Rust 链接器
   Rust cdylib + cxx 桥 + C++ 静态库 + AppKit 等系统 framework
   -force_load 保留 C++ 元素注册构造函数
        ↓
 napi-rs CLI
-  输出 dist/darwin/<arch>/native-input.node，生成 types/rust.d.ts
+  输出 dist/darwin/<arch>/catus-native.node，生成 native/index.d.ts
 ```
 
-最终 Node-API 入口由 Rust 的 napi-rs 提供，不再需要 C++ `library_entry.cc`。
+最终 Node-API 入口由 Rust 的 napi-rs 提供。
 CMake 只负责 C++ 静态库，不负责最终 `.node` 链接；C++ 调用 Rust 仍通过 cxx。
 `-force_load` 只用于 `cdylib`，Rust 测试可独立运行。`test:napi` 使用
 `--no-default-features` 构建不含 Lynx view 的扩展，在 Node 中检查 napi-rs 导出；
@@ -103,8 +103,8 @@ Rust 状态用 `Arc` 管理，注册表只存 `Weak`，native view 用 `rust::Bo
 共享状态。JS wrapper 回收会删除 ID；已绑定的 view 仍可安全调用，销毁 view
 会释放其引用。未知或已释放的 ID 返回参数错误，不替换原有绑定。
 
-Cargo 输出位于 `/tmp/catus-rust-<源码路径哈希>`，由
-`scripts/rust-target.mjs` 统一计算；CMake 输出在 Cargo 的 `OUT_DIR/native-views` 中。
+Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
+`scripts/rust-target.mjs` 统一计算；CMake 输出在 Cargo 的 `OUT_DIR/cxx` 中。
 可用 `CATUS_RUST_TARGET_DIR` 环境变量覆盖为
 项目外的绝对路径。cxx 在输出目录中创建指回源码的符号链接，因此 Rust 检查
 通过 `npm run test:rust` 使用同一外部输出目录，避免 JS 构建/监听扫描目录循环。
@@ -116,31 +116,37 @@ Cargo 输出位于 `/tmp/catus-rust-<源码路径哈希>`，由
 src/app/App.tsx                         使用自定义标签，绑定事件、调用方法
 src/main/desktop/main.ts                创建 LynxWindow
 rsbuild.config.ts                      pluginLynxtron 启用 AutoLink
-native/native-input/
+native/
+  Cargo.toml / Cargo.lock              项目 Rust crate 和依赖
+  build.rs                            生成 cxx 桥，构建并链接 C++ 静态库
+  src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
+  package.json                        @catus/native 本地 workspace
   lynx.lib.json                        声明 macOS arm64/x64 原生产物
-  types/index.d.ts                     自定义标签及事件的 TypeScript 类型
-  lynxtron/index.cjs                    加载当前平台的 .node 文件
-  lynxtron/build.mjs                    napi-rs 构建入口，输出扩展和 TypeScript 声明
-  lynxtron/CMakeLists.txt               仅生成 C++ view 静态库
-  shared/elements/
+  elements.d.ts                       自定义标签及事件的 TypeScript 类型
+  index.d.ts / index.d.cts             Rust API 类型及公共类型入口
+  index.cjs                           加载当前平台的 .node 文件
+  build.mjs                           napi-rs 构建入口，输出扩展和 TypeScript 声明
+  cxx/
+    CMakeLists.txt                    仅生成项目 C++ 静态库
     NativeInputElementRegistration.cc  LYNX_REGISTER_ELEMENT 注册 native-input
     NativeInputElement.h               属性、事件、setValue/getValue/focus 方法
     NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
-    backends/native-ui/macos/
-      NativeInputElementNativeUI.mm    创建 NSTextField，布局与输入回调
-  rust/src/lib.rs                      napi-rs 类、cxx 桥、共享状态和生命周期
-  rust/build.rs                        生成 cxx 桥，构建并链接 C++ 静态库
+    NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
 src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```
 
+`@catus/native` 是整个项目的 native 包。新增组件只需将 C++ 源码加入
+`native/cxx/CMakeLists.txt`，以唯一 module 名称和标签调用 `LYNX_REGISTER_ELEMENT`，
+再补充 `native/elements.d.ts` 类型。多个组件共享一个 `.node`，不要求包名与标签同名。
+
 ```text
 npm run dev / build
-  napi-rs → Cargo → build.rs/CMake，生成 native-input.node
+  napi-rs → Cargo → build.rs/CMake，生成 catus-native.node
        ↓
 pluginLynxtron（rsbuild.config.ts）
   扫描 lynx.lib.json，复制原生库并注入加载代码
        ↓
-lynxtron/index.cjs
+native/index.cjs
   require(.node)，激活 LYNX_REGISTER_ELEMENT 静态注册
        ↓
 App.tsx 渲染 <native-input>
@@ -152,9 +158,9 @@ OnPropertiesChanged / OnLayoutChanged
 NSTextField 输入 → TriggerEvent("input") → bindinput → React 状态
 ```
 
-原生库输出：`native/native-input/dist/darwin/<arch>/native-input.node`。
+原生库输出：`native/dist/darwin/<arch>/catus-native.node`。
 AutoLink 将它加载到桌面主进程并使标签可用于 Lynx runtime；UI 不应直接
-import `@catus/native-input/lynxtron`。示例只使用该包的 TypeScript 类型。
+import `@catus/native/lynxtron`。示例只使用该包的 TypeScript 类型。
 
 Native UI 后端保留系统输入和 IME 行为。需要覆盖原生控件的 Lynx 内容时，
 按官方文档使用 `<cover-view>`；普通 CSS `z-index` 无法可靠交错原生控件。

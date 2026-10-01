@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const manifest = require('../lynx.lib.json');
+const manifest = require('./lynx.lib.json');
 
 const target = manifest.platforms.lynxtron.targets.find(
   ({ os, arch }) => os === process.platform && arch === process.arch,
@@ -9,7 +9,7 @@ const target = manifest.platforms.lynxtron.targets.find(
 
 if (!target) {
   throw new Error(
-    '@catus/native-input does not provide a Lynxtron target for '
+    '@catus/native does not provide a Lynxtron target for '
       + `${process.platform}/${process.arch}`,
   );
 }
@@ -20,13 +20,13 @@ const binaryFiles = Array.isArray(target.files)
 
 if (binaryFiles.length !== 1) {
   throw new Error(
-    '@catus/native-input expected exactly one Lynxtron binary for '
+    '@catus/native expected exactly one Lynxtron binary for '
       + `${process.platform}/${process.arch}`,
   );
 }
 
 const nativeBinding = require(
-  path.resolve(__dirname, '..', binaryFiles[0]),
+  path.resolve(__dirname, binaryFiles[0]),
 );
 
 module.exports = nativeBinding;

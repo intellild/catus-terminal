@@ -36,6 +36,12 @@ Read the docs below in advance to help you understand the library or frameworks 
     - `main.ts`: Main process entry (window management).
     - `preload.ts`: Logic injected into the Lynx thread (Node.js environment).
 - Config: `lynx.config.ts` (RSpeedy) and `rsbuild.config.ts` (Host builder).
+- `native/`: Project-specific `@catus/native` workspace and Rust/napi-rs crate.
+  - `src/lib.rs`: Rust exports and cxx bridge; `build.rs` builds and links native code.
+  - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
+  - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
+  - Register additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
+    add sources to `cxx/CMakeLists.txt` and types to `elements.d.ts`.
 
 ## Common Patterns
 

@@ -11,7 +11,7 @@
     "test:rust": "node scripts/test-rust.mjs",
     "test:napi": "node scripts/test-napi.mjs",
     "pack": "npm run build && lynxtron-builder --publish never",
-    "build:native": "npm run build:lynxtron --workspace @catus/native-input",
+    "build:native": "npm run build --workspace @catus/native",
     "predev": "node scripts/prepare-dev.mjs && npm run build:native",
     "prebuild": "npm run build:native",
     "typecheck": "tsc --noEmit -p src/app/tsconfig.json && tsc --noEmit -p src/main/desktop/tsconfig.json && tsc --noEmit -p tsconfig.tools.json"
@@ -44,9 +44,9 @@
     "node": "^22.18.0 || ^24.0.0 || ^26.0.0"
   },
   "workspaces": [
-    "native/*"
+    "native"
   ],
   "dependencies": {
-    "@catus/native-input": "file:native/native-input"
+    "@catus/native": "file:native"
   }
 }
