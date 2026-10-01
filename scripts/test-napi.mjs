@@ -1,15 +1,9 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { rustRoot, rustTarget } from './rust-target.mjs';
+import { buildNative } from '../native/native-input/lynxtron/build.mjs';
 
-// Link just the Rust archive with the same Apple linker used by CMake. The app loads
-// only the combined .node through AutoLink, so it keeps a single registry.
-const binary = `${rustTarget}/release/catus-rust-smoke.node`;
-const linked = spawnSync('/usr/bin/c++', ['-bundle', '-undefined', 'dynamic_lookup',
-  `-Wl,-force_load,${rustTarget}/release/libcatus_rust.a`,
-  `${rustRoot}/../lynxtron/library_entry.cc`, '-o', binary], { stdio: 'inherit' });
-if (linked.error) throw linked.error;
-if (linked.status !== 0) process.exit(linked.status ?? 1);
+// Build through napi-rs with the view disabled for this isolated Node process.
+// The application artifact keeps the C++ view and is verified in Lynxtron.
+const binary = await buildNative({ nativeView: false });
 const addon = { exports: {} };
 process.dlopen(addon, binary);
 const { RustCounter } = addon.exports;

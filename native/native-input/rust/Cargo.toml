@@ -5,7 +5,11 @@ edition = "2024"
 publish = false
 
 [lib]
-crate-type = ["staticlib", "rlib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native-view"]
+native-view = []
 
 [dependencies]
 napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"] }
@@ -13,4 +17,10 @@ napi-derive = "=3.6.10"
 cxx = "1.0"
 
 [build-dependencies]
+napi-build = "=2.6.0"
 cxx-build = "1.0"
+
+[profile.release]
+# Rust/LLVM's debuginfo stripping can produce misaligned LINKEDIT on macOS 27.
+# Keep the linker output intact; see rust-lang/rust#157750.
+strip = "none"

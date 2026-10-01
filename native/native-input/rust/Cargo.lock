@@ -21,6 +21,7 @@ dependencies = [
  "cxx",
  "cxx-build",
  "napi",
+ "napi-build",
  "napi-derive",
 ]
 

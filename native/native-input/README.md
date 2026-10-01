@@ -47,8 +47,20 @@ arm64/x64，但每次构建只生成当前架构产物。当前已验证 macOS a
 Rust 扩展与 C++ 元素链接为同一个 `.node`，cxx 生成类型安全的 C++ 头文件。
 `RustCounter` 的 N-API wrapper 与 `CounterHandle` 共享 `Arc<CounterState>`。
 传入 native view 时使用 `nativeId` 定位状态，不把地址暴露到 JS。
-Rust 静态库使用 `-force_load` 链接，保留 napi-rs 导出注册；仅应用内组合产物
-通过 AutoLink 加载。测试脚本在独立 Node 进程中链接和加载单独的 Rust `.node`。
+
+构建入口是 `lynxtron/build.mjs`，通过官方 `@napi-rs/cli` 调用 Cargo，输出
+`.node` 和自动生成的 `types/rust.d.ts`。`rust/build.rs` 先用 `cxx-build` 生成
+桥接代码，再调用 CMake 构建 `libcatus_native_views.a`；Rust `cdylib` 最后链接
+该静态库、cxx 桥和系统 framework。CMake 不再构建动态库，Node-API 入口由
+Rust napi-rs 提供。
+
+macOS 链接参数 `-force_load` 保留 C++ 的 `LYNX_REGISTER_ELEMENT` 注册构造函数，
+仅应用于 Cargo 的 `cdylib` 目标。`native-view` 是默认 feature；关闭它可构建
+不含 Lynx view 的 Rust 扩展，供独立 Node 进程执行 N-API 测试。实际组合扩展
+通过 AutoLink 加载，组件注册及 C++ → Rust 调用在 Lynxtron 中验证。
+
+release profile 显式使用 `strip = "none"`，避免当前 Rust 1.95 / LLVM 在 macOS 27
+上 strip 产生无效 LINKEDIT 的问题（[Rust issue #157750](https://github.com/rust-lang/rust/issues/157750)）。
 
 ```ts
 // preload

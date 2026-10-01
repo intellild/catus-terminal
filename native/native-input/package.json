@@ -33,12 +33,16 @@
   ],
   "scripts": {
     "codegen": "lynx-autolink-codegen",
-    "build:lynxtron": "cmake -S lynxtron -B build/lynxtron -DCMAKE_BUILD_TYPE=Release -DLYNX_NATIVE_ELEMENT_BACKEND=native-ui && cmake --build build/lynxtron --config Release"
+    "build:lynxtron": "node lynxtron/build.mjs"
+  },
+  "napi": {
+    "binaryName": "native-input"
   },
   "devDependencies": {
     "@lynx-js/autolink-codegen": "^0.6.0",
     "@lynx-js/lynx-library-headers": "0.0.28",
-    "@lynx-js/weak-node-api": "^0.0.9"
+    "@lynx-js/weak-node-api": "^0.0.9",
+    "@napi-rs/cli": "^3.10.5"
   },
   "private": true,
   "peerDependencies": {
