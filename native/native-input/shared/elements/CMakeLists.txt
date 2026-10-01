@@ -1,6 +1,7 @@
 add_library(NativeInputAddonElements OBJECT
   NativeInputElement.cc
   NativeInputElementRegistration.cc
+  NativeInputRust.cc
   backends/native-ui/macos/NativeInputElementNativeUI.mm
 )
 

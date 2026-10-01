@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -11,6 +12,7 @@
 #endif
 
 #include <lynx_native_view.h>
+#include "catus-rust/src/lib.rs.h"
 
 class NativeInputElementView : public lynx::pub::LynxNativeView {
  public:
@@ -32,6 +34,7 @@ class NativeInputElementView : public lynx::pub::LynxNativeView {
       const char* method,
       const lynx::pub::LynxValue& params,
       std::function<void(int, lynx::pub::LynxValue&&)> callback) override {
+    if (InvokeRust(method, params, callback)) return;
     if (method != nullptr && std::string(method) == "setValue") {
       if (!params.HasProperty("value") ||
           params.GetProperty("value").Type() != lynx_value_string) {
@@ -79,6 +82,12 @@ class NativeInputElementView : public lynx::pub::LynxNativeView {
   }
 
  private:
+  bool InvokeRust(const char* method, const lynx::pub::LynxValue& params,
+                  const std::function<void(int, lynx::pub::LynxValue&&)>& callback);
+  lynx::pub::LynxValue RustSnapshot() const;
+
+  std::optional<rust::Box<catus::CounterHandle>> rust_counter_;
+  std::string rust_counter_id_;
   void SetValue(const std::string& value) {
     value_ = value;
     OnValueChanged(value_);

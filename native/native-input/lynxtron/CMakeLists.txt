@@ -49,6 +49,32 @@ set(
 )
 set(LYNX_LIBRARY_OUTPUT_NAME "native-input")
 
+find_program(CARGO_EXECUTABLE cargo REQUIRED)
+set(RUST_ROOT "${LYNX_LIBRARY_PACKAGE_ROOT}/rust")
+# cxx-build links OUT_DIR/cxxbridge/crate back to the source directory. Keep
+# outputs outside the project to avoid cycles in JS directory/watch scans.
+string(SHA256 RUST_BUILD_KEY "${RUST_ROOT}")
+string(SUBSTRING "${RUST_BUILD_KEY}" 0 12 RUST_BUILD_KEY)
+if(NOT DEFINED CATUS_RUST_TARGET_DIR)
+  if(DEFINED ENV{CATUS_RUST_TARGET_DIR} AND NOT "$ENV{CATUS_RUST_TARGET_DIR}" STREQUAL "")
+    set(CATUS_RUST_TARGET_DIR "$ENV{CATUS_RUST_TARGET_DIR}")
+  else()
+    set(CATUS_RUST_TARGET_DIR "/tmp/catus-rust-${RUST_BUILD_KEY}")
+  endif()
+endif()
+set(RUST_TARGET_DIR "${CATUS_RUST_TARGET_DIR}")
+set(RUST_STATIC_LIBRARY "${RUST_TARGET_DIR}/release/libcatus_rust.a")
+add_custom_command(
+  OUTPUT "${RUST_STATIC_LIBRARY}"
+  COMMAND "${CARGO_EXECUTABLE}" build --release --locked
+          --manifest-path "${RUST_ROOT}/Cargo.toml" --target-dir "${RUST_TARGET_DIR}"
+  DEPENDS "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
+          "${RUST_ROOT}/build.rs" "${RUST_ROOT}/src/lib.rs"
+  COMMENT "Building napi-rs addon and cxx bridge"
+  VERBATIM
+)
+add_custom_target(CatusRust DEPENDS "${RUST_STATIC_LIBRARY}")
+
 if(NOT DEFINED LYNX_LIBRARY_NODE_API_WEAK_SUFFIX)
   set(
     LYNX_LIBRARY_NODE_API_WEAK_SUFFIX
@@ -77,6 +103,8 @@ add_subdirectory(
   "${LYNX_LIBRARY_PACKAGE_ROOT}/shared"
   "${CMAKE_CURRENT_BINARY_DIR}/shared"
 )
+add_dependencies(NativeInputAddonElements CatusRust)
+target_include_directories(NativeInputAddonElements PRIVATE "${RUST_TARGET_DIR}/cxxbridge")
 
 add_library(
   NativeInputAddon
@@ -110,6 +138,10 @@ target_link_libraries(NativeInputAddon PRIVATE
   ${LYNX_SHARED_TARGETS}
   ${LYNX_SHARED_PLATFORM_LINK_LIBRARIES}
 )
+add_dependencies(NativeInputAddon CatusRust)
+# Keep napi-rs registration constructors, including otherwise unreferenced exports.
+target_link_options(NativeInputAddon PRIVATE "-Wl,-force_load,${RUST_STATIC_LIBRARY}")
+set_property(TARGET NativeInputAddon APPEND PROPERTY LINK_DEPENDS "${RUST_STATIC_LIBRARY}")
 
 if(LYNX_SHARED_PLATFORM_COMPILE_DEFINITIONS)
   target_compile_definitions(NativeInputAddon PRIVATE

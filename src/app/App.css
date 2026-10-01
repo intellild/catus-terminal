@@ -30,3 +30,6 @@
 .Value { font-size: 18px; color: #17212b; margin-bottom: 10px; }
 .Status { font-size: 12px; color: #25765b; }
 .Footnote { font-size: 11px; color: #94a3b8; margin-top: 22px; }
+.RustSection { display: flex; flex-direction: column; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e9eef3; }
+.RustStatus { margin-top: 14px; }
+.RustDetails { font-size: 11px; line-height: 16px; color: #64748b; margin-top: 8px; word-break: break-all; }

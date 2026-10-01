@@ -8,6 +8,8 @@
     "build": "rspeedy build --environment lynx && rsbuild build --environment desktop",
     "start": "npm run build && lynxtron dist/desktop",
     "test": "rstest",
+    "test:rust": "node scripts/test-rust.mjs",
+    "test:napi": "npm run build:native && node scripts/test-napi.mjs",
     "pack": "npm run build && lynxtron-builder --publish never",
     "build:native": "npm run build:lynxtron --workspace @catus/native-input",
     "predev": "node scripts/prepare-dev.mjs && npm run build:native",

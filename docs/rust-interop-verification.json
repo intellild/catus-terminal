@@ -1,0 +1,33 @@
+{
+  "environment": {
+    "platform": "macOS arm64",
+    "lynxtron": "0.0.28",
+    "lynxSdk": "4.3",
+    "builds": ["development", "production"],
+    "date": "2026-10-01",
+    "driver": "agent-lynx: tap Verify shared Rust object in the real desktop app"
+  },
+  "result": {
+    "passed": true,
+    "transport": "N-API instance properties",
+    "rawObject": {
+      "nativeId": "rust-counter-1",
+      "addValueType": 0,
+      "hasAdd": true,
+      "isMap": true,
+      "lynxValueType": 11
+    },
+    "nativeId": "rust-counter-1",
+    "jsBefore": 12,
+    "cppAfter": 17,
+    "jsAfter": 17,
+    "cppCalls": 1,
+    "invalidHandleRejected": true,
+    "explicitHandleVerified": true
+  },
+  "interpretation": {
+    "11": "lynx_value_map: properties are copied; the N-API wrapper is not preserved",
+    "0": "lynx_value_null: the add function cannot be called from this parameter",
+    "invocation": "C++ resolves nativeId to shared Rust state and calls CounterHandle::add_from_cpp through cxx"
+  }
+}

@@ -8,7 +8,9 @@
  */
 
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
+import nativeBinding from '@catus/native-input/lynxtron';
 contextBridge.exposeInLynxBTS({
+  createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),
   echo: (message: string) => {
     return `Echo from PC Service Thread: ${message}`;
   },

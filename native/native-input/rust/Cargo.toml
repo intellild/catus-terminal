@@ -1,0 +1,16 @@
+[package]
+name = "catus-rust"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"] }
+napi-derive = "=3.6.10"
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"

@@ -11,13 +11,20 @@
       "types": "./types/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./lynxtron": "./lynxtron/index.cjs",
+    "./lynxtron": {
+      "types": "./types/lynxtron.d.cts",
+      "default": "./lynxtron/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "lynxtron",
     "shared",
+    "rust/Cargo.toml",
+    "rust/Cargo.lock",
+    "rust/build.rs",
+    "rust/src",
     "generated",
     "src",
     "types",

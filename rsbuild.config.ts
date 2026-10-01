@@ -10,6 +10,19 @@ import { pluginLynxtron } from '@lynx-js/lynxtron-dev-plugins/rsbuild';
 export default defineConfig({
   environments: {
     desktop: {
+      tools: {
+        rspack(config, { rspack }) {
+          // The preload VM supplies bootstrap __filename/__dirname globals.
+          // AutoLink must resolve relative to the emitted application bundle.
+          config.plugins ??= [];
+          config.plugins.push(new rspack.BannerPlugin({
+            raw: true,
+            banner: `import { fileURLToPath as __catusFileURLToPath } from 'node:url';
+const __filename = __catusFileURLToPath(import.meta.url);
+const __dirname = __catusFileURLToPath(new URL('.', import.meta.url));`,
+          }));
+        },
+      },
       source: {
         entry: {
           main: './src/main/desktop/main.ts',
