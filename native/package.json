@@ -29,6 +29,7 @@
     "index.d.ts",
     "elements.d.ts",
     "src",
+    "licenses",
     "lynx.lib.json",
     "README.md"
   ],

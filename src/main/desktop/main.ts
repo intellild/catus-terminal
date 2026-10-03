@@ -8,7 +8,7 @@ function createWindow() {
   // pluginLynxtron loads AutoLink libraries before this entry creates the window.
   const window = new LynxWindow({
     width: 900,
-    height: 850,
+    height: 1050,
     title: 'Catus · Native Component Demo',
     lynxPreference: {
       preload: path.join(__dirname, 'preload.js'),

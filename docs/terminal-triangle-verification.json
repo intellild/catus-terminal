@@ -1,0 +1,129 @@
+{
+  "environment": {
+    "platform": "macOS arm64",
+    "lynxtron": "0.0.28",
+    "wgpu": "30.0.1",
+    "adapter": "Apple M5 Pro",
+    "date": "2026-10-01",
+    "builds": [
+      "development",
+      "production"
+    ],
+    "driver": "agent-lynx: tap Render / verify triangle, Resize, Recreate view in real Lynxtron app"
+  },
+  "architecture": {
+    "component": "native-terminal",
+    "module": "CatusNativeTerminalElement",
+    "build": "napi-rs -> Cargo -> cxx/CMake static archive -> catus-native.node",
+    "surfaceOwner": "Lynx double buffer",
+    "sharedHandle": "borrowed IOSurfaceRef",
+    "texture": "BGRA8Unorm MTLTexture on wgpu own MTLDevice",
+    "import": "wgpu-hal texture_from_raw -> Device::create_texture_from_hal",
+    "presentation": "wait for GPU completion -> IOSurface pixel read -> SwapBack -> MarkDirty",
+    "orientation": "shader adapts clip Y to Lynxtron macOS compositor"
+  },
+  "production": {
+    "error": "",
+    "pixelVerified": true,
+    "cornerRGB": 659999,
+    "centerRGB": 9798538,
+    "backend": "Metal",
+    "pixelRatio": 2,
+    "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+    "width": 1264,
+    "adapter": "Apple M5 Pro",
+    "height": 440,
+    "frames": 2,
+    "gpuFrames": 2
+  },
+  "developmentResize": {
+    "compact": {
+      "error": "",
+      "pixelVerified": true,
+      "cornerRGB": 659999,
+      "centerRGB": 9798538,
+      "backend": "Metal",
+      "pixelRatio": 2,
+      "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+      "width": 1264,
+      "adapter": "Apple M5 Pro",
+      "height": 300,
+      "frames": 2,
+      "gpuFrames": 2
+    },
+    "restored": {
+      "error": "",
+      "pixelVerified": true,
+      "cornerRGB": 659999,
+      "centerRGB": 9798538,
+      "backend": "Metal",
+      "pixelRatio": 2,
+      "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+      "width": 1264,
+      "adapter": "Apple M5 Pro",
+      "height": 440,
+      "frames": 4,
+      "gpuFrames": 4
+    }
+  },
+  "developmentRecreate": {
+    "error": "",
+    "pixelVerified": true,
+    "cornerRGB": 659999,
+    "centerRGB": 9798538,
+    "backend": "Metal",
+    "pixelRatio": 2,
+    "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+    "width": 1264,
+    "adapter": "Apple M5 Pro",
+    "height": 440,
+    "frames": 2,
+    "gpuFrames": 2
+  },
+  "productionResize": {
+    "error": "",
+    "pixelVerified": true,
+    "gpuFrames": 4,
+    "cornerRGB": 659999,
+    "centerRGB": 9864074,
+    "backend": "Metal",
+    "pixelRatio": 2,
+    "height": 300,
+    "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+    "width": 1264,
+    "adapter": "Apple M5 Pro",
+    "frames": 4
+  },
+  "productionRecreate": {
+    "error": "",
+    "pixelVerified": true,
+    "gpuFrames": 2,
+    "cornerRGB": 659999,
+    "centerRGB": 9864074,
+    "backend": "Metal",
+    "pixelRatio": 2,
+    "height": 300,
+    "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+    "width": 1264,
+    "adapter": "Apple M5 Pro",
+    "frames": 2
+  },
+  "checks": {
+    "orientationVisuallyVerified": true,
+    "actualPixels": true,
+    "compositedScreenshot": "terminal-triangle.jpeg",
+    "rustTests": 3,
+    "uiTests": 2,
+    "fmt": "passed",
+    "clippy": "passed (-D warnings)",
+    "napi": "passed",
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "existingRustCppInterop": "PASS JS 12 -> C++ 17 -> JS 17"
+  },
+  "limitations": [
+    "Triangle renderer prototype only; no PTY, terminal parser or glyphs.",
+    "Each frame waits synchronously for GPU completion (10-second timeout); pixel readback is for validation.",
+    "A continuous renderer still needs asynchronous frame scheduling and buffer reuse."
+  ]
+}

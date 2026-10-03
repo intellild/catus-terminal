@@ -2,18 +2,27 @@
 
 Catus Terminal 专属的 Rust/napi-rs workspace，统一导出 Rust 能力和 Lynx native
 组件。包名为 `@catus/native`，所有组件链接进同一个 `catus-native.node`。
-当前实现 `<native-input>`，后端为 macOS `NSTextField`。
+当前实现 `<native-input>`（macOS `NSTextField`）和 `<native-terminal>`
+（Lynx IOSurface + Rust wgpu / Metal 三角形和 glyph atlas 原型）。
 
 ```text
 native/
   Cargo.toml / Cargo.lock       Rust crate 和依赖
   build.rs                     cxx 桥、C++ 静态库构建及链接
   src/lib.rs                   napi-rs 导出和共享 Rust 状态
+  src/terminal.rs               wgpu renderer 和 Metal texture 导入
+  src/triangle.wgsl             三角形 shader
+  src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
+  src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
+  src/atlas_demo.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
+  src/tests/                   counter / atlas / font 独立单元测试模块
+  licenses/ALACRITTY-MIT.txt     atlas 来源的 MIT 文本
   cxx/
     CMakeLists.txt             项目 C++ 静态库的源文件清单
     NativeInputElement*.cc/h   输入组件及宏注册
     NativeInputRust.cc         C++ → Rust 调用
     NativeInputMacOS.mm        AppKit 输入框实现
+    NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal 组件注册
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型
@@ -49,6 +58,39 @@ native/
 不会重设 NSTextField 的值，避免破坏当前选择和输入法标记文本。
 
 ## 构建与加载
+
+`native-terminal` 使用 `CatusNativeTerminalElement` 注册，启用
+`IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
+`IOSurfaceRef`。C++ 用 Rust renderer 的 `MTLDevice` 创建对应的 BGRA8Unorm
+texture，通过 cxx 交给 Rust wgpu 导入并绘制；GPU 完成后才 `SwapBack` 和
+`MarkDirty`。没有独立的 NSView 或 CAMetalLayer。
+
+调用 `renderTriangle({})` 返回 `{ backend, adapter, width, height, pixelRatio,
+frames, gpuFrames, centerRGB, cornerRGB, pixelVerified, error, transport }`；
+`getRendererInfo({})` 只读取相同状态。尺寸无效、纹理导入或 GPU 绘制失败时，
+`renderTriangle` 返回状态 7。未知方法返回 3。renderer 生命周期由 view 管理。
+本原型同步等待 GPU，并读取 IOSurface 像素进行验证，尚未实现持续帧调度。
+
+`renderAtlas({})` 使用字形 atlas 绘制；`clearAtlas({})` 清空字形缓存、
+复用 atlas texture 并重新上传。返回值增加 `mode`、`atlasPages`、
+`atlasUploads` 和上次 atlas 绘制的 `atlasInstances`。
+`AtlasSet` 接受 Gray/RGB/RGBA `RasterizedGlyph`，经 256 字节行对齐的
+`COPY_SRC` staging buffer 上传。普通字形使用 R8Unorm coverage 页；彩色字形
+使用 RGBA8Unorm 页，分别分配与复用。RGB coverage 保留原演示的均值策略，
+不修改 crossfont 的平台抗锯齿设置。
+`Glyph` 保存页索引、generation、UV 和 metrics，clear 后旧句柄失效。
+
+`font.rs` 引入官方 crossfont 0.9.0，macOS 使用 CoreText。缓存 key 包含字体、
+字符和字号；Menlo 普通体/粗体与系统 fallback 绘制 ASCII、中文和彩色 emoji。
+空格缓存 metrics 但不上传、不绘制。字体按 22 logical px × backing scale
+栅格化，使用 glyph 的 top/left 和 font metrics 定位，而非缩放固定位图。
+backing scale 改变时重建 rasterizer、清空缓存并复用 atlas texture；普通 resize
+复用字形。bind group 和 instance buffer 也会复用。
+
+状态额外返回 `fontFamily`、`fontPixels`、`cachedGlyphs`、`rasterizations`、
+`missingGlyphs`，便于验证重复绘制不再栅格化/上传。测试覆盖真实字体、中文
+fallback、RGBA emoji、字号失效、缓存复用，以及 Metal 上传/回读和双格式分页。
+本阶段按字符绘制，未实现 ligature、复杂文本 shaping 和 PTY。
 
 在项目根目录运行：
 

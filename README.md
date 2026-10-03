@@ -1,8 +1,9 @@
 # Catus Terminal — Lynxtron native 组件示例
 
 使用官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
-workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`。
-当前组件实现针对 macOS，底层为真正可编辑的 AppKit `NSTextField`。
+workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
+和 `<native-terminal>`。当前针对 macOS：输入框使用 AppKit `NSTextField`，
+terminal view 使用 Rust wgpu / Metal 绘制三角形和字形 atlas，验证嵌入式 GPU 渲染路径。
 
 ## 环境与运行
 
@@ -38,6 +39,112 @@ npm run pack        # 本机 macOS 应用打包，不发布
 - **Read value**：调用 `getValue`，显示原生组件内部的值。
 - **Verify shared Rust object**：创建 napi-rs `RustCounter`，作为 `invoke.params.rustObject`
   传给 native view，C++ 通过 cxx 修改同一 Rust 实例，再从原始 JS 对象读取结果。
+- **Triangle**：绘制三角形，读取实际共享纹理的中心和角落像素，显示 GPU、像素尺寸和帧计数。
+- **Render / verify fonts**：通过 crossfont 与 atlas 绘制 Menlo 普通体/粗体、中文和彩色 emoji，显示字形缓存和上传计数。
+- **Clear atlas**：丢弃字形句柄，复用 texture 并重新上传位图。
+- **Resize / Recreate view**：切换 220px / 150px 高度，或销毁并重新创建 renderer。
+
+## Native terminal / wgpu
+
+`<native-terminal>` 是渲染原型，支持三角形和 crossfont 字体 atlas 验证，尚未接入
+PTY 和终端解析。
+组件与 input 一同注册到项目的 `.node`，最终构建仍由 napi-rs / Cargo 驱动。
+参考了 Lynxtron CEF 包的宏注册与加载方式；共享 surface 的接口以安装的
+`lynx_native_view.h` 为准。这里取得的是 **IOSurface**，再创建对应的 Metal texture。
+
+```text
+App.tsx / <native-terminal>
+  Lynx 创建 CatusNativeTerminalElement
+       ↓
+native/cxx/NativeTerminalMacOS.mm / OnLayoutChanged
+  logical size × pixelRatio → AcquireSurface(pixel width, pixel height)
+  借用 Lynx 双缓冲中的 IOSurfaceRef
+       ↓
+Rust TerminalRenderer::metal_device → 同一个 MTLDevice
+  C++ 创建 IOSurface-backed BGRA8Unorm MTLTexture
+       ↓
+native/src/terminal.rs / cxx
+  retain MTLTexture → wgpu-hal metal::texture_from_raw
+  Device::create_texture_from_hal → wgpu Texture
+       ↓
+native/src/triangle.wgsl
+  Rust 提交 RenderPass，清屏并绘制三角形
+  等待 GPU 完成，C++ 读取 IOSurface 像素
+       ↓
+SwapBack → MarkDirty
+  Lynx compositor 合成组件纹理到页面
+```
+
+wgpu 固定为 30.0.1，仅启用 Metal / WGSL。使用 wgpu 自己的 MTLDevice
+创建纹理，满足 HAL 导入对设备一致性的要求。IOSurface 由 Lynx 管理；Rust
+retain 导入的 MTLTexture，不接管 IOSurface 的所有权。view 持有 Rust renderer，
+销毁 view 时释放，resize 时重新申请匹配物理像素尺寸的 surface。
+shader 输出翻转 clip Y，适配 Metal render target 与当前 Lynxtron macOS
+surface 的显示方向；已用合成截图确认。SDK 的 surface transform 参数在
+当前版本的实测截图中没有改变方向，因此本例在 shader 内进行适配。
+
+原型每次绘制同步等待 GPU（最长 10 秒），完成后才交换缓冲。持续刷新终端时
+还需加入异步 GPU 完成通知、帧调度与缓冲复用；本例的像素读取只用于验证。
+`renderTriangle({})` 返回绘制及校验结果，`getRendererInfo({})` 只读取状态。
+
+实测数据见 [验证报告](docs/terminal-triangle-verification.json)，
+实际 Lynx 合成画面见 [截图](docs/terminal-triangle.jpeg)。
+
+## Alacritty atlas / wgpu buffer
+
+`native/src/atlas.rs` 从本地 Alacritty `d692748d` 的
+`alacritty/src/renderer/text/atlas.rs` 迁移逐行分配、分页和清空复用逻辑。
+使用 1024×1024 R8Unorm coverage 页和 RGBA8Unorm premultiplied 彩色字形页，
+用 wgpu buffer 替换 GL 上传路径。来源说明和 MIT 文本保存在
+`native/licenses/ALACRITTY-MIT.txt`，并随 native 包分发。
+
+```text
+font.rs / crossfont 0.9.0（macOS CoreText）
+  Menlo 普通体/粗体 → 系统 fallback → GlyphKey 字形缓存
+       ↓
+RasterizedGlyph / Gray 或 premultiplied RGBA 位图
+       ↓
+AtlasSet::insert（native/src/atlas.rs）
+  校验数据 → 分配位置 → 行数据补齐到 256 字节
+       ↓
+wgpu staging buffer / COPY_SRC
+  encoder.copy_buffer_to_texture → atlas texture / COPY_DST | TEXTURE_BINDING
+       ↓
+Glyph handle
+  page + generation + UV + 尺寸/偏移 + multicolor
+       ↓
+atlas_demo.rs / instance buffer（VERTEX | COPY_DST）
+  位置、UV、颜色 → 按 atlas 页切换 bind group → instanced draw
+       ↓
+atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
+```
+
+调用者传入自己的 command encoder，上传和采样可以安排在同一提交中。
+完整高度的字形允许恰好占满一页；无效位图先拒绝，再分配空间。
+`clear()` 复用已有 GPU texture，递增 generation，使旧字形句柄失效；
+调用者同时清空字形缓存和待绘制批次。
+
+演示使用 crossfont 的真实字体，绘制 `Crossfont + wgpu` 和 `Atlas 中文 😀`。
+字形缓存 key 包含 font key、character 和 size，字体 metrics 决定基线和字形偏移，
+`unicode-width` 决定终端字符占用的列数。普通 resize 和重复绘制不重复栅格化/上传；
+backing scale 变化会按 22 logical px × scale 重建 rasterizer 与缓存，复用已有 texture。
+bind group 与 instance buffer 也会复用。
+
+crossfont 使用平台默认抗锯齿。本阶段保持原演示的 RGB coverage 均值混合策略，
+上传前转成单通道 coverage；彩色 emoji 保留完整 premultiplied RGBA。
+自定义 grayscale 栅格化、复杂文本 shaping、ligature 尚未实现。
+
+`renderAtlas({})` 切换到字体绘制，`clearAtlas({})` 清空并重新绘制。
+返回状态包含 `mode`、`atlasPages`、`atlasUploads`、`atlasInstances`、
+`fontFamily`、`fontPixels`、`cachedGlyphs`、`rasterizations`、`missingGlyphs`。
+原有 `renderTriangle` 和 `getRendererInfo` 保留。`pixelVerified` 扫描 IOSurface
+是否有前景像素，文字不需要覆盖纹理中心。
+
+`npm run test:rust` 包含真实 CoreText 字体测试和 Metal GPU 回读测试，覆盖
+中文 fallback、彩色 emoji、字号/样式 key、空格、字形缓存、分页、clear 复用和失效。
+字体实测结果见 [验证报告](docs/terminal-font-verification.json) 和
+[截图](docs/terminal-font.jpeg)。之前的固定位图验证保留在
+[atlas 验证报告](docs/terminal-atlas-verification.json)。
 
 ## Rust 对象与 native view
 
@@ -120,6 +227,11 @@ native/
   Cargo.toml / Cargo.lock              项目 Rust crate 和依赖
   build.rs                            生成 cxx 桥，构建并链接 C++ 静态库
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
+  src/terminal.rs / triangle.wgsl       Rust wgpu renderer 和三角形 shader
+  src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
+  src/font.rs                          crossfont 字体与字形缓存
+  src/tests/                           counter、atlas、font 独立测试模块
+  src/atlas_demo.rs / atlas.wgsl        真实字体验证、instance buffer 与采样 shader
   package.json                        @catus/native 本地 workspace
   lynx.lib.json                        声明 macOS arm64/x64 原生产物
   elements.d.ts                       自定义标签及事件的 TypeScript 类型
@@ -132,6 +244,7 @@ native/
     NativeInputElement.h               属性、事件、setValue/getValue/focus 方法
     NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
     NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
+    NativeTerminalMacOS.mm             借用 IOSurface，创建 Metal texture，注册 native-terminal
 src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```
 
@@ -178,3 +291,7 @@ Native UI 后端保留系统输入和 IME 行为。需要覆盖原生控件的 L
 - [napi-rs manual setup](https://napi.rs/docs/introduction/manual-setup)
 - [cxx extern Rust](https://cxx.rs/extern-rust.html)
 - [cxx Cargo build](https://cxx.rs/build/cargo.html)
+- [Lynxtron CEF webview](https://lynxjs.org/next/lynxtron/Native-Libraries/Officially-Maintained-Libraries/cef-webview-getting-started.html)
+- [wgpu HAL texture 导入](https://docs.rs/wgpu/30.0.1/wgpu/struct.Device.html#method.create_texture_from_hal)
+- [wgpu buffer → texture](https://docs.rs/wgpu/30.0.1/wgpu/struct.CommandEncoder.html#method.copy_buffer_to_texture)
+- [wgpu texture 上传布局与 256 字节行对齐](https://docs.rs/wgpu/30.0.1/wgpu/struct.TexelCopyBufferLayout.html)

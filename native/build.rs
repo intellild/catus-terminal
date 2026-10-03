@@ -7,10 +7,20 @@ fn run(command: &mut Command) {
 
 fn main() {
     napi_build::setup();
-    cxx_build::bridge("src/lib.rs")
+    let mut bridges = vec!["src/lib.rs"];
+    if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_some() {
+        bridges.push("src/terminal.rs");
+    }
+    cxx_build::bridges(bridges)
         .std("c++17")
         .compile("catus-cxx-bridge");
     println!("cargo:rerun-if-changed=src/lib.rs");
+    println!("cargo:rerun-if-changed=src/terminal.rs");
+    println!("cargo:rerun-if-changed=src/triangle.wgsl");
+    println!("cargo:rerun-if-changed=src/atlas.rs");
+    println!("cargo:rerun-if-changed=src/font.rs");
+    println!("cargo:rerun-if-changed=src/atlas_demo.rs");
+    println!("cargo:rerun-if-changed=src/atlas.wgsl");
 
     // Pure Rust/N-API checks can run without a Lynx host process.
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_none() {
@@ -57,6 +67,7 @@ fn main() {
         "CoreText",
         "Foundation",
         "IOSurface",
+        "Metal",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }

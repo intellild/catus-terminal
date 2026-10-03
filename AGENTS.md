@@ -38,6 +38,18 @@ Read the docs below in advance to help you understand the library or frameworks 
 - Config: `lynx.config.ts` (RSpeedy) and `rsbuild.config.ts` (Host builder).
 - `native/`: Project-specific `@catus/native` workspace and Rust/napi-rs crate.
   - `src/lib.rs`: Rust exports and cxx bridge; `build.rs` builds and links native code.
+  - `src/terminal.rs` / `src/triangle.wgsl`: macOS wgpu renderer and triangle shader.
+    `cxx/NativeTerminalMacOS.mm` borrows the Lynx IOSurface and imports it using
+    the renderer's own MTLDevice; wait for GPU completion before swapping buffers.
+  - `src/atlas.rs`: Alacritty shelf atlas port; staging-buffer rows must be aligned
+    to 256 bytes. Clearing the atlas invalidates glyph handles via generation.
+    `src/atlas_demo.rs` / `src/atlas.wgsl` exercise uploads and instanced sampling
+    with real crossfont glyphs. `src/font.rs` caches by font/character/size, uses
+    Menlo regular/bold with CoreText fallback, and invalidates on backing-scale
+    changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
+    Keep crossfont platform defaults; custom grayscale AA is deferred.
+  - `src/tests/`: External unit-test modules for counter, atlas and fonts;
+    attached as child modules so private implementation stays private.
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
   - Register additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
