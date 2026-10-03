@@ -55,7 +55,8 @@ Read the docs below in advance to help you understand the library or frameworks 
   - `src/main/desktop/`: Desktop (Node.js) host implementation.
     - `main.ts`: Main process entry (frameless window, native macOS traffic lights
       positioned in the UI tab bar). Keep the controls' reserved area consistent
-      with `App.css`; tabs and buttons must be `-x-app-region: no-drag`.
+      with the Tailwind classes in `App.tsx`; tabs and buttons must use
+      `[-x-app-region:no-drag]`.
     - `preload.ts`: Logic injected into the Lynx thread (Node.js environment).
     - `workspaceConfig.ts`: Validated JSON load and atomic save; override path
       with `CATUS_WORKSPACES_FILE`. Never overwrite an invalid existing file.
@@ -124,7 +125,10 @@ UI code in `src/app` runs in the Lynx engine, which is **not a browser**.
 - **CSS / Styling**:
   - Lynx uses a subset of CSS.
   - **Flexbox** is the primary layout engine (similar to React Native).
-  - Use `className` for styling.
+  - Use Tailwind v3 utility classes in `className`, with `@lynx-js/tailwind-preset`.
+    `src/app/tailwind.css` contains only Tailwind directives; do not add handwritten
+    CSS selectors. Keep conditional utilities as complete literal strings so
+    Tailwind can scan them. Pass runtime colors and sizes through CSS variables.
   - No CSS selectors like `:hover`, `nth-child`, or complex combinators.
 - **No DOM/BOM APIs**: `window`, `document`, `location`, `localStorage` are NOT available.
   - Use `NativeModules.bridge` for host interactions.
@@ -147,10 +151,10 @@ export function MyComponent() {
   }, []);
 
   return (
-    <view className="container">
-      <text className="title">Count: {count}</text>
-      <view className="button" bindtap={handleTap}>
-        <text className="button-text">Increment</text>
+    <view className="flex flex-col items-center gap-[12px]">
+      <text className="text-[24px] font-bold">Count: {count}</text>
+      <view className="rounded-[8px] bg-[#a8e6cf] px-[16px] py-[10px]" bindtap={handleTap}>
+        <text className="text-[14px] text-[#20392f]">Increment</text>
       </view>
     </view>
   );

@@ -10,6 +10,7 @@
   "include": [
     "./lynx.config.ts",
     "./rstest.config.ts",
-    "./rsbuild.config.ts"
+    "./rsbuild.config.ts",
+    "./tailwind.config.ts"
   ]
 }

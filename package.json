@@ -27,6 +27,7 @@
     "@lynx-js/react": "latest",
     "@lynx-js/react-rsbuild-plugin": "latest",
     "@lynx-js/rspeedy": "latest",
+    "@lynx-js/tailwind-preset": "^0.6.0",
     "@lynx-js/type-config": "latest",
     "@lynx-js/types": "latest",
     "@rsbuild/core": "2.1.5",
@@ -39,6 +40,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^10.1.0",
     "jsdom": "^26.1.0",
+    "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3"
   },
   "engines": {

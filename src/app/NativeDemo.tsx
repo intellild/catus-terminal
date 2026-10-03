@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from '@lynx-js/react';
 import type { NativeInputEvent } from '@catus/native';
 import type { RustCounter } from '@catus/native/lynxtron';
 import { verifyRustInterop } from './rustInterop';
-import './NativeDemo.css';
+import './tailwind.css';
 
 const initialValue = 'Hello, Lynxtron!';
 
@@ -96,77 +96,77 @@ export function NativeDemo() {
   }, []);
 
   return (
-    <scroll-view scroll-y className="Viewport">
-      <view className="Page">
-        <view className="Card">
-          <text className="Eyebrow">CATUS / LYNXTRON</text>
-          <text className="Title">Native components</text>
-          <text className="Description">
+    <scroll-view scroll-y className="w-full h-full">
+      <view className="flex w-full min-h-full items-center justify-center bg-[#eef2f6] p-[20px]">
+        <view className="flex flex-col w-[680px] max-w-full p-[24px] rounded-[20px] bg-[#ffffff] shrink-0">
+          <text className="text-[#25765b] text-[12px] font-bold tracking-[2px] mb-[16px]">CATUS / LYNXTRON</text>
+          <text className="text-[#17212b] text-[30px] font-bold mb-[12px]">Native components</text>
+          <text className="text-[#64748b] text-[15px] leading-[23px] mb-[28px]">
             A Rust wgpu surface and a macOS input view, embedded in ReactLynx.
           </text>
-          <view className="TerminalSection">
-            <text className="Label">NATIVE TERMINAL / RUST WGPU</text>
+          <view className="flex flex-col mb-[20px]">
+            <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">NATIVE TERMINAL / RUST WGPU</text>
             <native-terminal id="demo-terminal" key={terminalGeneration}
-              className="TerminalSurface" style={{ height: compactTerminal ? '150px' : '220px' }} />
-            <view className="Actions TerminalActions">
-              <view id="verify-atlas" className="Button Primary" bindtap={() => verifyTerminal('renderAtlas')}>
-                <text className="PrimaryText">Render / verify fonts</text>
+              className={`w-full shrink-0 mb-[12px] ${compactTerminal ? 'h-[150px]' : 'h-[220px]'}`} />
+            <view className="flex flex-row flex-wrap gap-[8px] mb-[10px]">
+              <view id="verify-atlas" className="py-[10px] px-[14px] rounded-[8px] bg-[#25765b]" bindtap={() => verifyTerminal('renderAtlas')}>
+                <text className="text-[13px] text-[#ffffff]">Render / verify fonts</text>
               </view>
-              <view id="verify-terminal" className="Button" bindtap={() => verifyTerminal('renderTriangle')}>
-                <text className="ButtonText">Triangle</text>
+              <view id="verify-terminal" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => verifyTerminal('renderTriangle')}>
+                <text className="text-[13px] text-[#253647]">Triangle</text>
               </view>
-              <view id="clear-atlas" className="Button" bindtap={() => verifyTerminal('clearAtlas')}>
-                <text className="ButtonText">Clear atlas</text>
+              <view id="clear-atlas" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => verifyTerminal('clearAtlas')}>
+                <text className="text-[13px] text-[#253647]">Clear atlas</text>
               </view>
-              <view id="resize-terminal" className="Button" bindtap={() => setCompactTerminal(current => !current)}>
-                <text className="ButtonText">Resize</text>
+              <view id="resize-terminal" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => setCompactTerminal(current => !current)}>
+                <text className="text-[13px] text-[#253647]">Resize</text>
               </view>
-              <view id="recreate-terminal" className="Button" bindtap={() => {
+              <view id="recreate-terminal" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => {
                 setTerminalGeneration(current => current + 1);
                 setTerminalDetails('');
                 setTerminalStatus('View recreated · render to verify');
               }}>
-                <text className="ButtonText">Recreate view</text>
+                <text className="text-[13px] text-[#253647]">Recreate view</text>
               </view>
             </view>
-            <text id="terminal-status" className="Status">{terminalStatus}</text>
-            <text id="terminal-details" className="RustDetails">{terminalDetails}</text>
+            <text id="terminal-status" className="text-[12px] text-[#25765b]">{terminalStatus}</text>
+            <text id="terminal-details" className="text-[11px] leading-[16px] text-[#64748b] mt-[8px] break-all">{terminalDetails}</text>
           </view>
-          <text className="Label">NATIVE INPUT</text>
+          <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">NATIVE INPUT</text>
           <native-input
             id="demo-input"
-            className="NativeInput"
+            className="w-full h-[40px] mb-[20px]"
             value={value}
             placeholder="Type here — including 中文"
             bindinput={handleInput}
           />
-          <view className="Actions">
-            <view id="update-property" className="Button Primary" bindtap={updateProperty}>
-              <text className="PrimaryText">Update property</text>
+          <view className="flex flex-row flex-wrap gap-[8px] mb-[24px]">
+            <view id="update-property" className="py-[10px] px-[14px] rounded-[8px] bg-[#25765b]" bindtap={updateProperty}>
+              <text className="text-[13px] text-[#ffffff]">Update property</text>
             </view>
-            <view id="set-native-value" className="Button" bindtap={() => invokeNative('setValue', { value: 'Set through native method' })}>
-              <text className="ButtonText">Call setValue</text>
+            <view id="set-native-value" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => invokeNative('setValue', { value: 'Set through native method' })}>
+              <text className="text-[13px] text-[#253647]">Call setValue</text>
             </view>
-            <view id="focus-native-input" className="Button" bindtap={() => invokeNative('focus')}>
-              <text className="ButtonText">Focus</text>
+            <view id="focus-native-input" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => invokeNative('focus')}>
+              <text className="text-[13px] text-[#253647]">Focus</text>
             </view>
-            <view id="read-native-value" className="Button" bindtap={() => invokeNative('getValue')}>
-              <text className="ButtonText">Read value</text>
+            <view id="read-native-value" className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]" bindtap={() => invokeNative('getValue')}>
+              <text className="text-[13px] text-[#253647]">Read value</text>
             </view>
           </view>
-          <view className="Result">
-            <text className="Label">REACTLYNX STATE</text>
-            <text id="current-value" className="Value">{value || '(empty)'}</text>
-            <text id="native-status" className="Status">{status}</text>
+          <view className="p-[18px] rounded-[10px] bg-[#f5f7f9]">
+            <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">REACTLYNX STATE</text>
+            <text id="current-value" className="text-[18px] text-[#17212b] mb-[10px]">{value || '(empty)'}</text>
+            <text id="native-status" className="text-[12px] text-[#25765b]">{status}</text>
           </view>
-          <text className="Footnote">C++ static registration → AutoLink → native-input</text>
-          <view className="RustSection">
-            <text className="Label">NAPI-RS / CXX INTEROP</text>
-            <view id="verify-rust" className="Button Primary" bindtap={verifyRust}>
-              <text className="PrimaryText">Verify shared Rust object</text>
+          <text className="text-[11px] text-[#94a3b8] mt-[22px]">C++ static registration → AutoLink → native-input</text>
+          <view className="flex flex-col mt-[24px] pt-[20px] border-t border-solid border-[#e9eef3]">
+            <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">NAPI-RS / CXX INTEROP</text>
+            <view id="verify-rust" className="py-[10px] px-[14px] rounded-[8px] bg-[#25765b]" bindtap={verifyRust}>
+              <text className="text-[13px] text-[#ffffff]">Verify shared Rust object</text>
             </view>
-            <text id="rust-status" className="Status RustStatus">{rustStatus}</text>
-            <text id="rust-details" className="RustDetails">{rustDetails}</text>
+            <text id="rust-status" className="text-[12px] text-[#25765b] mt-[14px]">{rustStatus}</text>
+            <text id="rust-details" className="text-[11px] leading-[16px] text-[#64748b] mt-[8px] break-all">{rustDetails}</text>
           </view>
         </view>
       </view>

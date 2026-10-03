@@ -30,6 +30,14 @@
 </AppLayout>
 ```
 
+UI 样式统一使用 Tailwind CSS v3 和官方 `@lynx-js/tailwind-preset`，通过
+`postcss.config.js` 接入 Rspeedy。`src/app/tailwind.css` 只包含 Tailwind 指令，
+组件通过 `className` 声明样式；`tailwind.config.ts` 扫描 UI 源码，并用
+`satisfies Config` 检查配置类型。运行时的 workspace 颜色和 tab 宽度通过
+CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工具类。
+选中状态使用完整的条件类名，避免动态拼接造成漏生成。
+参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
+
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
 和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；原有 Rust wgpu /
