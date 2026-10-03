@@ -1,10 +1,17 @@
 import '@testing-library/jest-dom';
-import { expect, test, rstest } from '@rstest/core';
+import { beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
 import defaults from '../../../config/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
+
+beforeEach(() => {
+  // Testing-library resolves selectors but does not implement native UI methods.
+  const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
+  const prototype = Object.getPrototypeOf(query.selectUniqueID(0));
+  rstest.spyOn(prototype, 'invoke').mockReturnValue({ exec: rstest.fn() });
+});
 
 function makeHost() {
   const payload = { config: parseWorkspaceConfig(defaults), path: '/tmp/catus/workspaces.json', environment: { shell: '/bin/zsh', home: '/Users/test' } };
@@ -15,8 +22,20 @@ function makeHost() {
   return host;
 }
 
+test('main-thread first frame renders the layout and region fallbacks without loading the host', () => {
+  const host = makeHost();
+  render(<App host={host} />, { enableMainThread: true, enableBackgroundThread: false });
+  const root = elementTree.root!;
+  for (const id of ['application-layout', 'window-tab-bar', 'window-controls-space', 'workspace-dock', 'terminal-content', 'application-status']) {
+    expect(root.querySelector(`#${id}`)).not.toBeNull();
+  }
+  expect(root.querySelector('#terminal-placeholder')?.textContent).toBe('Getting things ready.');
+  expect(root.querySelector('#tab-1')).toBeNull();
+  expect(host.loadWorkspaces).not.toHaveBeenCalled();
+});
+
 test('Lynx tabs and dock indicators follow workspace startup, switching, creation and closing', async () => {
-  render(<App host={makeHost()} />);
+  render(<App host={makeHost()} />, { enableMainThread: true });
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await findByText('A little space to make things.');

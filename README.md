@@ -5,15 +5,51 @@
 内容区当前是占位符，尚未启动进程或接入 PTY。
 
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
-构建与测试将 React hooks 映射到 ReactLynx。完整 workspace UI 使用
-`<background-only>`：主线程显示启动占位，Effect 只在 BTS 运行。
+构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
+布局组件，由 `App.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
+首帧渲染窗口骨架。tab、workspace 列表、内容、状态栏和设置各有独立的
+`<background-only>` 边界及首帧 fallback。`state/SessionRegion.tsx` 为这些区域
+提供同一个应用级 Effect registry；Effect 和配置加载只在 BTS 运行。
 `runtime.ts` 在 Effect 加载前通过 preload 工厂安装 Node.js 原生
 `TextEncoder` / `TextDecoder`，不需要第三方编码 polyfill。
+
+布局组合结构如下，具体区域的 `<background-only>` 边界和业务内容由 `App.tsx`
+放入对应组件，布局组件只负责容器与样式：
+
+```tsx
+<AppLayout>
+  <AppLayoutHeader>{/* 原生窗口按钮留白、tab 栏 */}</AppLayoutHeader>
+  <AppLayoutBody>
+    <AppLayoutSidebar>{/* workspace 列表 */}</AppLayoutSidebar>
+    <AppLayoutMain>
+      <AppLayoutContent>{/* terminal 内容 */}</AppLayoutContent>
+      <AppLayoutFooter>{/* 状态栏 */}</AppLayoutFooter>
+    </AppLayoutMain>
+  </AppLayoutBody>
+  {/* 设置与配置初始化区域 */}
+</AppLayout>
+```
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
 和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；原有 Rust wgpu /
 Metal 三角形与 crossfont 字形 atlas 演示保留在 `src/app/NativeDemo.tsx`。
+
+macOS 窗口使用 `frame: false` / `titleBarStyle: 'hidden'`，系统标题栏由顶部
+tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动窗口，tab 与 `+`
+使用 `-x-app-region: no-drag` 保持交互；只在留白区域声明 `drag`。tab 多时横向
+滚动，新建或切换的 tab 自动滚入可见区域。参见[官方自定义窗口文档](https://lynxjs.org/next/lynxtron/learn/Custom-Window-Styles)。
+
+```text
+App.tsx / components/AppLayout.tsx
+  主线程首帧：窗口骨架 + 各区域 fallback
+       ↓
+state/SessionRegion.tsx
+  BTS 初始化共享 registry，bootstrap 只加载一次配置
+       ↓
+TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
+  各自接收状态及事件，更新对应区域
+```
 
 ## Workspaces 与配置
 
@@ -274,8 +310,11 @@ Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 ```text
 config/workspaces.json                 内置终端类型与默认 shell 配置
 src/shared/workspaces.ts               Effect Schema 校验、启动参数解析与 host 类型
-src/app/App.tsx                         主线程启动占位与后台 UI 边界
-src/app/TerminalApp.tsx                 workspace dock、tabs、内容占位符和配置面板
+src/app/App.tsx                         组合静态 layout 和各区域的后台边界
+src/app/components/AppLayout.tsx       主线程首帧布局骨架与窗口 tab 栏
+src/app/components/                    tab、workspace、内容、状态栏、设置的展示组件
+src/app/state/SessionRegion.tsx        各区域 BTS 边界共享同一个 Effect registry
+src/app/state/useWorkspaceSession.ts   配置加载与 workspace/tab/设置操作
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
 src/app/NativeDemo.tsx                  原有 native input / Rust / wgpu 字体演示

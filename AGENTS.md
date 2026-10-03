@@ -33,8 +33,15 @@ Read the docs below in advance to help you understand the library or frameworks 
   - UI: `src/app/App.tsx` uses Lynx built-in elements and CSS.
   - State: `src/app/state/session.ts` uses Effect v4 atoms and official
     `@effect/atom-react` hooks. React imports are aliased to ReactLynx in build
-    and tests. `App.tsx` uses `<background-only>` around `TerminalApp.tsx` to
-    keep Effect out of the main-thread bundle. `runtime.ts` runs before Effect
+    and tests. `components/AppLayout.tsx` exports named layout primitives composed
+    with children in `App.tsx`, following shadcn-style composition rather than
+    region slot props. These primitives render the static layout on the main
+    thread; `App.tsx` puts separate `<background-only>` boundaries around tabs,
+    workspace list, content, status and settings, each with a pure UI fallback.
+    `state/SessionRegion.tsx` shares one registry per App across those regions;
+    only its bootstrap region loads configuration. Presentation components
+    must use type-only state imports to keep Effect out of the main-thread bundle.
+    `runtime.ts` runs before Effect
     imports and installs Node codecs from preload factories in the isolated BTS
     global. Bridge functions are callable, not constructable; do not expose the
     Node codec classes directly as constructors.
@@ -46,7 +53,9 @@ Read the docs below in advance to help you understand the library or frameworks 
 - `src/shared/workspaces.ts`: Effect Schema validation and launch resolution.
 - `src/main`: Host process logic
   - `src/main/desktop/`: Desktop (Node.js) host implementation.
-    - `main.ts`: Main process entry (window management).
+    - `main.ts`: Main process entry (frameless window, native macOS traffic lights
+      positioned in the UI tab bar). Keep the controls' reserved area consistent
+      with `App.css`; tabs and buttons must be `-x-app-region: no-drag`.
     - `preload.ts`: Logic injected into the Lynx thread (Node.js environment).
     - `workspaceConfig.ts`: Validated JSON load and atomic save; override path
       with `CATUS_WORKSPACES_FILE`. Never overwrite an invalid existing file.
