@@ -106,6 +106,15 @@ Use NodeJS ≥ 22 and TypeScript.
 - Build (Desktop): `pnpm run build`
 - Start (Desktop): `pnpm start`
 - Test: `pnpm run test`
+- TypeScript: `pnpm run tsc` (also `pnpm run typecheck`) runs `tsc --build`.
+  Root `tsconfig.json` has `files: []` and references the UI, desktop and tools
+  configs. Keep ReactLynx JSX in the UI project and Node types in desktop/tools.
+  Subprojects use `composite` and `noEmit`, with separate build-info caches in
+  ignored `.tmp/typecheck/`; shared sources are included by both runtime projects.
+- Format all JS/TS: `pnpm format`; check with `pnpm format:check`.
+- Lint all JS/TS: `pnpm lint`; apply safe fixes with `pnpm lint:fix`.
+  Keep formatting and lint configuration in `rstack.config.ts`. Native builds
+  format the generated `native/index.d.ts` before completing.
 
 ## Authoring UI (ReactLynx)
 

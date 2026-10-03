@@ -14,7 +14,11 @@ beforeEach(() => {
 });
 
 function makeHost() {
-  const payload = { config: parseWorkspaceConfig(defaults), path: '/tmp/catus/workspaces.json', environment: { shell: '/bin/zsh', home: '/Users/test' } };
+  const payload = {
+    config: parseWorkspaceConfig(defaults),
+    path: '/tmp/catus/workspaces.json',
+    environment: { shell: '/bin/zsh', home: '/Users/test' },
+  };
   const host: WorkspaceHost = {
     loadWorkspaces: rstest.fn(async () => payload),
     saveWorkspaces: rstest.fn(async (config: WorkspaceConfig) => ({ ...payload, config })),
@@ -26,7 +30,14 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   const host = makeHost();
   render(<App host={host} />, { enableMainThread: true, enableBackgroundThread: false });
   const root = elementTree.root!;
-  for (const id of ['application-layout', 'window-tab-bar', 'window-controls-space', 'workspace-dock', 'terminal-content', 'application-status']) {
+  for (const id of [
+    'application-layout',
+    'window-tab-bar',
+    'window-controls-space',
+    'workspace-dock',
+    'terminal-content',
+    'application-status',
+  ]) {
     expect(root.querySelector(`#${id}`)).not.toBeNull();
   }
   expect(root.querySelector('#terminal-placeholder')?.textContent).toBe('Getting things ready.');
@@ -72,14 +83,21 @@ test('workspace editor persists JSON and rejects invalid arguments without savin
   fireEvent.tap(root.querySelector('#workspace-settings')!);
   await findByText('Launch profile');
   const input = root.querySelector('#profile-args')!;
-  act(() => { input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: 'invalid' } })); });
+  act(() => {
+    input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: 'invalid' } }));
+  });
   fireEvent.tap(root.querySelector('#save-workspace')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
   expect(root.querySelector('#editor-error')).not.toBeNull();
-  act(() => { input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: '["-l", "-i"]' } })); });
+  act(() => {
+    input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: '["-l", "-i"]' } }));
+  });
   fireEvent.tap(root.querySelector('#save-workspace')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
-  expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!.args).toEqual(['-l', '-i']);
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!.args).toEqual([
+    '-l',
+    '-i',
+  ]);
   // Existing tab keeps the launch profile it was opened with.
   expect(root.querySelector('#session-command')?.textContent).toBe('/bin/zsh -l');
 });

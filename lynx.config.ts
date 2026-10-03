@@ -24,7 +24,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@assets': path.resolve(rootPath, './src/assets'),
-      'react$': '@lynx-js/react',
+      react$: '@lynx-js/react',
     },
   },
   output: {
@@ -38,10 +38,7 @@ export default defineConfig({
         },
       },
       output: {
-        assetPrefix: new URL(
-          './dist/desktop/',
-          pathToFileURL(__dirname + path.sep)
-        ).toString(),
+        assetPrefix: new URL('./dist/desktop/', pathToFileURL(__dirname + path.sep)).toString(),
         distPath: {
           root: './output/bundle/lynx',
         },
@@ -63,7 +60,7 @@ export default defineConfig({
             CompilerOptions & {
               alignMouseEventWithW3C: boolean;
             },
-      }
+      },
     ),
     pluginReactLynx({
       enableCSSInheritance: true,

@@ -5,12 +5,15 @@
     "moduleResolution": "Bundler",
 
     "lib": ["ES2023"],
-    "target": "ES2022"
+    "target": "ES2022",
+    "types": ["node"],
+    "tsBuildInfoFile": "./.tmp/typecheck/tools.tsbuildinfo"
   },
   "include": [
     "./lynx.config.ts",
     "./rstest.config.ts",
     "./rsbuild.config.ts",
-    "./tailwind.config.ts"
+    "./tailwind.config.ts",
+    "./rstack.config.ts"
   ]
 }

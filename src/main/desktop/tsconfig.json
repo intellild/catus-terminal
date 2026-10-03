@@ -5,7 +5,9 @@
     "moduleResolution": "Bundler",
     "target": "ES2022",
     "lib": ["ES2023"],
-    "types": ["node"]
+    "types": ["node"],
+    "rootDir": "../../..",
+    "tsBuildInfoFile": "../../../.tmp/typecheck/desktop.tsbuildinfo"
   },
-  "include": ["./**/*.ts", "../common/**/*.ts"]
+  "include": ["./**/*.ts", "../../shared/**/*.ts", "../../../config/*.json"]
 }

@@ -14,7 +14,8 @@ import { TextEncoder, TextDecoder } from 'node:util';
 const workspaces = createWorkspaceHost();
 contextBridge.exposeInLynxBTS({
   createTextEncoder: () => new TextEncoder(),
-  createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) => new TextDecoder(label, options),
+  createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) =>
+    new TextDecoder(label, options),
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
   createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),

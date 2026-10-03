@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./src/app" },
+    { "path": "./src/main/desktop" },
+    { "path": "./tsconfig.tools.json" }
+  ]
+}

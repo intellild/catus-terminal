@@ -21,7 +21,8 @@ export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
   const config = Schema.decodeUnknownSync(WorkspaceConfigSchema)(value);
   const ids = new Set<string>();
   for (const workspace of config.workspaces) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(workspace.id)) throw new Error('Workspace ID must use letters, numbers, _ or -');
+    if (!/^[a-zA-Z0-9_-]+$/.test(workspace.id))
+      throw new Error('Workspace ID must use letters, numbers, _ or -');
     if (ids.has(workspace.id)) throw new Error(`Duplicate workspace ID: ${workspace.id}`);
     if (!workspace.name.trim() || !workspace.command.trim() || !workspace.cwd.trim()) {
       throw new Error('Workspace name, command and directory cannot be blank');
@@ -49,7 +50,11 @@ export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnviro
   return {
     command: workspace.command === '$SHELL' ? environment.shell : workspace.command,
     args: workspace.args,
-    cwd: workspace.cwd === '~' ? environment.home
-      : workspace.cwd.startsWith('~/') ? environment.home + workspace.cwd.slice(1) : workspace.cwd,
+    cwd:
+      workspace.cwd === '~'
+        ? environment.home
+        : workspace.cwd.startsWith('~/')
+          ? environment.home + workspace.cwd.slice(1)
+          : workspace.cwd,
   };
 }

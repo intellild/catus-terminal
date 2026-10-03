@@ -4,6 +4,10 @@
   "type": "module",
   "main": "main.js",
   "scripts": {
+    "format": "rs format '**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'",
+    "format:check": "rs format --check '**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'",
+    "lint": "rs lint",
+    "lint:fix": "rs lint --fix",
     "dev": "cross-env NODE_ENV=development concurrently -k --prefix none \"rspeedy dev --environment lynx\" \"dev-ready-rspeedy && rsbuild dev --environment desktop\"",
     "build": "rspeedy build --environment lynx && rsbuild build --environment desktop",
     "start": "pnpm run build && lynxtron dist/desktop",
@@ -14,7 +18,8 @@
     "build:native": "pnpm --filter @catus/native run build",
     "predev": "node scripts/prepare-dev.mjs && pnpm run build:native",
     "prebuild": "pnpm run build:native",
-    "typecheck": "tsc --noEmit -p src/app/tsconfig.json && tsc --noEmit -p src/main/desktop/tsconfig.json && tsc --noEmit -p tsconfig.tools.json"
+    "tsc": "tsc --build tsconfig.json",
+    "typecheck": "pnpm run tsc"
   },
   "private": true,
   "devDependencies": {
@@ -39,7 +44,9 @@
     "compressing": "^1.10.0",
     "concurrently": "^8.2.2",
     "cross-env": "^10.1.0",
+    "jiti": "^2.7.0",
     "jsdom": "^26.1.0",
+    "rstack": "^0.8.0",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3"
   },

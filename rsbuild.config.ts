@@ -2,8 +2,6 @@
 // Licensed under the Apache License Version 2.0 that can be found in the
 // LICENSE file in the root directory of this source tree.
 
-/// <reference path="./tsconfig.tools.json" />
-
 import { defineConfig } from '@rsbuild/core';
 import { pluginLynxtron } from '@lynx-js/lynxtron-dev-plugins/rsbuild';
 
@@ -15,12 +13,14 @@ export default defineConfig({
           // The preload VM supplies bootstrap __filename/__dirname globals.
           // AutoLink must resolve relative to the emitted application bundle.
           config.plugins ??= [];
-          config.plugins.push(new rspack.BannerPlugin({
-            raw: true,
-            banner: `import { fileURLToPath as __catusFileURLToPath } from 'node:url';
+          config.plugins.push(
+            new rspack.BannerPlugin({
+              raw: true,
+              banner: `import { fileURLToPath as __catusFileURLToPath } from 'node:url';
 const __filename = __catusFileURLToPath(import.meta.url);
 const __dirname = __catusFileURLToPath(new URL('.', import.meta.url));`,
-          }));
+            }),
+          );
         },
       },
       source: {

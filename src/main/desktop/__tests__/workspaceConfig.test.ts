@@ -5,7 +5,11 @@ import path from 'node:path';
 import { createWorkspaceHost } from '../workspaceConfig';
 
 const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
+afterEach(async () => {
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
 async function setup() {
   const directory = await mkdtemp(path.join(tmpdir(), 'catus-config-'));
   directories.push(directory);
@@ -18,7 +22,12 @@ test('first load writes built-in defaults; saves round-trip through a new host',
   const initial = await host.loadWorkspaces();
   expect(initial.config.workspaces[0]!.command).toBe('$SHELL');
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(initial.config);
-  const config = { ...initial.config, workspaces: [{ ...initial.config.workspaces[0]!, name: 'Personal shell', command: '/bin/bash' }] };
+  const config = {
+    ...initial.config,
+    workspaces: [
+      { ...initial.config.workspaces[0]!, name: 'Personal shell', command: '/bin/bash' },
+    ],
+  };
   await host.saveWorkspaces(config);
   const reopened = await createWorkspaceHost(file).loadWorkspaces();
   expect(reopened.config).toEqual(config);

@@ -20,8 +20,16 @@ export interface SessionScope {
 }
 type Region = 'bootstrap' | 'workspaces' | 'tabs' | 'content' | 'status' | 'settings';
 
-export function SessionRegion({ scope, region, host }: { scope: SessionScope; region: Region; host?: WorkspaceHost }) {
-  const registry = scope.registry ??= AtomRegistry.make({ scheduleTask });
+export function SessionRegion({
+  scope,
+  region,
+  host,
+}: {
+  scope: SessionScope;
+  region: Region;
+  host?: WorkspaceHost;
+}) {
+  const registry = (scope.registry ??= AtomRegistry.make({ scheduleTask }));
   useEffect(() => {
     if (scope.disposeTimer !== undefined) clearTimeout(scope.disposeTimer);
     scope.mounts = (scope.mounts ?? 0) + 1;
@@ -35,9 +43,15 @@ export function SessionRegion({ scope, region, host }: { scope: SessionScope; re
       }
     };
   }, [scope, registry]);
-  return <RegistryContext.Provider value={registry}>
-    {region === 'bootstrap' ? <SessionLoader host={host} /> : <RegionContent region={region} host={host} />}
-  </RegistryContext.Provider>;
+  return (
+    <RegistryContext.Provider value={registry}>
+      {region === 'bootstrap' ? (
+        <SessionLoader host={host} />
+      ) : (
+        <RegionContent region={region} host={host} />
+      )}
+    </RegistryContext.Provider>
+  );
 }
 
 function SessionLoader({ host }: { host?: WorkspaceHost }) {
@@ -45,29 +59,88 @@ function SessionLoader({ host }: { host?: WorkspaceHost }) {
   return null;
 }
 
-function RegionContent({ region, host }: { region: Exclude<Region, 'bootstrap'>; host?: WorkspaceHost }) {
+function RegionContent({
+  region,
+  host,
+}: {
+  region: Exclude<Region, 'bootstrap'>;
+  host?: WorkspaceHost;
+}) {
   const session = useWorkspaceSession(host);
   const { view, load, editor } = session;
   const activeNumber = view.activeTab?.number;
   const revealActiveTab = useCallback(() => {
     if (region !== 'tabs' || activeNumber === undefined) return;
-    lynx.createSelectorQuery().select(`#tab-item-${activeNumber}`).invoke({
-      method: 'scrollIntoView',
-      params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
-    }).exec();
+    lynx
+      .createSelectorQuery()
+      .select(`#tab-item-${activeNumber}`)
+      .invoke({
+        method: 'scrollIntoView',
+        params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
+      })
+      .exec();
   }, [region, activeNumber]);
   useEffect(revealActiveTab, [revealActiveTab]);
   switch (region) {
-    case 'tabs': return <TabBar tabs={view.tabs} activeTabId={view.activeTab?.id} loading={load.loading}
-      onSelect={session.focusTab} onClose={session.removeTab} onAdd={session.addTab} onLayout={revealActiveTab} />;
-    case 'workspaces': return <WorkspaceList workspaces={view.workspaces} activeWorkspaceId={view.workspace?.id}
-      runningIds={view.runningIds} loading={load.loading} onSelect={session.openWorkspace} onSettings={session.openSettings} />;
-    case 'content': return <TerminalContent workspace={view.workspace} activeTab={view.activeTab} tabCount={view.tabs.length}
-      launch={session.launch} command={session.command} loading={load.loading} error={load.error}
-      onSettings={session.openSettings} onRetry={session.loadConfig} onAdd={session.addTab} />;
-    case 'status': return <StatusBar workspaceCount={view.runningIds.size} tabCount={view.state.tabs.length} hasSession={!!view.activeTab} />;
-    case 'settings': return <WorkspaceSettings editor={editor} workspaces={view.workspaces} configPath={view.state.payload?.path}
-      onClose={session.closeSettings} onSelect={session.selectProfile} onAdd={session.addWorkspace}
-      onChange={session.updateDraft} onSave={session.saveDraft} onDelete={session.deleteWorkspace} />;
+    case 'tabs':
+      return (
+        <TabBar
+          tabs={view.tabs}
+          activeTabId={view.activeTab?.id}
+          loading={load.loading}
+          onSelect={session.focusTab}
+          onClose={session.removeTab}
+          onAdd={session.addTab}
+          onLayout={revealActiveTab}
+        />
+      );
+    case 'workspaces':
+      return (
+        <WorkspaceList
+          workspaces={view.workspaces}
+          activeWorkspaceId={view.workspace?.id}
+          runningIds={view.runningIds}
+          loading={load.loading}
+          onSelect={session.openWorkspace}
+          onSettings={session.openSettings}
+        />
+      );
+    case 'content':
+      return (
+        <TerminalContent
+          workspace={view.workspace}
+          activeTab={view.activeTab}
+          tabCount={view.tabs.length}
+          launch={session.launch}
+          command={session.command}
+          loading={load.loading}
+          error={load.error}
+          onSettings={session.openSettings}
+          onRetry={session.loadConfig}
+          onAdd={session.addTab}
+        />
+      );
+    case 'status':
+      return (
+        <StatusBar
+          workspaceCount={view.runningIds.size}
+          tabCount={view.state.tabs.length}
+          hasSession={!!view.activeTab}
+        />
+      );
+    case 'settings':
+      return (
+        <WorkspaceSettings
+          editor={editor}
+          workspaces={view.workspaces}
+          configPath={view.state.payload?.path}
+          onClose={session.closeSettings}
+          onSelect={session.selectProfile}
+          onAdd={session.addWorkspace}
+          onChange={session.updateDraft}
+          onSave={session.saveDraft}
+          onDelete={session.deleteWorkspace}
+        />
+      );
   }
 }

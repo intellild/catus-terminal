@@ -9,8 +9,7 @@ const target = manifest.platforms.lynxtron.targets.find(
 
 if (!target) {
   throw new Error(
-    '@catus/native does not provide a Lynxtron target for '
-      + `${process.platform}/${process.arch}`,
+    '@catus/native does not provide a Lynxtron target for ' + `${process.platform}/${process.arch}`,
   );
 }
 
@@ -20,14 +19,12 @@ const binaryFiles = Array.isArray(target.files)
 
 if (binaryFiles.length !== 1) {
   throw new Error(
-    '@catus/native expected exactly one Lynxtron binary for '
-      + `${process.platform}/${process.arch}`,
+    '@catus/native expected exactly one Lynxtron binary for ' +
+      `${process.platform}/${process.arch}`,
   );
 }
 
-const nativeBinding = require(
-  path.resolve(__dirname, binaryFiles[0]),
-);
+const nativeBinding = require(path.resolve(__dirname, binaryFiles[0]));
 
 module.exports = nativeBinding;
 module.exports.default = nativeBinding;

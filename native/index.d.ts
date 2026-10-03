@@ -2,14 +2,14 @@
 /* eslint-disable */
 
 export declare class RustCounter {
-  readonly nativeId: string
-  constructor(initial: number)
-  get value(): number
-  get cppCalls(): number
-  add(delta: number): number
-  toNativeHandle(): NativeCounterHandle
+  readonly nativeId: string;
+  constructor(initial: number);
+  get value(): number;
+  get cppCalls(): number;
+  add(delta: number): number;
+  toNativeHandle(): NativeCounterHandle;
 }
 
 export interface NativeCounterHandle {
-  nativeId: string
+  nativeId: string;
 }

@@ -38,6 +38,12 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 选中状态使用完整的条件类名，避免动态拼接造成漏生成。
 参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
 
+JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
+`pnpm format` 格式化所有 JS/TS 文件（含 JSX/TSX、MJS/CJS 和声明文件），
+`pnpm format:check` 检查格式，`pnpm lint` 运行 JavaScript / TypeScript 推荐规则，
+`pnpm lint:fix` 应用自动修复。构建产物、依赖和缓存不参与检查；native 构建
+生成的 `index.d.ts` 会自动格式化。
+
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
 和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；原有 Rust wgpu /
@@ -119,12 +125,26 @@ CI 或复现安装使用 `pnpm install --frozen-lockfile`。
 ```bash
 pnpm run build       # 原生库 + Lynx bundle + desktop 主进程
 pnpm start           # 构建并运行
-pnpm run typecheck   # UI、主进程及配置文件的 TypeScript 检查
+pnpm run tsc         # tsc --build：检查根 tsconfig 引用的所有项目
+pnpm run typecheck   # 同 pnpm run tsc
 pnpm test            # ReactLynx 交互、Effect 状态与 JSON 配置读写测试
 pnpm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
 pnpm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
 pnpm run pack        # 本机 macOS 应用打包，不发布
 ```
+
+根目录 `tsconfig.json` 使用 `files: []` 和 `references` 组织三个 TypeScript 项目：
+
+```text
+tsconfig.json
+  ├─ src/app/tsconfig.json            ReactLynx UI、测试、shared、native 声明
+  ├─ src/main/desktop/tsconfig.json   Node 桌面端、测试、shared
+  └─ tsconfig.tools.json             构建、测试、Tailwind、Rstack 配置
+```
+
+子项目启用 `composite` 和 `noEmit`；UI 单独配置 ReactLynx JSX。
+`tsc --build` 检查全部引用项目，不输出 JS 或声明文件，只在忽略目录
+`.tmp/typecheck/` 保存增量检查缓存。
 
 ## Native 演示交互（NativeDemo.tsx）
 
