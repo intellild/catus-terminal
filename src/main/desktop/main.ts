@@ -7,9 +7,12 @@ const isDev = process.env.NODE_ENV === 'development';
 function createWindow() {
   // pluginLynxtron loads AutoLink libraries before this entry creates the window.
   const window = new LynxWindow({
-    width: 900,
-    height: 1050,
-    title: 'Catus · Native Component Demo',
+    width: 1120,
+    height: 760,
+    minWidth: 760,
+    minHeight: 480,
+    backgroundColor: '#101215',
+    title: 'Catus',
     lynxPreference: {
       preload: path.join(__dirname, 'preload.js'),
     },

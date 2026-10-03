@@ -95,8 +95,8 @@ fallback、RGBA emoji、字号失效、缓存复用，以及 Metal 上传/回读
 在项目根目录运行：
 
 ```bash
-npm install
-npm run build:native
+pnpm install
+pnpm run build:native
 ```
 
 产物为 `dist/darwin/<arch>/catus-native.node`。`lynx.lib.json` 声明 macOS

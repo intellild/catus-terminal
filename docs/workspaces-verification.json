@@ -1,0 +1,24 @@
+{
+  "platform": "macOS arm64",
+  "lynxtron": "0.0.28",
+  "effect": "4.0.0",
+  "atomReact": "4.0.0",
+  "configFile": "/private/tmp/catus-workspaces-ui-20261003.json",
+  "checks": {
+    "startup": { "workspace": "shell", "tab": "Shell 1", "command": "/bin/zsh -l", "runningWorkspaces": 1 },
+    "activateNode": { "tab": "Node.js 2", "runningWorkspaces": 2, "totalTabs": 2 },
+    "newNodeTab": { "tab": "Node.js 3", "runningWorkspaces": 2, "totalTabs": 3 },
+    "closeLastNodeTab": { "selectedWorkspace": "node", "tabsInWorkspace": 0, "runningWorkspaces": 1, "totalTabs": 1, "placeholder": "Start something new." },
+    "nativeEditorValues": { "name": "Shell", "command": "$SHELL", "args": "[\"-l\"]", "cwd": "~", "icon": ">_", "color": "#a8e6cf" },
+    "saveFromSettings": "passed; JSON persisted and existing Shell 1 preserved",
+    "nodeCodecs": { "roundtrip": "中文 😀", "bytes": [228, 184, 173, 230, 150, 135, 32, 240, 159, 152, 128], "fatalInvalidUtf8": true },
+    "nodeEncodeInto": { "read": 2, "written": 4, "bytes": [240, 159, 152, 128], "decoded": "😀" },
+    "consoleErrors": 0
+  },
+  "automated": { "tests": 12, "passed": 12, "typecheck": "passed", "productionBuild": "passed" },
+  "notes": [
+    "Terminal content is a placeholder; no processes or PTYs are started.",
+    "Effect UI is background-only; Node codec factories are exposed through preload.",
+    "Lynx DevTool captures Lynx layers, excluding AppKit native input controls. Their values were verified with getValue."
+  ]
+}

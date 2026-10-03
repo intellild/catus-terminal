@@ -9,7 +9,14 @@
 
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
+import { createWorkspaceHost } from './workspaceConfig';
+import { TextEncoder, TextDecoder } from 'node:util';
+const workspaces = createWorkspaceHost();
 contextBridge.exposeInLynxBTS({
+  createTextEncoder: () => new TextEncoder(),
+  createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) => new TextDecoder(label, options),
+  loadWorkspaces: workspaces.loadWorkspaces,
+  saveWorkspaces: workspaces.saveWorkspaces,
   createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),
   echo: (message: string) => {
     return `Echo from PC Service Thread: ${message}`;

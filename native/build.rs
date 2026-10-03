@@ -71,7 +71,7 @@ fn main() {
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
-    for input in ["cxx", "package.json", "../package-lock.json"] {
+    for input in ["cxx", "package.json", "../pnpm-lock.yaml"] {
         println!(
             "cargo:rerun-if-changed={}",
             package_root.join(input).display()

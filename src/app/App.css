@@ -1,40 +1,94 @@
-.Viewport { width: 100%; height: 100%; }
-.Page {
-  display: flex;
-  width: 100%;
-  min-height: 100%;
-  align-items: center;
-  justify-content: center;
-  background-color: #eef2f6;
-  padding: 20px;
-}
-.Card {
-  display: flex;
-  flex-direction: column;
-  width: 680px;
-  max-width: 100%;
-  padding: 24px;
-  border-radius: 20px;
-  background-color: #ffffff;
-  flex-shrink: 0;
-}
-.Eyebrow { color: #25765b; font-size: 12px; font-weight: 700; letter-spacing: 2px; margin-bottom: 16px; }
-.Title { color: #17212b; font-size: 30px; font-weight: 700; margin-bottom: 12px; }
-.Description { color: #64748b; font-size: 15px; line-height: 23px; margin-bottom: 28px; }
-.Label { color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 10px; }
-.NativeInput { width: 100%; height: 40px; margin-bottom: 20px; }
-.Actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
-.Button { padding: 10px 14px; border-radius: 8px; background-color: #e9eef3; }
-.Primary { background-color: #25765b; }
-.ButtonText { font-size: 13px; color: #253647; }
-.PrimaryText { font-size: 13px; color: #ffffff; }
-.Result { padding: 18px; border-radius: 10px; background-color: #f5f7f9; }
-.Value { font-size: 18px; color: #17212b; margin-bottom: 10px; }
-.Status { font-size: 12px; color: #25765b; }
-.Footnote { font-size: 11px; color: #94a3b8; margin-top: 22px; }
-.RustSection { display: flex; flex-direction: column; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e9eef3; }
-.RustStatus { margin-top: 14px; }
-.RustDetails { font-size: 11px; line-height: 16px; color: #64748b; margin-top: 8px; word-break: break-all; }
-.TerminalSection { display: flex; flex-direction: column; margin-bottom: 20px; }
-.TerminalSurface { width: 100%; flex-shrink: 0; margin-bottom: 12px; }
-.TerminalActions { margin-bottom: 10px; }
+.Application { width: 100%; height: 100%; display: flex; flex-direction: row; background-color: #101215; position: relative; color: #e3e5e8; }
+.WorkspaceDock { width: 80px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; background-color: #181b20; border-right: 1px solid #282c32; padding: 18px 8px 12px; }
+.BrandMark { width: 38px; height: 38px; border-radius: 13px; background-color: #a8e6cf; display: flex; justify-content: center; align-items: center; }
+.BrandLetter { font-size: 30px; line-height: 34px; font-weight: 700; color: #1c3930; }
+.DockSeparator { height: 1px; width: 32px; background-color: #30353b; margin-top: 20px; margin-bottom: 18px; }
+.WorkspaceScroll { width: 64px; flex: 1; min-height: 0; }
+.WorkspaceList { display: flex; flex-direction: column; align-items: center; }
+.WorkspaceItem { width: 64px; display: flex; flex-direction: column; align-items: center; padding-top: 5px; margin-bottom: 13px; border-radius: 12px; }
+.WorkspaceSelected { background-color: #252b30; }
+.WorkspaceIcon { width: 43px; height: 43px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.WorkspaceGlyph { color: #aeb7c4; font-size: 17px; font-weight: 700; }
+.WorkspaceGlyphSelected { color: #21352f; }
+.WorkspaceName { font-size: 10px; color: #a0a8b5; margin-top: 7px; width: 60px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.DotSlot { height: 13px; display: flex; justify-content: center; align-items: center; }
+.RunningDot { width: 4px; height: 4px; border-radius: 2px; }
+.DockSettings { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background-color: #22262c; margin-top: 10px; }
+.SettingsGlyph { font-size: 22px; color: #969fab; }
+.DockCaption { font-size: 8px; color: #6e7784; letter-spacing: 1px; margin-top: 13px; }
+.MainPane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.TabChrome { height: 54px; display: flex; flex-direction: row; align-items: center; background-color: #1b1e23; border-bottom: 1px solid #2b3036; padding-right: 20px; flex-shrink: 0; }
+.TabScroll { flex: 1; min-width: 0; height: 54px; }
+.TabList { height: 54px; display: flex; flex-direction: row; align-items: flex-end; padding-left: 10px; gap: 6px; }
+.Tab { width: 192px; height: 43px; flex-shrink: 0; border-radius: 10px 10px 0 0; display: flex; flex-direction: row; align-items: center; background-color: #22262c; }
+.TabActive { background-color: #2b3037; border-top: 1px solid #46504f; }
+.TabSelect { flex: 1; min-width: 0; height: 43px; display: flex; flex-direction: row; align-items: center; padding-left: 15px; gap: 9px; }
+.TabDot { width: 6px; height: 6px; border-radius: 3px; flex-shrink: 0; }
+.TabTitle { font-size: 12px; color: #959eaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.TabTitleActive { color: #e1e8e5; }
+.TabClose { width: 31px; height: 38px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+.CloseGlyph { font-size: 19px; color: #9ca6b2; }
+.NewTab { width: 36px; height: 36px; border-radius: 9px; display: flex; justify-content: center; align-items: center; margin-left: 8px; }
+.PlusGlyph { font-size: 24px; color: #c1c7d0; }
+.ChromeDivider { width: 1px; height: 18px; margin-left: 12px; margin-right: 16px; background-color: #363b42; }
+.ChromeLabel { font-size: 11px; color: #717b88; }
+.NoTabsLabel { padding: 16px 12px; font-size: 12px; color: #7f8996; }
+.WorkspaceToolbar { height: 57px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 25px; border-bottom: 1px solid #272c32; flex-shrink: 0; }
+.ToolbarLeading { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.ToolbarIcon { font-size: 16px; font-weight: 700; }
+.ToolbarTitle { font-size: 13px; font-weight: 700; color: #d8dee5; }
+.ToolbarSlash { font-size: 14px; color: #515c6a; }
+.ToolbarDetail { font-size: 12px; color: #8993a1; }
+.ToolbarButton { padding: 8px 12px; border: 1px solid #323a43; border-radius: 7px; }
+.ToolbarButtonText { font-size: 11px; color: #adb7c4; }
+.TerminalStage { flex: 1; min-height: 0; display: flex; flex-direction: column; background-color: #111419; margin: 16px; border: 1px solid #272d35; border-radius: 12px; overflow: hidden; }
+.StageHeading { height: 55px; padding: 0 24px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.StagePath { display: flex; flex-direction: row; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.PathTilde { font-size: 18px; color: #778b86; }
+.PathText { font-size: 11px; color: #76818e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.SessionBadge { font-size: 9px; color: #65717f; letter-spacing: 1px; margin-left: 12px; }
+.EmptyState { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px 30px; }
+.TerminalSymbol { width: 78px; height: 68px; border: 1px solid #35463f; border-radius: 17px; background-color: #19231f; display: flex; align-items: center; justify-content: center; margin-bottom: 26px; }
+.TerminalSymbolText { font-size: 30px; font-weight: 700; }
+.EmptyEyebrow { font-size: 9px; color: #71837e; letter-spacing: 2px; margin-bottom: 13px; }
+.EmptyTitle { font-size: 27px; font-weight: 500; color: #dce3e7; text-align: center; margin-bottom: 12px; }
+.EmptyDescription { font-size: 13px; color: #7c8998; line-height: 22px; text-align: center; }
+.CommandPill { margin-top: 25px; display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 10px 17px; border: 1px solid #2e373d; border-radius: 8px; background-color: #1b2025; max-width: 100%; }
+.CommandPrompt { font-size: 12px; color: #a8e6cf; }
+.CommandText { font-size: 12px; color: #b6c0cc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.PlaceholderNote { margin-top: 26px; font-size: 8px; letter-spacing: 1.5px; color: #4a5665; }
+.StageFooter { padding: 17px 24px; display: flex; flex-direction: row; justify-content: space-between; flex-shrink: 0; }
+.StageFooterText { font-size: 9px; color: #596574; }
+.StatusBar { height: 30px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 22px; background-color: #181c21; border-top: 1px solid #2a3037; flex-shrink: 0; }
+.StatusLeading { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.StatusDot { width: 5px; height: 5px; border-radius: 3px; background-color: #859e94; }
+.StatusText { font-size: 10px; color: #8997a2; }
+.StatusHint { font-size: 10px; color: #606d7b; }
+.SettingsOverlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: row; }
+.SettingsScrim { flex: 1; background-color: #00000080; }
+.SettingsPanel { width: 370px; background-color: #20262d; border-left: 1px solid #39444e; display: flex; flex-direction: column; }
+.SettingsHeading { padding: 24px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.SettingsEyebrow { font-size: 9px; color: #8eb4a7; letter-spacing: 1px; margin-bottom: 7px; }
+.SettingsTitle { font-size: 23px; color: #e2e8ed; }
+.PanelClose { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+.SettingsScroll { flex: 1; min-height: 0; }
+.SettingsBody { padding: 0 24px 28px; display: flex; flex-direction: column; }
+.ProfileChoices { display: flex; flex-direction: row; flex-wrap: wrap; gap: 7px; margin-bottom: 26px; }
+.ProfileChoice { padding: 7px 10px; border: 1px solid #3b4650; border-radius: 6px; background-color: #272f37; }
+.ProfileChoiceSelected { background-color: #35483f; border: 1px solid #6d9988; }
+.ProfileChoiceText { font-size: 11px; color: #c3cdd6; }
+.EditorSectionTitle { font-size: 13px; color: #dce4e9; font-weight: 700; margin-bottom: 18px; }
+.Field { display: flex; flex-direction: column; margin-bottom: 15px; flex: 1; min-width: 0; }
+.FieldLabel { font-size: 11px; color: #a4b0bb; margin-bottom: 7px; }
+.FieldInput { width: 100%; height: 32px; flex-shrink: 0; }
+.FieldHint { font-size: 10px; color: #7e8c99; line-height: 17px; margin-bottom: 18px; }
+.AppearanceFields { display: flex; flex-direction: row; gap: 14px; }
+.EditorActions { display: flex; flex-direction: row; align-items: center; gap: 14px; margin-top: 6px; }
+.PrimaryButton { padding: 10px 16px; border-radius: 7px; background-color: #a8e6cf; margin-top: 15px; }
+.PrimaryButtonText { font-size: 12px; font-weight: 700; color: #20392f; }
+.DeleteButton { padding: 10px; margin-top: 15px; }
+.DeleteText { font-size: 11px; color: #d59e9e; }
+.ErrorText { font-size: 11px; color: #e4a4a4; line-height: 18px; margin-top: 12px; word-break: break-all; }
+.ConfigLocation { padding-top: 20px; margin-top: 24px; border-top: 1px solid #36414c; }
+.ConfigLocationLabel { font-size: 8px; color: #7d8e9c; letter-spacing: 1px; margin-bottom: 9px; }
+.ConfigLocationPath { font-size: 10px; color: #a0aebc; line-height: 16px; word-break: break-all; }

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "workspaces": [
+    {
+      "id": "shell",
+      "name": "Shell",
+      "icon": ">_",
+      "color": "#a8e6cf",
+      "command": "$SHELL",
+      "args": ["-l"],
+      "cwd": "~"
+    },
+    {
+      "id": "node",
+      "name": "Node.js",
+      "icon": "JS",
+      "color": "#cfde9d",
+      "command": "node",
+      "args": [],
+      "cwd": "~"
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "icon": "Py",
+      "color": "#b2c9ef",
+      "command": "python3",
+      "args": [],
+      "cwd": "~"
+    }
+  ]
+}

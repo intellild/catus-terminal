@@ -5,7 +5,7 @@ if(NOT APPLE)
   message(FATAL_ERROR "Catus native components currently implement macOS only.")
 endif()
 if(NOT DEFINED CXXBRIDGE_INCLUDE_DIR)
-  message(FATAL_ERROR "Run npm run build:native; Rust build.rs supplies the cxx headers.")
+  message(FATAL_ERROR "Run pnpm run build:native; Rust build.rs supplies the cxx headers.")
 endif()
 
 get_filename_component(CATUS_NATIVE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
@@ -20,7 +20,7 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 if(NOT HEADERS_RESULT EQUAL 0)
-  message(FATAL_ERROR "Unable to resolve Lynx headers. Run npm install. ${HEADERS_ERROR}")
+  message(FATAL_ERROR "Unable to resolve Lynx headers. Run pnpm install. ${HEADERS_ERROR}")
 endif()
 
 # All project components are compiled into one archive and one Node-API addon.

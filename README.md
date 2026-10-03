@@ -1,36 +1,88 @@
-# Catus Terminal — Lynxtron native 组件示例
+# Catus Terminal
 
-使用官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
+使用 Lynx UI 实现的桌面终端界面，参考 Opera 的 workspace 与 tab 布局。
+左侧 dock 放置可配置的终端类型，每个 workspace 保留自己的 terminal tabs；
+内容区当前是占位符，尚未启动进程或接入 PTY。
+
+状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
+构建与测试将 React hooks 映射到 ReactLynx。完整 workspace UI 使用
+`<background-only>`：主线程显示启动占位，Effect 只在 BTS 运行。
+`runtime.ts` 在 Effect 加载前通过 preload 工厂安装 Node.js 原生
+`TextEncoder` / `TextDecoder`，不需要第三方编码 polyfill。
+
+项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
-和 `<native-terminal>`。当前针对 macOS：输入框使用 AppKit `NSTextField`，
-terminal view 使用 Rust wgpu / Metal 绘制三角形和字形 atlas，验证嵌入式 GPU 渲染路径。
+和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；原有 Rust wgpu /
+Metal 三角形与 crossfont 字形 atlas 演示保留在 `src/app/NativeDemo.tsx`。
+
+## Workspaces 与配置
+
+- 启动应用时自动打开配置中的第一个 workspace，并创建第一个 tab。
+- 首次点击未启动的 workspace 创建 tab；再次点击恢复它上次选中的 tab。
+- 顶部 `+` 为当前 workspace 创建独立 tab；关闭最后一个 tab 后圆点消失。
+- 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
+- 左下角设置或 `Configure workspace` 可新增、编辑和移除终端类型。
+- 修改配置只影响新 tab，已有 tab 保留创建时的启动参数；tab 状态不跨应用重启保存。
+
+默认配置模板为 `config/workspaces.json`，包含 Shell、Node.js 和 Python。
+首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过
+`CATUS_WORKSPACES_FILE=/absolute/path/workspaces.json pnpm start` 指定配置位置。
+设置面板显示实际路径。保存前通过 Effect Schema 校验，以临时文件和 rename
+写入 JSON；已有配置损坏时显示错误，不会覆盖。
+
+```json
+{
+  "version": 1,
+  "workspaces": [
+    {
+      "id": "shell",
+      "name": "Shell",
+      "icon": ">_",
+      "color": "#a8e6cf",
+      "command": "$SHELL",
+      "args": ["-l"],
+      "cwd": "~"
+    }
+  ]
+}
+```
+
+`$SHELL` 使用用户账户默认 shell，`~` / `~/...` 展开为用户主目录。
+其他命令与参数原样保存，例如 `command: "ssh"`、`args: ["devbox"]`。
+编辑 JSON 后重启应用加载。真实界面截图见 [Shell](docs/workspaces-shell.jpeg)、
+[多个 tabs](docs/workspaces-tabs.jpeg)，实测结果见 [验证报告](docs/workspaces-verification.json)。
 
 ## 环境与运行
 
 - Node.js：`^22.18.0 || ^24.0.0 || ^26.0.0`
+- pnpm 10.34.4（`packageManager` 固定版本，可通过 Corepack 使用）
 - macOS + Xcode Command Line Tools（`xcode-select -p` 可检查）
 - CMake ≥ 3.18.1
 - Rust/Cargo（本项目使用 Rust 2024 edition；已验证 Rust 1.95.0）
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
-`npm run dev` 和 `npm run build` 会先编译本地 native 库。
-修改 TSX/CSS 会热更新；修改 C++/Objective-C++ 后需重启 `npm run dev`。
+CI 或复现安装使用 `pnpm install --frozen-lockfile`。
+`pnpm-workspace.yaml` 声明 `native` workspace、必要的依赖安装脚本和
+`predev`/`prebuild` 生命周期，并提升 Lynxtron builder 补丁所需的两个打包依赖。
+
+`pnpm run dev` 和 `pnpm run build` 会先编译本地 native 库。
+修改 TSX/CSS 会热更新；修改 C++/Objective-C++ 后需重启 `pnpm run dev`。
 
 ```bash
-npm run build       # 原生库 + Lynx bundle + desktop 主进程
-npm start           # 构建并运行
-npm run typecheck   # UI、主进程及配置文件的 TypeScript 检查
-npm test            # ReactLynx 交互测试
-npm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
-npm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
-npm run pack        # 本机 macOS 应用打包，不发布
+pnpm run build       # 原生库 + Lynx bundle + desktop 主进程
+pnpm start           # 构建并运行
+pnpm run typecheck   # UI、主进程及配置文件的 TypeScript 检查
+pnpm test            # ReactLynx 交互、Effect 状态与 JSON 配置读写测试
+pnpm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
+pnpm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
+pnpm run pack        # 本机 macOS 应用打包，不发布
 ```
 
-## 示例交互
+## Native 演示交互（NativeDemo.tsx）
 
 - 在原生输入框键入文字，`bindinput` 将 `event.detail.value` 回传到 ReactLynx。
 - **Update property**：通过 React 状态更新 `value` 属性。
@@ -53,7 +105,7 @@ PTY 和终端解析。
 `lynx_native_view.h` 为准。这里取得的是 **IOSurface**，再创建对应的 Metal texture。
 
 ```text
-App.tsx / <native-terminal>
+NativeDemo.tsx / <native-terminal>
   Lynx 创建 CatusNativeTerminalElement
        ↓
 native/cxx/NativeTerminalMacOS.mm / OnLayoutChanged
@@ -140,7 +192,7 @@ crossfont 使用平台默认抗锯齿。本阶段保持原演示的 RGB coverage
 原有 `renderTriangle` 和 `getRendererInfo` 保留。`pixelVerified` 扫描 IOSurface
 是否有前景像素，文字不需要覆盖纹理中心。
 
-`npm run test:rust` 包含真实 CoreText 字体测试和 Metal GPU 回读测试，覆盖
+`pnpm run test:rust` 包含真实 CoreText 字体测试和 Metal GPU 回读测试，覆盖
 中文 fallback、彩色 emoji、字号/样式 key、空格、字形缓存、分页、clear 复用和失效。
 字体实测结果见 [验证报告](docs/terminal-font-verification.json) 和
 [截图](docs/terminal-font.jpeg)。之前的固定位图验证保留在
@@ -153,7 +205,7 @@ opaque Rust `CounterHandle` 及其方法。napi-rs 驱动 Cargo 构建 Rust `cdy
 将 C++ view 静态库链接进同一个 `catus-native.node`，保证进程内只有一个实例注册表。
 
 ```text
-npm run build:native → native/build.mjs
+pnpm run build:native → native/build.mjs
   napi-rs CLI 调用 Cargo，生成 TypeScript 声明和 .node 文件
        ↓
 native/build.rs
@@ -181,7 +233,7 @@ CMake 只负责 C++ 静态库，不负责最终 `.node` 链接；C++ 调用 Rust
 preload.ts
   new nativeBinding.RustCounter(10)，通过 contextBridge 导出工厂
        ↓
-App.tsx / rustInterop.ts（Lynx 后台线程）
+NativeDemo.tsx / rustInterop.ts（Lynx 后台线程）
   counter.add(2) → 12；invoke.params = { rustObject: counter }
        ↓
 NativeInputRust.cc / OnMethodInvoked
@@ -214,13 +266,20 @@ Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 `scripts/rust-target.mjs` 统一计算；CMake 输出在 Cargo 的 `OUT_DIR/cxx` 中。
 可用 `CATUS_RUST_TARGET_DIR` 环境变量覆盖为
 项目外的绝对路径。cxx 在输出目录中创建指回源码的符号链接，因此 Rust 检查
-通过 `npm run test:rust` 使用同一外部输出目录，避免 JS 构建/监听扫描目录循环。
-修改 Rust/C++ 后重启 `npm run dev`。
+通过 `pnpm run test:rust` 使用同一外部输出目录，避免 JS 构建/监听扫描目录循环。
+修改 Rust/C++ 后重启 `pnpm run dev`。
 
 ## 代码位置
 
 ```text
-src/app/App.tsx                         使用自定义标签，绑定事件、调用方法
+config/workspaces.json                 内置终端类型与默认 shell 配置
+src/shared/workspaces.ts               Effect Schema 校验、启动参数解析与 host 类型
+src/app/App.tsx                         主线程启动占位与后台 UI 边界
+src/app/TerminalApp.tsx                 workspace dock、tabs、内容占位符和配置面板
+src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
+src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
+src/app/NativeDemo.tsx                  原有 native input / Rust / wgpu 字体演示
+src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                创建 LynxWindow
 rsbuild.config.ts                      pluginLynxtron 启用 AutoLink
 native/
@@ -253,7 +312,7 @@ src/app/rustInterop.ts                 在实际 native view 上执行跨语言�
 再补充 `native/elements.d.ts` 类型。多个组件共享一个 `.node`，不要求包名与标签同名。
 
 ```text
-npm run dev / build
+pnpm run dev / build
   napi-rs → Cargo → build.rs/CMake，生成 catus-native.node
        ↓
 pluginLynxtron（rsbuild.config.ts）
@@ -262,7 +321,7 @@ pluginLynxtron（rsbuild.config.ts）
 native/index.cjs
   require(.node)，激活 LYNX_REGISTER_ELEMENT 静态注册
        ↓
-App.tsx 渲染 <native-input>
+App.tsx / NativeDemo.tsx 渲染 <native-input>
   C++ 创建 NSTextField 并挂到当前 LynxView 的 renderer host
        ↓
 OnPropertiesChanged / OnLayoutChanged

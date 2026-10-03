@@ -24,6 +24,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@assets': path.resolve(rootPath, './src/assets'),
+      'react$': '@lynx-js/react',
     },
   },
   output: {

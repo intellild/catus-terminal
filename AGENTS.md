@@ -11,10 +11,10 @@ Read the docs below in advance to help you understand the library or frameworks 
 - Runtime debugging: use the `agent-lynx` CLI to inspect and verify a running Lynx application. The CLI includes the official `lynx-devtool` skill; load its complete instructions before debugging:
 
   ```bash
-  npx --yes agent-lynx skills get lynx-devtool
+  pnpm dlx agent-lynx skills get lynx-devtool
   ```
 
-  If `agent-lynx` is already available on `PATH`, omit the `npx --yes` prefix.
+  If `agent-lynx` is already available on `PATH`, omit the `pnpm dlx` prefix.
 
   If the session list is empty on the first CLI connection to a DevTool-enabled desktop app, **quit and restart the app**. The CLI enables DevTool when it connects, but existing windows need to be recreated. Run `agent-lynx list-clients` again after restarting and select the current client address.
 
@@ -31,10 +31,25 @@ Read the docs below in advance to help you understand the library or frameworks 
 - `src/app`: Lynx UI layer built with ReactLynx
   - Entry: `src/app/index.tsx` renders `<App />` with `root.render`.
   - UI: `src/app/App.tsx` uses Lynx built-in elements and CSS.
+  - State: `src/app/state/session.ts` uses Effect v4 atoms and official
+    `@effect/atom-react` hooks. React imports are aliased to ReactLynx in build
+    and tests. `App.tsx` uses `<background-only>` around `TerminalApp.tsx` to
+    keep Effect out of the main-thread bundle. `runtime.ts` runs before Effect
+    imports and installs Node codecs from preload factories in the isolated BTS
+    global. Bridge functions are callable, not constructable; do not expose the
+    Node codec classes directly as constructors.
+  - Workspaces own tabs; first activation creates a tab, closing the last tab
+    removes the dock indicator. Terminal content is a placeholder; no PTY yet.
+  - `NativeDemo.tsx` preserves the original native rendering demonstration.
+- `config/workspaces.json`: Bundled default profiles; `$SHELL` resolves the
+  account's default shell. User settings live in `~/.config/catus-terminal/`.
+- `src/shared/workspaces.ts`: Effect Schema validation and launch resolution.
 - `src/main`: Host process logic
   - `src/main/desktop/`: Desktop (Node.js) host implementation.
     - `main.ts`: Main process entry (window management).
     - `preload.ts`: Logic injected into the Lynx thread (Node.js environment).
+    - `workspaceConfig.ts`: Validated JSON load and atomic save; override path
+      with `CATUS_WORKSPACES_FILE`. Never overwrite an invalid existing file.
 - Config: `lynx.config.ts` (RSpeedy) and `rsbuild.config.ts` (Host builder).
 - `native/`: Project-specific `@catus/native` workspace and Rust/napi-rs crate.
   - `src/lib.rs`: Rust exports and cxx bridge; `build.rs` builds and links native code.
@@ -76,11 +91,11 @@ JavaScript objects, including functions, are passed as-is without serialization.
 
 Use NodeJS ≥ 22 and TypeScript.
 
-- Install: `npm install`
-- Dev (Desktop): `npm run dev`
-- Build (Desktop): `npm run build`
-- Start (Desktop): `npm start`
-- Test: `npm run test`
+- Install: `pnpm install`
+- Dev (Desktop): `pnpm run dev`
+- Build (Desktop): `pnpm run build`
+- Start (Desktop): `pnpm start`
+- Test: `pnpm run test`
 
 ## Authoring UI (ReactLynx)
 

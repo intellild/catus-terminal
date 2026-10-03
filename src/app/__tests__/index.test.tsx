@@ -1,10 +1,10 @@
 import '@testing-library/jest-dom';
 import { expect, test } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
-import { App } from '../App.jsx';
+import { NativeDemo } from '../NativeDemo.jsx';
 
 test('native input events update ReactLynx state, including empty and Unicode values', async () => {
-  render(<App />);
+  render(<NativeDemo />);
   const root = elementTree.root!;
   const input = root.querySelector('native-input')!;
   const { findByText } = getQueriesForElement(root);
@@ -27,7 +27,7 @@ test('native input events update ReactLynx state, including empty and Unicode va
 });
 
 test('property updates reach the custom element on repeated taps', async () => {
-  render(<App />);
+  render(<NativeDemo />);
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   const button = root.querySelector('#update-property')!;
