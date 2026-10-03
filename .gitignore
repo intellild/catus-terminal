@@ -8,3 +8,4 @@ build/
 .rstack/cache/
 *.log
 .DS_Store
+.idea
