@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-04",
+  "runtime": {
+    "platform": "macOS arm64",
+    "lynxtron": "0.0.28",
+    "backend": "Metal"
+  },
+  "checks": {
+    "shared_device_and_atlas": "Metal unit test: two renderers share one context and repeated glyphs add no uploads",
+    "multiple_backing_scales": "Metal unit test: both sizes remain cached and switching back adds no uploads",
+    "view_recreation": "Metal unit test: dropping all renderers retains the lazy context and atlas",
+    "concurrent_views": "Metal pixel readback test: independent instance buffers render different backgrounds correctly",
+    "failed_upload_recovery": "Metal unit test: a failed draw changes atlas generation and invalidates every view",
+    "native_renderFrame_without_params": true,
+    "native_write": true,
+    "ansi_color_and_unicode": "DevTool screenshot: green text, Chinese and color emoji rendered through Lynx IOSurface",
+    "removed_methods": {
+      "getRendererInfo": 3,
+      "renderTriangle": 3,
+      "renderAtlas": 3,
+      "clearAtlas": 3
+    },
+    "rust_tests": 15,
+    "ui_tests": 16,
+    "clippy": "passed",
+    "napi_smoke": "passed",
+    "typecheck": "passed",
+    "lint": "passed",
+    "format": "passed",
+    "full_build": "passed",
+    "runtime_frame_trigger": "manual renderFrame through official DevTool; continuous RAF and physical keyboard were not tested"
+  },
+  "screenshot": "terminal-shared-gpu.jpeg"
+}

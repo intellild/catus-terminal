@@ -48,7 +48,7 @@ Read the docs below in advance to help you understand the library or frameworks 
   - Workspaces own tabs; first activation creates a tab, closing the last tab
     removes the dock indicator. Each tab owns a portable-pty default-shell session; switching tabs preserves it,
     closing tabs releases it. Workspace launch overrides are deferred.
-  - `NativeDemo.tsx` preserves the original native rendering demonstration.
+  - `NativeDemo.tsx` preserves the native input / Rust object interoperability demonstration.
 - `config/workspaces.json`: Bundled default profiles; `$SHELL` resolves the
   account's default shell. User settings live in `~/.config/catus-terminal/`.
 - `src/shared/workspaces.ts`: Effect Schema validation and launch resolution.
@@ -71,15 +71,23 @@ Read the docs below in advance to help you understand the library or frameworks 
     schedules main-thread Lynx RAF (BTS global RAF aliases are absent), invoking `renderFrame` after the previous call completes.
     RAF callbacks/cleanup nested inside MTS functions must remain plain callbacks,
     without a second `main thread` directive. Idle revisions skip GPU work.
-  - `src/renderer.rs` / `src/triangle.wgsl`: macOS wgpu renderer and triangle shader.
-    `cxx/NativeTerminalMacOS.mm` borrows the Lynx IOSurface and imports it using
-    the renderer's own MTLDevice; wait for GPU completion before swapping buffers.
+  - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
+    owns the shared device, queue and mutex-protected glyph resources. Each view
+    keeps only an instance buffer and rendered grid key. Hold the shared lock
+    through atlas uploads, queue submission and GPU completion; rollback clears
+    the atlas and changes its generation, invalidating every view. Closing or
+    rebinding a view must never clear the global atlas.
+    `src/frame.rs` defines the cxx `FrameBuffer` / `Viewport` descriptors.
+    `cxx/NativeTerminalMacOS.mm` imports the borrowed Lynx IOSurface using the
+    shared MTLDevice; wait for GPU completion before swapping buffers.
+    Native terminal accepts only required `terminal-id` and standard Lynx props;
+    methods are focus/write/key/renderFrame. No prototype modes or render statistics.
   - `src/atlas.rs`: Alacritty shelf atlas port; staging-buffer rows must be aligned
     to 256 bytes. Clearing the atlas invalidates glyph handles via generation.
     `src/glyph_renderer.rs` / `src/atlas.wgsl` exercise uploads and instanced sampling
     with real crossfont glyphs. `src/font.rs` caches by font/character/size, uses
-    Menlo regular/bold with CoreText fallback, and invalidates on backing-scale
-    changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
+    Menlo regular/bold with CoreText fallback, and retains multiple physical pixel
+    sizes simultaneously across views and DPI changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
     Keep crossfont platform defaults; custom grayscale AA is deferred.
   - `src/tests/`: External unit-test modules for counter, atlas, fonts, terminal grids, PTYs and Metal rendering;
     attached as child modules so private implementation stays private.

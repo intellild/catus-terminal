@@ -47,8 +47,7 @@ JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
-和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；原有 Rust wgpu /
-Metal 三角形与 crossfont 字形 atlas 演示保留在 `src/app/NativeDemo.tsx`。
+和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；`src/app/NativeDemo.tsx` 保留输入框和 Rust 对象互操作演示。
 
 macOS 窗口使用 `frame: false` / `titleBarStyle: 'hidden'`，系统标题栏由顶部
 tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动窗口，tab 与 `+`
@@ -109,7 +108,7 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 计算与渲染分别位于 `native/src/terminal_core/` 和 `native/src/renderer.rs`。
 前者无需 Lynx、字体或 GPU：读线程接收 PTY 字节流，持续使用 Alacritty 的
 VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
-owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal framebuffer 和网格，
+owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal FrameBuffer 对象和网格，
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
 
 ```text
@@ -203,56 +202,44 @@ tsconfig.json
 - **Read value**：调用 `getValue`，显示原生组件内部的值。
 - **Verify shared Rust object**：创建 napi-rs `RustCounter`，作为 `invoke.params.rustObject`
   传给 native view，C++ 通过 cxx 修改同一 Rust 实例，再从原始 JS 对象读取结果。
-- **Triangle**：绘制三角形，读取实际共享纹理的中心和角落像素，显示 GPU、像素尺寸和帧计数。
-- **Render / verify fonts**：通过 crossfont 与 atlas 绘制 Menlo 普通体/粗体、中文和彩色 emoji，显示字形缓存和上传计数。
-- **Clear atlas**：丢弃字形句柄，复用 texture 并重新上传位图。
-- **Resize / Recreate view**：切换 220px / 150px 高度，或销毁并重新创建 renderer。
+## Native terminal / 共享 GPU
 
-## Native terminal / wgpu
-
-`<native-terminal>` 是渲染原型，支持三角形和 crossfont 字体 atlas 验证，尚未接入
-PTY 和终端解析。
-组件与 input 一同注册到项目的 `.node`，最终构建仍由 napi-rs / Cargo 驱动。
-参考了 Lynxtron CEF 包的宏注册与加载方式；共享 surface 的接口以安装的
-`lynx_native_view.h` 为准。这里取得的是 **IOSurface**，再创建对应的 Metal texture。
+所有 `<native-terminal>` 通过同一个全局 `LazyLock<Result<GpuContext, String>>`
+共享 wgpu device、queue、glyph pipeline、sampler、crossfont 字形缓存和 atlas。
+每个 `TerminalRenderer` 仅保留独立 instance buffer 与网格 revision/viewport/generation。
+销毁或重建 view 不清空缓存，相同字形无需重复栅格化和上传。
 
 ```text
-NativeDemo.tsx / <native-terminal>
-  Lynx 创建 CatusNativeTerminalElement
+renderer.rs / 全局 LazyLock
+  首个 view 惰性初始化 Metal device + queue + Mutex<SharedGlyphs>
        ↓
-native/cxx/NativeTerminalMacOS.mm / OnLayoutChanged
-  logical size × pixelRatio → AcquireSurface(pixel width, pixel height)
-  借用 Lynx 双缓冲中的 IOSurfaceRef
+font.rs / 共享多字号缓存
+  字体 + 字符 + 物理字号 → atlas 字形区域
        ↓
-Rust TerminalRenderer::metal_device → 同一个 MTLDevice
-  C++ 创建 IOSurface-backed BGRA8Unorm MTLTexture
+glyph_renderer.rs
+  共享 pipeline / sampler / 页 bind group
+  每个 view 独立 instance buffer
        ↓
-native/src/renderer.rs / cxx
-  retain MTLTexture → wgpu-hal metal::texture_from_raw
-  Device::create_texture_from_hal → wgpu Texture
+NativeTerminalMacOS.mm / frame.rs
+  Lynx layout → Viewport；借用 IOSurface → 同一 MTLDevice 创建 MTLTexture
+  FrameBuffer { metal_texture, viewport } → TerminalRenderer::render_grid
        ↓
-native/src/triangle.wgsl
-  Rust 提交 RenderPass，清屏并绘制三角形
-  等待 GPU 完成，C++ 读取 IOSurface 像素
-       ↓
-SwapBack → MarkDirty
-  Lynx compositor 合成组件纹理到页面
+共享锁下编码上传、绘制、提交并等待 GPU → Lynx SwapBack / MarkDirty
 ```
 
-wgpu 固定为 30.0.1，仅启用 Metal / WGSL。使用 wgpu 自己的 MTLDevice
-创建纹理，满足 HAL 导入对设备一致性的要求。IOSurface 由 Lynx 管理；Rust
-retain 导入的 MTLTexture，不接管 IOSurface 的所有权。view 持有 Rust renderer，
-销毁 view 时释放，resize 时重新申请匹配物理像素尺寸的 surface。
-shader 输出翻转 clip Y，适配 Metal render target 与当前 Lynxtron macOS
-surface 的显示方向；已用合成截图确认。SDK 的 surface transform 参数在
-当前版本的实测截图中没有改变方向，因此本例在 shader 内进行适配。
+同一 rasterizer 和 atlas 同时保留不同物理字号，窗口在不同 DPI 之间切换不会
+清空其他 view 的字形。上传、提交和 GPU 完成保持同一共享锁，防止跨 view
+观察到尚未提交的字形。失败回滚会递增 atlas generation，所有 view 下一帧重绘。
 
-原型每次绘制同步等待 GPU（最长 10 秒），完成后才交换缓冲。持续刷新终端时
-还需加入异步 GPU 完成通知、帧调度与缓冲复用；本例的像素读取只用于验证。
-`renderTriangle({})` 返回绘制及校验结果，`getRendererInfo({})` 只读取状态。
+native terminal 只接收必需的 `terminal-id` 和标准 Lynx 属性，公开方法只保留
+`focus()`、`write({ text })`、`key({ key, control, alt })` 和 `renderFrame()`。
+UI 不传字体、DPI 或渲染模式；framebuffer 尺寸与 backing scale 来自 Lynx layout。
+三角形/atlas 原型模式、渲染统计以及 IOSurface 像素扫描接口已删除。
+历史三角形和字体验证报告仍保留在 `docs/` 中。
 
-实测数据见 [验证报告](docs/terminal-triangle-verification.json)，
-实际 Lynx 合成画面见 [截图](docs/terminal-triangle.jpeg)。
+wgpu 使用 Metal / WGSL；导入纹理使用共享 device 的实际 MTLDevice。
+IOSurface 所有权归 Lynx，Rust 只 retain 导入的 MTLTexture。当前仍同步等待 GPU
+（最长 10 秒），完成后才交换缓冲。共享 atlas 按需增长，尚无 LRU/内存预算。
 
 ## Alacritty atlas / wgpu buffer
 
@@ -288,27 +275,18 @@ atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
 `clear()` 复用已有 GPU texture，递增 generation，使旧字形句柄失效；
 调用者同时清空字形缓存和待绘制批次。
 
-演示使用 crossfont 的真实字体，绘制 `Crossfont + wgpu` 和 `Atlas 中文 😀`。
-字形缓存 key 包含 font key、character 和 size，字体 metrics 决定基线和字形偏移，
-`unicode-width` 决定终端字符占用的列数。普通 resize 和重复绘制不重复栅格化/上传；
-backing scale 变化会按 22 logical px × scale 重建 rasterizer 与缓存，复用已有 texture。
-bind group 与 instance buffer 也会复用。
+终端字体按 14 logical px × backing scale 栅格化，使用 font metrics 和 glyph
+偏移定位；Alacritty 网格确定字符列位置。跨 view 和 DPI 共用多个字号缓存，
+切回先前字号不重复栅格化或上传。每个 view 的 instance buffer 独立，页 bind group 共享。
 
-crossfont 使用平台默认抗锯齿。本阶段保持原演示的 RGB coverage 均值混合策略，
-上传前转成单通道 coverage；彩色 emoji 保留完整 premultiplied RGBA。
-自定义 grayscale 栅格化、复杂文本 shaping、ligature 尚未实现。
+crossfont 使用平台默认抗锯齿。RGB coverage 转成均值单通道，彩色 emoji 保留
+premultiplied RGBA；自定义 grayscale、复杂 shaping、ligature 尚未实现。
 
-`renderAtlas({})` 切换到字体绘制，`clearAtlas({})` 清空并重新绘制。
-返回状态包含 `mode`、`atlasPages`、`atlasUploads`、`atlasInstances`、
-`fontFamily`、`fontPixels`、`cachedGlyphs`、`rasterizations`、`missingGlyphs`。
-原有 `renderTriangle` 和 `getRendererInfo` 保留。`pixelVerified` 扫描 IOSurface
-是否有前景像素，文字不需要覆盖纹理中心。
-
-`pnpm run test:rust` 包含真实 CoreText 字体测试和 Metal GPU 回读测试，覆盖
-中文 fallback、彩色 emoji、字号/样式 key、空格、字形缓存、分页、clear 复用和失效。
-字体实测结果见 [验证报告](docs/terminal-font-verification.json) 和
-[截图](docs/terminal-font.jpeg)。之前的固定位图验证保留在
-[atlas 验证报告](docs/terminal-atlas-verification.json)。
+`pnpm run test:rust` 覆盖 CoreText、真实 Metal 上传/回读、多字号缓存、跨 view
+共享和并发绘制、重建 view 保留缓存，以及 generation 失效恢复。
+当前验证见 [共享 GPU 验证报告](docs/terminal-shared-gpu-verification.json) 和
+[实际 Lynx 截图](docs/terminal-shared-gpu.jpeg)。
+之前的字体/atlas 截图报告记录的是原型阶段的调试接口。
 
 ## Rust 对象与 native view
 
@@ -403,7 +381,8 @@ native/
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
   src/terminal_core/                   portable-pty 传输与 Alacritty 网格计算
   src/terminal_view.rs                 cxx 桥、尺寸同步与帧调度适配
-  src/renderer.rs / triangle.wgsl       独立 Rust wgpu renderer 和三角形 shader
+  src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 view 的 renderer
+  src/frame.rs                        FrameBuffer / Viewport 描述及 cxx 共享类型
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存
   src/tests/                           counter、atlas、font 独立测试模块

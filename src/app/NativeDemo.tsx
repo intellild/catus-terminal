@@ -14,58 +14,6 @@ export function NativeDemo() {
   const [rustDetails, setRustDetails] = useState('');
   const rustCounter = useRef<RustCounter | null>(null);
   const verifying = useRef(false);
-  const [terminalStatus, setTerminalStatus] = useState('Rust wgpu · crossfont / glyph atlas');
-  const [terminalDetails, setTerminalDetails] = useState('');
-  const [compactTerminal, setCompactTerminal] = useState(false);
-  const [terminalGeneration, setTerminalGeneration] = useState(0);
-
-  const verifyTerminal = useCallback((method: 'renderTriangle' | 'renderAtlas' | 'clearAtlas') => {
-    'background only';
-    lynx
-      .createSelectorQuery()
-      .select('#demo-terminal')
-      .invoke({
-        method,
-        params: {},
-        success: (result: unknown) => {
-          const info = result as {
-            backend: string;
-            mode: string;
-            width: number;
-            height: number;
-            frames: number;
-            pixelVerified: boolean;
-            error: string;
-            atlasUploads: number;
-            atlasInstances: number;
-            cachedGlyphs: number;
-            rasterizations: number;
-            missingGlyphs: number;
-          };
-          const atlasPassed =
-            info.mode !== 'atlas' ||
-            (info.atlasUploads > 0 &&
-              info.atlasInstances > 0 &&
-              info.cachedGlyphs > 0 &&
-              info.rasterizations === info.cachedGlyphs &&
-              info.missingGlyphs === 0);
-          const passed =
-            info.backend === 'Metal' &&
-            info.pixelVerified &&
-            !info.error &&
-            info.frames > 0 &&
-            atlasPassed;
-          setTerminalStatus(
-            `${passed ? 'PASS' : 'FAIL'} · ${info.mode} · ${info.backend} · ${info.width} × ${info.height} px`,
-          );
-          setTerminalDetails(JSON.stringify(result));
-          console.log('[wgpu rendering verification]', JSON.stringify(result));
-        },
-        fail: (error: unknown) => setTerminalStatus(`FAIL · ${JSON.stringify(error)}`),
-      })
-      .exec();
-  }, []);
-
   const verifyRust = useCallback(async () => {
     'background only';
     if (verifying.current) return;
@@ -138,68 +86,8 @@ export function NativeDemo() {
           </text>
           <text className="text-[#17212b] text-[30px] font-bold mb-[12px]">Native components</text>
           <text className="text-[#64748b] text-[15px] leading-[23px] mb-[28px]">
-            A Rust wgpu surface and a macOS input view, embedded in ReactLynx.
+            A macOS input view and shared Rust objects, embedded in ReactLynx.
           </text>
-          <view className="flex flex-col mb-[20px]">
-            <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">
-              NATIVE TERMINAL / RUST WGPU
-            </text>
-            <native-terminal
-              id="demo-terminal"
-              key={terminalGeneration}
-              className={`w-full shrink-0 mb-[12px] ${compactTerminal ? 'h-[150px]' : 'h-[220px]'}`}
-            />
-            <view className="flex flex-row flex-wrap gap-[8px] mb-[10px]">
-              <view
-                id="verify-atlas"
-                className="py-[10px] px-[14px] rounded-[8px] bg-[#25765b]"
-                bindtap={() => verifyTerminal('renderAtlas')}
-              >
-                <text className="text-[13px] text-[#ffffff]">Render / verify fonts</text>
-              </view>
-              <view
-                id="verify-terminal"
-                className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]"
-                bindtap={() => verifyTerminal('renderTriangle')}
-              >
-                <text className="text-[13px] text-[#253647]">Triangle</text>
-              </view>
-              <view
-                id="clear-atlas"
-                className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]"
-                bindtap={() => verifyTerminal('clearAtlas')}
-              >
-                <text className="text-[13px] text-[#253647]">Clear atlas</text>
-              </view>
-              <view
-                id="resize-terminal"
-                className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]"
-                bindtap={() => setCompactTerminal((current) => !current)}
-              >
-                <text className="text-[13px] text-[#253647]">Resize</text>
-              </view>
-              <view
-                id="recreate-terminal"
-                className="py-[10px] px-[14px] rounded-[8px] bg-[#e9eef3]"
-                bindtap={() => {
-                  setTerminalGeneration((current) => current + 1);
-                  setTerminalDetails('');
-                  setTerminalStatus('View recreated · render to verify');
-                }}
-              >
-                <text className="text-[13px] text-[#253647]">Recreate view</text>
-              </view>
-            </view>
-            <text id="terminal-status" className="text-[12px] text-[#25765b]">
-              {terminalStatus}
-            </text>
-            <text
-              id="terminal-details"
-              className="text-[11px] leading-[16px] text-[#64748b] mt-[8px] break-all"
-            >
-              {terminalDetails}
-            </text>
-          </view>
           <text className="text-[#64748b] text-[11px] font-bold tracking-[1px] mb-[10px]">
             NATIVE INPUT
           </text>

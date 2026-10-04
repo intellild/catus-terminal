@@ -325,6 +325,9 @@ impl AtlasSet {
             .expect("Atlas generation exhausted");
         self.uploads = 0;
     }
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
     pub fn pages(&self) -> usize {
         self.pages.len()
     }

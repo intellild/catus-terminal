@@ -10,41 +10,29 @@ use crate::atlas::{ATLAS_SIZE, AtlasSet, BitmapBuffer, Glyph, RasterizedGlyph};
 pub struct GlyphCache {
     pub atlas: AtlasSet,
     rasterizer: Rasterizer,
-    fonts: [FontKey; 2],
-    size: Size,
-    metrics: Metrics,
+    sizes: HashMap<u32, FontSize>,
     glyphs: HashMap<GlyphKey, Glyph>,
     rasterizations: u64,
     missing: u64,
 }
 
 impl GlyphCache {
-    pub fn new(device: &wgpu::Device, pixels: u32) -> Result<Self, String> {
-        let (rasterizer, fonts, size, metrics) = load_fonts(pixels)?;
+    pub fn new(device: &wgpu::Device) -> Result<Self, String> {
         Ok(Self {
             atlas: AtlasSet::new(device, ATLAS_SIZE).map_err(|e| e.to_string())?,
-            rasterizer,
-            fonts,
-            size,
-            metrics,
+            rasterizer: Rasterizer::new().map_err(|e| e.to_string())?,
+            sizes: HashMap::new(),
             glyphs: HashMap::new(),
             rasterizations: 0,
             missing: 0,
         })
     }
 
-    /// Recreate the rasterizer on size/DPI changes so old font keys do not accumulate.
-    pub fn set_size(&mut self, pixels: u32) -> Result<(), String> {
-        if self.size == Size::new(pixels as f32) {
-            return Ok(());
+    fn font_size(&mut self, pixels: u32) -> Result<&FontSize, String> {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.sizes.entry(pixels) {
+            entry.insert(load_size(&mut self.rasterizer, pixels)?);
         }
-        let (rasterizer, fonts, size, metrics) = load_fonts(pixels)?;
-        self.clear();
-        self.rasterizer = rasterizer;
-        self.fonts = fonts;
-        self.size = size;
-        self.metrics = metrics;
-        Ok(())
+        Ok(&self.sizes[&pixels])
     }
 
     pub fn clear(&mut self) {
@@ -54,11 +42,8 @@ impl GlyphCache {
         self.missing = 0;
     }
 
-    pub fn metrics(&self) -> Metrics {
-        self.metrics
-    }
-    pub fn pixels(&self) -> f32 {
-        self.size.as_pt()
+    pub fn metrics(&mut self, pixels: u32) -> Result<Metrics, String> {
+        Ok(self.font_size(pixels)?.metrics)
     }
     pub fn len(&self) -> usize {
         self.glyphs.len()
@@ -77,13 +62,15 @@ impl GlyphCache {
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
+        pixels: u32,
         character: char,
         bold: bool,
     ) -> Result<Glyph, String> {
+        let font = self.font_size(pixels)?;
         let key = GlyphKey {
             character,
-            font_key: self.fonts[usize::from(bold)],
-            size: self.size,
+            font_key: font.fonts[usize::from(bold)],
+            size: font.size,
         };
         if let Some(glyph) = self.glyphs.get(&key) {
             // Also handles a caller clearing the public atlas directly.
@@ -138,11 +125,16 @@ impl GlyphCache {
     }
 }
 
-fn load_fonts(pixels: u32) -> Result<(Rasterizer, [FontKey; 2], Size, Metrics), String> {
+struct FontSize {
+    fonts: [FontKey; 2],
+    size: Size,
+    metrics: Metrics,
+}
+
+fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize, String> {
     if !(1..=512).contains(&pixels) {
         return Err("Font pixel size must be in 1..=512".into());
     }
-    let mut rasterizer = Rasterizer::new().map_err(|e| e.to_string())?;
     // CoreText backend uses Size::as_pt() directly as bitmap pixel size. The
     // caller has already applied the Lynx view's backing scale; do not apply
     // the FreeType 96/72 conversion here.
@@ -165,7 +157,11 @@ fn load_fonts(pixels: u32) -> Result<(Rasterizer, [FontKey; 2], Size, Metrics), 
     let metrics = rasterizer
         .metrics(fonts[0], size)
         .map_err(|e| e.to_string())?;
-    Ok((rasterizer, fonts, size, metrics))
+    Ok(FontSize {
+        fonts,
+        size,
+        metrics,
+    })
 }
 
 #[cfg(test)]

@@ -4,6 +4,8 @@ pub mod atlas;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 pub mod font;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
+mod frame;
+#[cfg(all(feature = "native-view", target_os = "macos"))]
 mod renderer;
 pub mod terminal_core;
 #[cfg(all(feature = "native-view", target_os = "macos"))]

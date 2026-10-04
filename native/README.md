@@ -3,7 +3,7 @@
 Catus Terminal 专属的 Rust/napi-rs workspace，统一导出 Rust 能力和 Lynx native
 组件。包名为 `@catus/native`，所有组件链接进同一个 `catus-native.node`。
 当前实现 `<native-input>`（macOS `NSTextField`）和 `<native-terminal>`
-（Lynx IOSurface + Rust wgpu / Metal + Alacritty 默认 shell 终端；保留三角形和字体演示）。
+（Lynx IOSurface + Rust wgpu / Metal + Alacritty 默认 shell 终端）。
 
 ```text
 native/
@@ -13,7 +13,7 @@ native/
   src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
   src/terminal_view.rs         cxx 桥、resize / revision 与 view 适配
   src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
-  src/triangle.wgsl             三角形 shader
+  src/frame.rs                 FrameBuffer / Viewport 描述和 cxx 共享类型
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
   src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
   src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
@@ -69,16 +69,16 @@ native/
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/pty.rs` 管理阻塞
 PTY 读写线程。`terminal_view.rs` 提供 cxx 适配和 resize/revision 检查。
 `renderer.rs` 的独立 `TerminalRenderer::render_grid` 接收计算后的网格、借用的
-Metal texture、物理尺寸及 backing scale，完全不访问 PTY。
+`FrameBuffer { metal_texture, viewport }`，完全不访问 PTY。
+viewport 的物理尺寸和 backing scale 来自 Lynx layout；UI 不传渲染配置。
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
 | `terminal-id` | 绑定 RustTerminal 会话 |
-| `renderFrame({})` | 处理尺寸变化并绘制最新网格，空闲时跳过 GPU；成功返回 true |
-| `focus({})` | 获得 Lynx 键盘焦点 |
+| `renderFrame()` | 处理尺寸变化并绘制最新网格，空闲时跳过 GPU；成功返回 true |
+| `focus()` | 获得 Lynx 键盘焦点 |
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
-| `getRendererInfo({})` | 渲染统计、shell、exited、screenText 和错误 |
 
 UI 的 Main Thread Script 使用 Lynx RAF 调用 `renderFrame`，完成后再预约下一帧。
 明确使用主线程 RAF，不依赖当前后台线程缺失的全局 RAF 别名。网格 revision、尺寸和 scale
@@ -94,32 +94,28 @@ UI 的 Main Thread Script 使用 Lynx RAF 调用 `renderFrame`，完成后再预
 texture，通过 cxx 交给 Rust wgpu 导入并绘制；GPU 完成后才 `SwapBack` 和
 `MarkDirty`。没有独立的 NSView 或 CAMetalLayer。
 
-调用 `renderTriangle({})` 返回 `{ backend, adapter, width, height, pixelRatio,
-frames, gpuFrames, centerRGB, cornerRGB, pixelVerified, error, transport }`；
-`getRendererInfo({})` 只读取相同状态。尺寸无效、纹理导入或 GPU 绘制失败时，
-`renderTriangle` 返回状态 7。未知方法返回 3。renderer 生命周期由 view 管理。
-本原型同步等待 GPU，并读取 IOSurface 像素进行验证，帧调度由 UI 的主线程 Lynx requestAnimationFrame 驱动。
+`renderer.rs` 使用全局 `LazyLock<Result<GpuContext, String>>` 惰性创建一次 device、
+queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。
+每个 renderer 独立保存 instance buffer 与网格 revision/viewport/generation。
+销毁或重新绑定 view 只释放其绘制状态，不清空共享缓存。原有三角形/atlas 演示、
+渲染统计和 IOSurface 像素扫描接口已移除；错误通过实际方法的失败回调返回。
 
-`renderAtlas({})` 使用字形 atlas 绘制；`clearAtlas({})` 清空字形缓存、
-复用 atlas texture 并重新上传。返回值增加 `mode`、`atlasPages`、
-`atlasUploads` 和上次 atlas 绘制的 `atlasInstances`。
-`AtlasSet` 接受 Gray/RGB/RGBA `RasterizedGlyph`，经 256 字节行对齐的
-`COPY_SRC` staging buffer 上传。普通字形使用 R8Unorm coverage 页；彩色字形
-使用 RGBA8Unorm 页，分别分配与复用。RGB coverage 保留原演示的均值策略，
-不修改 crossfont 的平台抗锯齿设置。
-`Glyph` 保存页索引、generation、UV 和 metrics，clear 后旧句柄失效。
+`font.rs` 使用 crossfont 0.9.0 / macOS CoreText，按字体、字符和物理字号缓存字形，
+同一 rasterizer 保留多个字号及其 metrics；14 logical px × backing scale 决定字号。
+DPI 改变会查找/补充另一个字号，既有字号和 atlas 区域仍保留。Menlo 普通体/粗体
+与系统 fallback 支持 ASCII、中文和彩色 emoji。空格保留 metrics，不上传位图。
 
-`font.rs` 引入官方 crossfont 0.9.0，macOS 使用 CoreText。缓存 key 包含字体、
-字符和字号；Menlo 普通体/粗体与系统 fallback 绘制 ASCII、中文和彩色 emoji。
-空格缓存 metrics 但不上传、不绘制。演示字体按 22、终端字体按 14 logical px × backing scale
-栅格化，使用 glyph 的 top/left 和 font metrics 定位，而非缩放固定位图。
-backing scale 改变时重建 rasterizer、清空缓存并复用 atlas texture；普通 resize
-复用字形。bind group 和 instance buffer 也会复用。
+普通字形使用 R8Unorm coverage 页；彩色字形使用 premultiplied RGBA8Unorm 页。
+位图由 256 字节行对齐 staging buffer 上传。pipeline、sampler、页 bind group 共享；
+instance buffer 每个 view 独立。保持 crossfont 平台默认 AA 和 RGB coverage 均值策略。
 
-状态额外返回 `fontFamily`、`fontPixels`、`cachedGlyphs`、`rasterizations`、
-`missingGlyphs`，便于验证重复绘制不再栅格化/上传。测试覆盖真实字体、中文
-fallback、RGBA emoji、字号失效、缓存复用，以及 Metal 上传/回读和双格式分页。
-本阶段按字符绘制，未实现 ligature 和复杂文本 shaping；终端通过 portable-pty 连接账户默认 shell。
+共享锁覆盖字形生成、上传编码、提交和 GPU 完成，避免另一个 view 使用尚未提交的
+字形数据。失败时清空 atlas、递增 generation，所有 view 在下一帧重新绘制。
+GPU texture 和 bind group 仍复用。当前没有 LRU/内存上限，atlas 按需增加页数。
+
+Metal 测试覆盖：真实颜色和 Unicode 像素回读、多个 renderer 的同一 device、
+跨 view 上传复用、多个 DPI 共存、销毁重建保留缓存、并发 view 的独立 buffer，
+以及失败后的全局缓存失效。历史截图/统计报告对应清理前的原型 API。
 
 在项目根目录运行：
 

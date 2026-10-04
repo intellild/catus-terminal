@@ -88,13 +88,4 @@ impl TerminalHandle {
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<(), String> {
         self.session.key(key, control, alt)
     }
-    pub fn screen_text(&self) -> String {
-        self.session.snapshot().text()
-    }
-    pub fn exited(&self) -> bool {
-        self.session.exited()
-    }
-    pub fn shell(&self) -> &str {
-        &self.session.shell
-    }
 }

@@ -157,7 +157,6 @@ dependencies = [
  "objc2-metal",
  "pollster",
  "portable-pty",
- "unicode-width",
  "wgpu",
 ]
 

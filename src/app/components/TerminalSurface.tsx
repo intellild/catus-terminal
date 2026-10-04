@@ -100,11 +100,7 @@ export function TerminalSurface({
 
 function focus() {
   'background only';
-  lynx
-    .createSelectorQuery()
-    .select('#terminal-surface')
-    .invoke({ method: 'focus', params: {} })
-    .exec();
+  lynx.createSelectorQuery().select('#terminal-surface').invoke({ method: 'focus' }).exec();
 }
 
 interface FrameLoop {
@@ -131,12 +127,12 @@ function requestFrame(ref: MainThreadRef<FrameLoop | null>) {
   loop.request = requestAnimationFrame(() => {
     if (loop.stopped) return;
     // Schedule only after the native method finishes; idle grids do not draw.
-    loop.element.invoke('renderFrame', {}).then(
+    loop.element.invoke('renderFrame').then(
       () => {
         if (loop.stopped) return;
         if (loop.needsFocus) {
           loop.needsFocus = false;
-          void loop.element.invoke('focus', {}).catch(console.error);
+          void loop.element.invoke('focus').catch(console.error);
         }
         requestFrame(ref);
       },

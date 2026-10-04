@@ -9,7 +9,7 @@ export interface NativeInputProps extends StandardProps {
 }
 
 export interface NativeTerminalProps extends StandardProps {
-  'terminal-id'?: string;
+  'terminal-id': string;
 }
 
 declare module '@lynx-js/types' {

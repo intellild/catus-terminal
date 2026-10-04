@@ -43,14 +43,13 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         !std::isfinite(pixel_ratio) || pixel_ratio <= 0 ||
         width <= 0 || height <= 0 || width * pixel_ratio > 8192 ||
         height * pixel_ratio > 8192) {
-      width_ = height_ = 0;
-      pixel_verified_ = false;
+      viewport_.width = viewport_.height = 0;
       error_ = "Terminal layout is zero or exceeds the texture size limit";
       return;
     }
-    width_ = static_cast<uint32_t>(std::ceil(width * pixel_ratio));
-    height_ = static_cast<uint32_t>(std::ceil(height * pixel_ratio));
-    pixel_ratio_ = pixel_ratio;
+    viewport_.width = static_cast<uint32_t>(std::ceil(width * pixel_ratio));
+    viewport_.height = static_cast<uint32_t>(std::ceil(height * pixel_ratio));
+    viewport_.pixel_ratio = pixel_ratio;
     Render();
   }
   void OnPropertiesChanged(const LynxValue& attrs, const LynxValue& events) override {
@@ -65,7 +64,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       if (id.empty()) terminal_.reset();
       else terminal_.emplace(catus::acquire_terminal(id));
       terminal_id_ = id;
-      if (renderer_) (*renderer_)->clear_atlas();
+      if (renderer_) (*renderer_)->invalidate_grid();
       Render();
     } catch (const rust::Error& error) { error_ = error.what(); }
   }
@@ -109,44 +108,29 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       callback(ok ? kSuccess : kInvalidStateError, std::move(result));
       return;
     }
-    if (name != "getRendererInfo" && name != "renderTriangle" && name != "renderAtlas" && name != "clearAtlas") {
-      lock.unlock();
-      callback(kMethodNotFound, LynxValue(LynxValue::kCreateAsNullTag));
-      return;
-    }
-    if (name == "renderAtlas" || name == "clearAtlas") atlas_mode_ = true;
-    if (name == "renderTriangle") atlas_mode_ = false;
-    if (name == "clearAtlas" && renderer_) (*renderer_)->clear_atlas();
-    if (name != "getRendererInfo" && !Render()) {
-      auto error = LynxValue(error_);
-      lock.unlock();
-      callback(kInvalidStateError, std::move(error));
-      return;
-    }
-    auto result = Snapshot();
     lock.unlock();
-    callback(kSuccess, std::move(result));
+    callback(kMethodNotFound, LynxValue(LynxValue::kCreateAsNullTag));
   }
 
  private:
   bool Render() {
-    if (!attached_ || width_ == 0 || height_ == 0) {
-      error_ = "Waiting for an attached, non-zero layout";
+    if (!attached_ || !terminal_ || viewport_.width == 0 || viewport_.height == 0) {
+      error_ = "Waiting for an attached terminal and non-zero layout";
       return false;
     }
     try {
       if (!renderer_) renderer_.emplace(catus::create_terminal_renderer());
-      if (terminal_ && !catus::prepare_terminal_frame(**renderer_, **terminal_, width_, height_, pixel_ratio_)) {
+      if (!catus::prepare_terminal_frame(**renderer_, **terminal_, viewport_)) {
         error_.clear();
         return true;
       }
       // Borrowed IOSurface; Lynx owns its double buffer and presentation.
-      auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(width_, height_));
+      auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(viewport_.width, viewport_.height));
       if (surface == nullptr) {
         error_ = "Lynx back buffer is unavailable";
         return false;
       }
-      if (IOSurfaceGetWidth(surface) != width_ || IOSurfaceGetHeight(surface) != height_ ||
+      if (IOSurfaceGetWidth(surface) != viewport_.width || IOSurfaceGetHeight(surface) != viewport_.height ||
           IOSurfaceGetBytesPerElement(surface) != 4) {
         error_ = "Unexpected Lynx IOSurface dimensions or pixel layout";
         return false;
@@ -155,7 +139,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         // Use wgpu's actual MTLDevice, not a separately created Metal device.
         id<MTLDevice> device = (__bridge id<MTLDevice>)(void*)(*renderer_)->metal_device();
         auto desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-            width:width_ height:height_ mipmapped:NO];
+            width:viewport_.width height:viewport_.height mipmapped:NO];
         desc.usage = MTLTextureUsageRenderTarget;
         desc.storageMode = MTLStorageModeShared;
         id<MTLTexture> texture = [device newTextureWithDescriptor:desc iosurface:surface plane:0];
@@ -165,18 +149,14 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         }
         // Rust retains the texture and waits for GPU completion before return.
         const auto handle = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-        if (terminal_) {
-          if (!catus::render_terminal(**renderer_, **terminal_, handle, width_, height_, pixel_ratio_)) return true;
-        } else if (atlas_mode_) (*renderer_)->render_atlas(handle, width_, height_, static_cast<float>(pixel_ratio_));
-        else (*renderer_)->render_triangle(handle, width_, height_);
-        SamplePixels(surface);
+        const catus::FrameBuffer frame{handle, viewport_};
+        if (!catus::render_terminal(**renderer_, **terminal_, frame)) return true;
       }
       if (!SwapBack()) {
         (*renderer_)->invalidate_grid();
         error_ = "Lynx could not swap the rendered back buffer";
         return false;
       }
-      ++presented_frames_;
       error_.clear();
       MarkDirty();
       return true;
@@ -186,69 +166,12 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     }
   }
 
-  void SamplePixels(IOSurfaceRef surface) {
-    pixel_verified_ = false;
-    if (IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr) != kIOReturnSuccess) return;
-    const auto* bytes = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    if (bytes != nullptr) {
-      const size_t stride = IOSurfaceGetBytesPerRow(surface);
-      auto rgb = [&](uint32_t x, uint32_t y) -> uint32_t {
-        const auto* p = bytes + y * stride + x * 4;
-        return (uint32_t(p[2]) << 16) | (uint32_t(p[1]) << 8) | p[0];
-      };
-      center_rgb_ = rgb(width_ / 2, height_ / 2);
-      corner_rgb_ = rgb(0, 0);
-      // Text need not cover the center. Inspect actual foreground pixels in
-      // the IOSurface presented by Lynx (rather than relying on submit success).
-      for (uint32_t y = 0; y < height_ && !pixel_verified_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
-          if (rgb(x, y) != corner_rgb_) { pixel_verified_ = true; break; }
-        }
-      }
-    }
-    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
-  }
-
-  LynxValue Snapshot() const {
-    LynxValue result(LynxValue::kCreateAsMapTag);
-    result.SetProperty("mode", LynxValue(std::string(terminal_ ? "terminal" : atlas_mode_ ? "atlas" : "triangle")));
-    result.SetProperty("atlasPages", LynxValue(static_cast<int32_t>(renderer_ ? (*renderer_)->atlas_pages() : 0)));
-    result.SetProperty("atlasUploads", LynxValue(static_cast<int64_t>(renderer_ ? (*renderer_)->atlas_uploads() : 0)));
-    result.SetProperty("atlasInstances", LynxValue(static_cast<int32_t>(renderer_ ? (*renderer_)->atlas_instances() : 0)));
-    result.SetProperty("fontFamily", LynxValue(std::string("Menlo")));
-    result.SetProperty("fontPixels", LynxValue(static_cast<double>(renderer_ ? (*renderer_)->font_pixels() : 0)));
-    result.SetProperty("cachedGlyphs", LynxValue(static_cast<int32_t>(renderer_ ? (*renderer_)->cached_glyphs() : 0)));
-    result.SetProperty("rasterizations", LynxValue(static_cast<int64_t>(renderer_ ? (*renderer_)->rasterizations() : 0)));
-    result.SetProperty("missingGlyphs", LynxValue(static_cast<int64_t>(renderer_ ? (*renderer_)->missing_glyphs() : 0)));
-    result.SetProperty("backend", LynxValue(std::string("Metal")));
-    result.SetProperty("transport", LynxValue(std::string("Lynx IOSurface -> MTLTexture -> wgpu")));
-    result.SetProperty("width", LynxValue(static_cast<int32_t>(width_)));
-    result.SetProperty("height", LynxValue(static_cast<int32_t>(height_)));
-    result.SetProperty("pixelRatio", LynxValue(static_cast<double>(pixel_ratio_)));
-    result.SetProperty("frames", LynxValue(static_cast<int64_t>(presented_frames_)));
-    result.SetProperty("gpuFrames", LynxValue(static_cast<int64_t>(renderer_ ? (*renderer_)->frames() : 0)));
-    result.SetProperty("adapter", LynxValue(renderer_ ? std::string((*renderer_)->adapter_name()) : ""));
-    result.SetProperty("centerRGB", LynxValue(static_cast<int32_t>(center_rgb_)));
-    result.SetProperty("cornerRGB", LynxValue(static_cast<int32_t>(corner_rgb_)));
-    result.SetProperty("pixelVerified", LynxValue(pixel_verified_));
-    result.SetProperty("error", LynxValue(error_));
-    if (terminal_) {
-      result.SetProperty("shell", LynxValue(std::string((*terminal_)->shell())));
-      result.SetProperty("exited", LynxValue((*terminal_)->exited()));
-      result.SetProperty("screenText", LynxValue(std::string((*terminal_)->screen_text())));
-    }
-    return result;
-  }
-
   std::mutex mutex_;
   std::optional<rust::Box<catus::TerminalRenderer>> renderer_;
   std::optional<rust::Box<catus::TerminalHandle>> terminal_;
   std::string terminal_id_;
-  uint32_t width_ = 0, height_ = 0;
-  float pixel_ratio_ = 1;
-  bool attached_ = false, pixel_verified_ = false, atlas_mode_ = false;
-  uint64_t presented_frames_ = 0;
-  uint32_t center_rgb_ = 0, corner_rgb_ = 0;
+  catus::Viewport viewport_{};
+  bool attached_ = false;
   std::string error_;
 };
 

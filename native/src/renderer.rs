@@ -1,202 +1,131 @@
+//! One lazily initialized GPU/atlas context, with independent per-view drawing state.
 #[path = "glyph_renderer.rs"]
 mod glyph_renderer;
-use glyph_renderer::GlyphRenderer;
+use crate::{
+    frame::{FrameBuffer, Viewport},
+    terminal_core::grid::{GridSize, GridSnapshot},
+};
+use glyph_renderer::{GlyphRenderer, SharedGlyphs};
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_metal::{MTLTexture, MTLTextureType};
-use std::time::Duration;
+use std::{
+    sync::{LazyLock, Mutex, MutexGuard},
+    time::Duration,
+};
 
-pub struct TerminalRenderer {
+static GPU: LazyLock<Result<GpuContext, String>> = LazyLock::new(GpuContext::new);
+
+struct GpuContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
-    adapter_name: String,
-    frames: u64,
-    atlas: GlyphRenderer,
-    rendered_grid: Option<(u64, u32, u32, u32)>,
+    // Keep atlas mutation, upload submission and GPU completion in one transaction.
+    // A second view must never see a glyph whose upload is still unsubmitted.
+    glyphs: Mutex<SharedGlyphs>,
+}
+impl GpuContext {
+    fn new() -> Result<Self, String> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::METAL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+            .map_err(|e| e.to_string())?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("Catus shared terminal GPU"),
+            ..Default::default()
+        }))
+        .map_err(|e| e.to_string())?;
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let glyphs = SharedGlyphs::new(&device)?;
+        if let Some(error) = pollster::block_on(validation.pop()) {
+            return Err(error.to_string());
+        }
+        Ok(Self {
+            device,
+            queue,
+            glyphs: Mutex::new(glyphs),
+        })
+    }
+    fn glyphs(&self) -> Result<MutexGuard<'_, SharedGlyphs>, String> {
+        self.glyphs
+            .lock()
+            .map_err(|_| "Shared glyph cache lock poisoned".into())
+    }
+}
+
+#[derive(PartialEq)]
+struct RenderedGrid {
+    revision: u64,
+    viewport: Viewport,
+    generation: u64,
+}
+
+pub struct TerminalRenderer {
+    gpu: &'static GpuContext,
+    glyphs: GlyphRenderer,
+    rendered_grid: Option<RenderedGrid>,
 }
 
 pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::METAL,
-        ..wgpu::InstanceDescriptor::new_without_display_handle()
-    });
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .map_err(|e| e.to_string())?;
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("Catus native terminal"),
-        ..Default::default()
-    }))
-    .map_err(|e| e.to_string())?;
-    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Terminal triangle WGSL"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("triangle.wgsl").into()),
-    });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Terminal triangle pipeline"),
-        layout: None,
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"),
-            compilation_options: Default::default(),
-            buffers: &[],
-        },
-        primitive: Default::default(),
-        depth_stencil: None,
-        multisample: Default::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"),
-            compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
-    });
-    let atlas = GlyphRenderer::new(&device)?;
-    if let Some(error) = pollster::block_on(validation.pop()) {
-        return Err(error.to_string());
-    }
+    let gpu = GPU.as_ref().map_err(Clone::clone)?;
     Ok(Box::new(TerminalRenderer {
-        device,
-        queue,
-        pipeline,
-        adapter_name: adapter.get_info().name,
-        frames: 0,
-        atlas,
+        gpu,
+        glyphs: GlyphRenderer::default(),
         rendered_grid: None,
     }))
 }
 
 impl TerminalRenderer {
     pub(crate) fn metal_device(&self) -> usize {
-        // SAFETY: Metal is the only enabled backend; C++ borrows this pointer
-        // only while this renderer (and hence the device) remains alive.
-        let hal = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
+        // The global context outlives every view and every imported framebuffer.
+        let hal = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
         Retained::as_ptr(hal.raw_device()) as usize
-    }
-
-    pub(crate) fn adapter_name(&self) -> &str {
-        &self.adapter_name
-    }
-    pub(crate) fn frames(&self) -> u64 {
-        self.frames
-    }
-
-    pub(crate) fn atlas_pages(&self) -> u32 {
-        self.atlas.pages()
-    }
-    pub(crate) fn atlas_uploads(&self) -> u64 {
-        self.atlas.uploads()
-    }
-    pub(crate) fn atlas_instances(&self) -> u32 {
-        self.atlas.instances()
-    }
-    pub(crate) fn cached_glyphs(&self) -> u32 {
-        self.atlas.cached_glyphs()
-    }
-    pub(crate) fn rasterizations(&self) -> u64 {
-        self.atlas.rasterizations()
-    }
-    pub(crate) fn font_pixels(&self) -> f32 {
-        self.atlas.font_pixels()
-    }
-    pub(crate) fn missing_glyphs(&self) -> u64 {
-        self.atlas.missing_glyphs()
     }
     pub(crate) fn invalidate_grid(&mut self) {
         self.rendered_grid = None;
     }
-    pub(crate) fn clear_atlas(&mut self) {
-        self.atlas.clear();
-        self.rendered_grid = None;
+    pub(crate) fn grid_size(&self, viewport: &Viewport) -> Result<GridSize, String> {
+        let mut shared = self.gpu.glyphs()?;
+        GlyphRenderer::grid_size(&mut shared, viewport)
     }
-
-    // SAFETY: Both entry points forward the same texture ownership and device
-    // contract documented on render().
-    pub(crate) unsafe fn render_triangle(
-        &mut self,
-        texture: usize,
-        width: u32,
-        height: u32,
-    ) -> Result<(), String> {
-        unsafe { self.render(texture, width, height, false, 1., None) }
-    }
-    pub(crate) unsafe fn render_atlas(
-        &mut self,
-        texture: usize,
-        width: u32,
-        height: u32,
-        pixel_ratio: f32,
-    ) -> Result<(), String> {
-        unsafe { self.render(texture, width, height, true, pixel_ratio, None) }
-    }
-
-    pub(crate) fn grid_size(
-        &mut self,
-        width: u32,
-        height: u32,
-        ratio: f32,
-    ) -> Result<crate::terminal_core::grid::GridSize, String> {
-        self.atlas.grid_size(width, height, ratio)
-    }
-    pub(crate) fn needs_grid(&self, revision: u64, width: u32, height: u32, ratio: f32) -> bool {
-        self.rendered_grid != Some((revision, width, height, ratio.to_bits()))
-    }
-    // Same borrowed-framebuffer contract as render(). Accept only computed data, never a PTY.
-    pub(crate) unsafe fn render_grid(
-        &mut self,
-        texture: usize,
-        width: u32,
-        height: u32,
-        ratio: f32,
-        grid: &crate::terminal_core::grid::GridSnapshot,
-    ) -> Result<(), String> {
-        unsafe {
-            self.render(texture, width, height, true, ratio, Some(grid))?;
-        }
-        self.rendered_grid = Some((grid.revision, width, height, ratio.to_bits()));
-        Ok(())
+    pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool, String> {
+        Ok(self.rendered_grid
+            != Some(RenderedGrid {
+                revision,
+                viewport: *viewport,
+                generation: self.gpu.glyphs()?.cache.atlas.generation(),
+            }))
     }
 
     /// # Safety
-    /// The pointer must be a live MTLTexture created on metal_device(), backed
-    /// by the exclusively acquired Lynx IOSurface, matching width/height/BGRA8.
-    /// The caller must not swap or release the surface before this returns.
-    unsafe fn render(
+    /// The framebuffer must be a live BGRA8 MTLTexture from metal_device(), backed
+    /// by the exclusively acquired Lynx IOSurface. Keep it alive until this returns.
+    pub(crate) unsafe fn render_grid(
         &mut self,
-        metal_texture: usize,
-        width: u32,
-        height: u32,
-        draw_atlas: bool,
-        pixel_ratio: f32,
-        grid: Option<&crate::terminal_core::grid::GridSnapshot>,
+        frame: &FrameBuffer,
+        grid: &GridSnapshot,
     ) -> Result<(), String> {
-        if metal_texture == 0
+        let Viewport { width, height, .. } = frame.viewport;
+        if frame.metal_texture == 0
             || width == 0
             || height == 0
-            || width > self.device.limits().max_texture_dimension_2d
-            || height > self.device.limits().max_texture_dimension_2d
+            || width > self.gpu.device.limits().max_texture_dimension_2d
+            || height > self.gpu.device.limits().max_texture_dimension_2d
         {
             return Err("Invalid terminal texture or dimensions".into());
         }
-        // SAFETY: The caller owns the live texture; retain gives the imported
-        // HAL texture its own +1 reference. No ownership of IOSurface transfers.
-        let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let raw = unsafe { Retained::retain(metal_texture as *mut ProtocolObject<dyn MTLTexture>) }
-            .ok_or("Could not retain Metal texture")?;
+        frame.viewport.font_pixels()?;
+        // Retain the borrowed framebuffer for the imported HAL texture.
+        let raw =
+            unsafe { Retained::retain(frame.metal_texture as *mut ProtocolObject<dyn MTLTexture>) }
+                .ok_or("Could not retain Metal texture")?;
         let size = wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
         };
         // SAFETY: C++ creates this texture using our exact MTLDevice and BGRA8
-        // render-target descriptor. We fully clear it before reading any pixel.
+        // render-target descriptor. Every grid pass clears the framebuffer.
         let hal_texture = unsafe {
             wgpu::hal::metal::Device::texture_from_raw(
                 raw,
@@ -213,7 +142,8 @@ impl TerminalRenderer {
             )
         };
         let texture = unsafe {
-            self.device
+            self.gpu
+                .device
                 .create_texture_from_hal::<wgpu::hal::api::Metal>(
                     hal_texture,
                     &wgpu::TextureDescriptor {
@@ -229,71 +159,57 @@ impl TerminalRenderer {
                     wgpu::TextureUses::UNINITIALIZED,
                 )
         };
-        let view = texture.create_view(&Default::default());
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-        if draw_atlas {
-            let result = if let Some(grid) = grid {
-                self.atlas.draw_grid(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &view,
-                    [width, height],
-                    pixel_ratio,
-                    grid,
-                )
-            } else {
-                self.atlas.draw(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &view,
-                    [width, height],
-                    pixel_ratio,
-                )
-            };
-            if let Err(error) = result {
-                // These uploads are still in an unsubmitted encoder. Do not
-                // leave cached handles pointing at regions that were never written.
-                self.atlas.clear();
-                return Err(error);
-            }
-        } else {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Native terminal triangle"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.04,
-                            g: 0.07,
-                            b: 0.12,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(&self.pipeline);
-            pass.draw(0..3, 0..1);
+        self.render_into(
+            &texture.create_view(&Default::default()),
+            &frame.viewport,
+            grid,
+        )
+    }
+
+    fn render_into(
+        &mut self,
+        target: &wgpu::TextureView,
+        viewport: &Viewport,
+        grid: &GridSnapshot,
+    ) -> Result<(), String> {
+        let gpu = self.gpu;
+        let mut shared = gpu.glyphs()?;
+        let validation = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut result = self.glyphs.draw_grid(
+            &gpu.device,
+            &gpu.queue,
+            &mut encoder,
+            target,
+            &mut shared,
+            viewport,
+            grid,
+        );
+        if result.is_ok() {
+            let submission = gpu.queue.submit([encoder.finish()]);
+            // Lynx may swap the borrowed double buffer only after GPU writes finish.
+            result = gpu
+                .device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission),
+                    timeout: Some(Duration::from_secs(10)),
+                })
+                .map(|_| ())
+                .map_err(|e| e.to_string());
         }
-        let submission = self.queue.submit([encoder.finish()]);
-        // The POC deliberately waits for GPU completion before Lynx SwapBack.
-        // Keep the borrowed double buffer alive until every GPU write completes.
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(submission),
-                timeout: Some(Duration::from_secs(10)),
-            })
-            .map_err(|e| e.to_string())?;
         if let Some(error) = pollster::block_on(validation.pop()) {
-            self.atlas.clear();
-            return Err(error.to_string());
+            result = Err(error.to_string());
         }
-        self.frames += 1;
+        if let Err(error) = result {
+            // Invalidate all views after dropping uploads that may not have completed.
+            shared.clear();
+            return Err(error);
+        }
+        self.rendered_grid = Some(RenderedGrid {
+            revision: grid.revision,
+            viewport: *viewport,
+            generation: shared.cache.atlas.generation(),
+        });
         Ok(())
     }
 }
