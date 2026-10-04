@@ -44,7 +44,7 @@ Read the docs below in advance to help you understand the library or frameworks 
     region slot props. These primitives render the static layout on the main
     thread; `App.tsx` puts separate `<background-only>` boundaries around tabs,
     workspace list, content, status and settings, each with a pure UI fallback.
-    `state/SessionRegion.tsx` shares one registry per App across those regions;
+    `state/SessionRegion.tsx` connects every region to the global `state/sessionRegistry.ts`;
     only its bootstrap region loads configuration. Presentation components
     must use type-only state imports to keep Effect out of the main-thread bundle.
     `runtime.ts` runs before Effect
@@ -75,8 +75,12 @@ Read the docs below in advance to help you understand the library or frameworks 
     `src/terminal_view.rs` orchestrates resizing/snapshots and exposes the cxx bridge.
     `src/terminal_session.rs` owns the u32 registry and each session's renderer.
     `components/TerminalView.tsx` and its `NativeTerminalView` mount once for the
-    content region. `state/useTerminalSession.ts` owns the tab-to-u32 registry,
-    creates sessions for new tabs and closes removed sessions or all on unmount.
+    content region. `state/session.ts` allocates numeric tab IDs (1..u32::MAX),
+    used directly as session IDs. Rust accepts IDs and rejects duplicates and 0.
+    `sessionAtom` writes reconcile Rust sessions through `state/terminalSessions.ts`
+    before publishing state. Creation errors are atom state. React only observes
+    IDs/errors; unmount/remount does not release sessions. Closing tabs/removing
+    workspaces closes their sessions; registry disposal finalizes the remainder.
     Switching tabs only updates numeric `terminal-id`, with no view keys or active
     props. ID 0 unbinds the session while keeping the hidden native element mounted.
     TerminalContent must keep its children mounted across loading/config errors.
@@ -152,9 +156,13 @@ Use NodeJS ≥ 22 and TypeScript.
 - Node test helpers: `pnpm run test:node` verifies the PNG comparator.
   `pnpm run test:unit` runs both ReactLynx and Node unit suites.
 - E2E: `pnpm run test:e2e` builds and launches Lynxtron with an isolated config
-  and the JS fake PTY at `tests/fixtures/fake-pty.mjs`. Each case owns its app
+  and the JS fake PTY at `tests/fixtures/fake-pty.mjs`. Defaults to Lynxtron
+  `windowless: true`, `deviceScaleFactor: 2`; asserts a zero native window handle
+  and never steals OS focus. `pnpm run test:e2e:windowed` runs the same suite
+  with a native window. Each case owns its app
   process, uses the official daemon connector, and waits for native VSync pixels.
-  It never calls `renderFrame`. Requires a macOS desktop with Metal; unsupported
+  It never calls `renderFrame`. Requires macOS Metal and the native display link;
+  locked-screen/displayless CI is not verified. Unsupported
   platforms fail explicitly. Close any existing Catus app first.
   `pnpm run test:e2e:update` explicitly updates baseline PNGs; review them.
   Baselines live in `tests/e2e/__screenshots__/<platform>-<arch>/`; size changes

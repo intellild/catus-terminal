@@ -23,6 +23,8 @@
     "test:unit": "pnpm run test && pnpm run test:node",
     "test:node": "rstest run --config rstest.node.config.ts",
     "test:e2e": "pnpm run build && rstest run --config rstest.e2e.config.ts",
+    "test:e2e:windowless": "cross-env CATUS_E2E_WINDOWLESS=1 pnpm run test:e2e",
+    "test:e2e:windowed": "cross-env CATUS_E2E_WINDOWLESS=0 pnpm run test:e2e",
     "test:e2e:update": "cross-env CATUS_UPDATE_SCREENSHOTS=1 pnpm run test:e2e"
   },
   "private": true,

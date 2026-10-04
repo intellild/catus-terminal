@@ -1,6 +1,9 @@
 use super::*;
 use std::collections::VecDeque;
 
+// Flooding the process-wide broadcast in one test must not evict another test's tick.
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
 #[derive(Default)]
 pub(super) struct TestHost {
     runtime: Mutex<VecDeque<Box<FrameTask>>>,
@@ -62,6 +65,7 @@ fn clock() -> (FrameClock, Arc<TestHost>) {
 
 #[test]
 fn rust_subscriptions_wake_on_attach_and_wait_for_ui_completion() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let (clock, host) = clock();
     let first = clock.register_frame_listener();
     let second = clock.register_frame_listener();
@@ -100,6 +104,7 @@ fn rust_subscriptions_wake_on_attach_and_wait_for_ui_completion() {
 
 #[test]
 fn global_broadcast_filters_windows_generations_and_coalesces_lagged_ticks() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let (first, _) = clock();
     let (second, _) = clock();
     let first_listener = first.register_frame_listener();
@@ -135,6 +140,7 @@ fn global_broadcast_filters_windows_generations_and_coalesces_lagged_ticks() {
 
 #[test]
 fn old_callbacks_cannot_restart_a_replaced_or_destroyed_runtime() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let (clock, host) = clock();
     let listener = clock.register_frame_listener();
     listener.set_active(true);
@@ -174,6 +180,7 @@ fn old_callbacks_cannot_restart_a_replaced_or_destroyed_runtime() {
 
 #[test]
 fn background_and_subscription_drop_stop_frames_and_reattach_skips_old_ticks() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let (clock, host) = clock();
     let listener = clock.register_frame_listener();
     listener.set_active(true);

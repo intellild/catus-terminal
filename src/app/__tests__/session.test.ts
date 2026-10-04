@@ -1,5 +1,6 @@
-import { expect, test } from '@rstest/core';
+import { expect, test, rstest } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
+import { terminalHostAtom } from '../state/terminalSessions';
 import defaults from '../../../config/workspaces.json';
 import { parseWorkspaceConfig, resolveLaunch } from '../../shared/workspaces';
 import {
@@ -28,7 +29,7 @@ test('startup opens only the first workspace and repeated activation preserves i
   const activeNode = state.activeTabs.node;
   expect(state.tabs).toHaveLength(3);
   state = selectWorkspace(state, 'shell');
-  expect(state.activeTabs.shell).toBe('tab-1');
+  expect(state.activeTabs.shell).toBe(1);
   state = selectWorkspace(state, 'node');
   expect(state.activeTabs.node).toBe(activeNode);
   expect(selectWorkspace(state, 'node').tabs).toHaveLength(3);
@@ -37,18 +38,18 @@ test('startup opens only the first workspace and repeated activation preserves i
 test('closing tabs selects a neighbor; closing the last tab stops the workspace until restarted', () => {
   let state = newTab(applyConfig(emptySession, payload));
   state = newTab(state);
-  state = selectTab(state, 'tab-2');
-  state = closeTab(state, 'tab-2');
-  expect(state.activeTabs.shell).toBe('tab-3');
-  state = closeTab(state, 'tab-3');
-  expect(state.activeTabs.shell).toBe('tab-1');
-  state = closeTab(state, 'tab-1');
+  state = selectTab(state, 2);
+  state = closeTab(state, 2);
+  expect(state.activeTabs.shell).toBe(3);
+  state = closeTab(state, 3);
+  expect(state.activeTabs.shell).toBe(1);
+  state = closeTab(state, 1);
   expect(state.tabs).toHaveLength(0);
   expect(state.activeTabs.shell).toBeUndefined();
   expect(state.activeWorkspaceId).toBe('shell');
   state = selectWorkspace(state, 'shell');
   expect(state.tabs).toHaveLength(1);
-  expect(state.activeTabs.shell).toBe('tab-4');
+  expect(state.activeTabs.shell).toBe(4);
 });
 
 test('profile edits apply to new tabs, while deleting a workspace removes only its sessions', () => {
@@ -78,6 +79,10 @@ test('profile edits apply to new tabs, while deleting a workspace removes only i
 
 test('Effect Atom derived view reflects active tabs and dock indicators', () => {
   const registry = AtomRegistry.make();
+  registry.set(terminalHostAtom, {
+    createTerminalSession: rstest.fn(),
+    closeTerminalSession: rstest.fn(),
+  });
   const release = registry.mount(sessionViewAtom);
   registry.set(sessionAtom, applyConfig(emptySession, payload));
   expect(registry.get(sessionViewAtom).runningIds.has('shell')).toBe(true);

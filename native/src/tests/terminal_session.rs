@@ -1,9 +1,59 @@
 use super::*;
 
 #[test]
+fn supplied_ids_reject_duplicates_without_replacing_the_session_and_allow_reuse_after_close() {
+    let id = 3001;
+    assert!(create_session_with_command(0, None).is_err());
+    let threads: Vec<_> = (0..8)
+        .map(|_| std::thread::spawn(move || create_session_with_command(id, None)))
+        .collect();
+    let results: Vec<_> = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert!(
+        results
+            .iter()
+            .filter_map(|result| result.as_ref().err())
+            .all(|error| error.contains("Duplicate"))
+    );
+    let original = session(id).unwrap();
+    assert!(create_session_with_command(id, None).is_err());
+    assert!(Arc::ptr_eq(&original, &session(id).unwrap()));
+    close_terminal_session(id);
+    assert!(session(id).is_err());
+    assert!(get_terminal_session_info(id).is_err());
+    assert!(write_terminal_session(id, "x".into()).is_err());
+    create_session_with_command(id, None).unwrap();
+    assert!(!Arc::ptr_eq(&original, &session(id).unwrap()));
+    close_terminal_session(id);
+}
+
+#[test]
+fn failed_pty_creation_does_not_occupy_the_supplied_id() {
+    let id = 3002;
+    assert!(
+        create_session_with_command(
+            id,
+            Some(TerminalSessionCommand {
+                program: "/nonexistent/catus-test-shell".into(),
+                args: vec![],
+            })
+        )
+        .is_err()
+    );
+    assert!(session(id).is_err());
+    create_session_with_command(id, None).unwrap();
+    close_terminal_session(id);
+}
+
+#[test]
 fn numeric_sessions_are_retained_until_explicit_release() {
-    let first = create_session().unwrap();
-    let second = create_session().unwrap();
+    let first = 1001;
+    create_session_with_command(first, None).unwrap();
+    let second = 1002;
+    create_session_with_command(second, None).unwrap();
     let retained = session(first).unwrap();
     assert_ne!(first, second);
     assert!(first > 0);
@@ -22,7 +72,8 @@ fn numeric_sessions_are_retained_until_explicit_release() {
 #[test]
 fn layout_resizes_grid_and_session_keeps_renderer_across_native_handles() {
     use crate::frame::Viewport;
-    let id = create_session().unwrap();
+    let id = 1003;
+    create_session_with_command(id, None).unwrap();
     let handle = acquire_terminal(id).unwrap();
     assert!(handle.session.rendering.lock().unwrap().is_none());
     let small = Viewport {

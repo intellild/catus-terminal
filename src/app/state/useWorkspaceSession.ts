@@ -83,14 +83,14 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
     setSession((current) => newTab(current));
   }, [setSession]);
   const focusTab = useCallback(
-    (id: string) => {
+    (id: number) => {
       'background only';
       setSession((current) => selectTab(current, id));
     },
     [setSession],
   );
   const removeTab = useCallback(
-    (id: string) => {
+    (id: number) => {
       'background only';
       setSession((current) => closeTab(current, id));
     },

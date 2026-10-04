@@ -7,19 +7,22 @@ use std::time::{Duration, Instant};
 
 struct FakeSession(u32);
 impl FakeSession {
-    fn new() -> Self {
+    fn new(id: u32) -> Self {
         let fixture = format!(
             "{}/../tests/fixtures/fake-pty.mjs",
             env!("CARGO_MANIFEST_DIR")
         );
-        Self(
-            create_terminal_session(Some(TerminalSessionCommand {
+        create_terminal_session(
+            id,
+            Some(TerminalSessionCommand {
                 program: std::env::var("CATUS_E2E_NODE").unwrap_or_else(|_| "node".into()),
                 args: vec![fixture],
-            }))
-            .unwrap(),
+            }),
         )
+        .unwrap();
+        Self(id)
     }
+
     fn handle(&self) -> Box<TerminalHandle> {
         acquire_terminal(self.0).unwrap()
     }
@@ -60,7 +63,7 @@ fn render(handle: &TerminalHandle, target: &Target) -> bool {
 #[test]
 fn pty_session_renders_updates_to_borrowed_framebuffer_and_skips_idle_frames() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let session = FakeSession::new();
+    let session = FakeSession::new(2001);
     let handle = session.handle();
     assert!(handle.needs_frame().is_err());
     let viewport = Viewport {
@@ -105,8 +108,8 @@ fn pty_session_renders_updates_to_borrowed_framebuffer_and_skips_idle_frames() {
 #[test]
 fn rebinding_and_dpi_resize_keep_session_renderer_and_isolate_session_contents() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let first = FakeSession::new();
-    let second = FakeSession::new();
+    let first = FakeSession::new(2002);
+    let second = FakeSession::new(2003);
     let a = first.handle();
     let b = second.handle();
     let viewport = Viewport {

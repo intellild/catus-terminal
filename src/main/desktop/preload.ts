@@ -19,8 +19,9 @@ contextBridge.exposeInLynxBTS({
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
   createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),
-  createTerminalSession: () =>
+  createTerminalSession: (id: number) =>
     nativeBinding.createTerminalSession(
+      id,
       process.env.CATUS_E2E_PTY
         ? {
             program: process.env.CATUS_E2E_NODE ?? process.execPath,
@@ -29,6 +30,9 @@ contextBridge.exposeInLynxBTS({
         : undefined,
     ),
   closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),
+  ...(process.env.CATUS_E2E_PTY
+    ? { getTerminalSessionInfo: (id: number) => nativeBinding.getTerminalSessionInfo(id) }
+    : {}),
   echo: (message: string) => {
     return `Echo from PC Service Thread: ${message}`;
   },

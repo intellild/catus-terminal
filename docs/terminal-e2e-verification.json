@@ -9,7 +9,9 @@
     "window": {
       "width": 1120,
       "height": 760,
-      "pixelRatio": 2
+      "pixelRatio": 2,
+      "windowless": true,
+      "nativeParentHandle": "all-zero Buffer asserted at startup"
     }
   },
   "driver": "agent-lynx/connector: Lynx DOM/Input, asynchronous view.takeScreenshot PNG. No computer-use baseline or manual renderFrame.",
@@ -17,7 +19,8 @@
   "checks": {
     "e2e": {
       "passed": 5,
-      "consecutiveNormalComparisonRuns": 2
+      "consecutiveNormalComparisonRuns": 2,
+      "mode": "Lynxtron windowless; same existing PNG baselines"
     },
     "screenshots": {
       "baselines": 5,
@@ -28,11 +31,11 @@
       "updateRequiresExplicitCommand": true
     },
     "unit": {
-      "reactLynx": 16,
+      "reactLynx": 19,
       "node": 1
     },
     "rust": {
-      "passed": 23,
+      "passed": 25,
       "newSessionRenderingTests": 2,
       "frameClockTests": 4
     },
@@ -52,7 +55,7 @@
     "Rust session framebuffer import/readback, idle frames, invalid framebuffer, DPI resize and closed handles",
     "PNG comparator rejects a missing glyph, blank framebuffer and dimension changes"
   ],
-  "scope": "macOS desktop with Metal. Baselines are darwin-arm64, Retina 2x with the current system fonts/emoji. Other display scales or font/OS versions may require reviewed baselines. Tests focus their window using Lynxtron APIs and wait for DevTool subscription readiness.",
+  "scope": "macOS arm64 Metal. Default E2E uses LynxWindow windowless with a fixed 2x scale and no OS focus calls. Native CADisplayLink still uses the available screen; locked-screen or displayless CI is not verified. Windowless screenshots match the existing darwin-arm64 baselines. Font/emoji/OS changes may require reviewed baselines.",
   "screenshots": [
     {
       "file": "tests/e2e/__screenshots__/darwin-arm64/closed-tabs.png",

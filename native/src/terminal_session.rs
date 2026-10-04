@@ -3,10 +3,7 @@ use crate::terminal_core::{grid::GridSize, pty::TerminalSession};
 use napi_derive::napi;
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, LazyLock, Mutex,
-        atomic::{AtomicU32, Ordering},
-    },
+    sync::{Arc, LazyLock, Mutex},
 };
 
 #[cfg(all(feature = "native-view", target_os = "macos"))]
@@ -14,7 +11,6 @@ use crate::{frame::Viewport, renderer::TerminalRenderer};
 
 static SESSIONS: LazyLock<Mutex<HashMap<u32, Arc<Session>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 
 pub(crate) struct Session {
     pub core: TerminalSession,
@@ -28,32 +24,36 @@ pub(crate) struct SessionRenderer {
     pub viewport: Viewport,
 }
 
-fn create_session() -> Result<u32, String> {
-    create_session_with_command(None)
-}
-
 #[napi(object)]
 pub struct TerminalSessionCommand {
     pub program: String,
     pub args: Vec<String>,
 }
 
-fn create_session_with_command(command: Option<TerminalSessionCommand>) -> Result<u32, String> {
+fn create_session_with_command(
+    id: u32,
+    command: Option<TerminalSessionCommand>,
+) -> Result<(), String> {
+    if id == 0 {
+        return Err("Terminal session ID 0 is reserved for an unbound view".into());
+    }
+    // Keep the entry reserved through PTY creation so concurrent callers cannot replace it.
+    let mut sessions = SESSIONS.lock().unwrap();
+    let std::collections::hash_map::Entry::Vacant(entry) = sessions.entry(id) else {
+        return Err(format!("Duplicate terminal session ID: {id}"));
+    };
     let size = GridSize::new(80, 24);
     let core = match command {
         Some(command) => TerminalSession::command(&command.program, &command.args, size)?,
         None => TerminalSession::default_shell(size)?,
     };
-    let id = NEXT_ID
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .map_err(|_| "Terminal session IDs exhausted")?;
     let session = Arc::new(Session {
         core,
         #[cfg(all(feature = "native-view", target_os = "macos"))]
         rendering: Mutex::new(None),
     });
-    SESSIONS.lock().unwrap().insert(id, session);
-    Ok(id)
+    entry.insert(session);
+    Ok(())
 }
 
 fn session(id: u32) -> Result<Arc<Session>, String> {
@@ -66,12 +66,11 @@ fn session(id: u32) -> Result<Arc<Session>, String> {
 }
 
 #[napi]
-pub fn create_terminal_session(command: Option<TerminalSessionCommand>) -> napi::Result<u32> {
-    match command {
-        None => create_session(),
-        Some(command) => create_session_with_command(Some(command)),
-    }
-    .map_err(napi::Error::from_reason)
+pub fn create_terminal_session(
+    id: u32,
+    command: Option<TerminalSessionCommand>,
+) -> napi::Result<()> {
+    create_session_with_command(id, command).map_err(napi::Error::from_reason)
 }
 
 #[napi]

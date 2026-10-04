@@ -66,11 +66,13 @@ native/
 
 ## 终端对象和帧接口
 
-`createTerminalSession()` 是 napi-rs 导出的默认 shell 创建函数，返回正整数 `u32`。
-可选 `{ program, args }` 用于启动测试进程；E2E preload 用 `CATUS_E2E_PTY`
+`createTerminalSession(id)` 接收 JS 分配的正整数 `u32` ID，创建默认 shell，成功返回 void。
+Rust 不分配 ID，互斥保护注册表创建，拒绝重复 ID 和保留值 0；创建失败不占用 ID。
+第二个可选参数 `{ program, args }` 用于启动测试进程；E2E preload 用 `CATUS_E2E_PTY`
 和 `CATUS_E2E_NODE` 指向 JS fixture 与 Node，不读取用户的 shell 初始化脚本。
-单一 `TerminalView` 通过 `useTerminalSession` hook 维护 tab → 数字 ID 的映射，
-新 tab 创建 session、关闭 tab 删除对应 session，整个内容区 unmount 时关闭剩余 session。
+数字 tab ID 直接作为 session ID；JS 全局 `sessionRegistry` 的 `sessionAtom` 写入时同步 native session。
+新 tab 创建 session、关闭 tab 或删除 workspace 时删除对应 session，registry 销毁时关闭剩余 session。
+`TerminalView` 只展示 atom 派生的 ID 和错误；React unmount/remount 不影响 session 生命周期。
 `TerminalView` 与 `NativeTerminalView` 持续挂载，切换 tab 只更新 `terminal-id`，无需 active 或 key。
 没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，Rust 停止该 view 的帧监听；loading/配置错误也保持挂载。
 注册表强引用 session；每个 session 拥有计算层和带锁的 renderer/viewport。

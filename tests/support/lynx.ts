@@ -93,6 +93,7 @@ export class LynxApp {
           CATUS_WORKSPACES_FILE: configuration,
           CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
           CATUS_E2E_NODE: process.execPath,
+          CATUS_E2E_WINDOWLESS: process.env.CATUS_E2E_WINDOWLESS ?? '1',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -204,6 +205,19 @@ export class LynxApp {
       }
     };
     return find(root);
+  }
+
+  async sessionExists(id: number) {
+    const result = await this.evaluate(`(()=>{try {
+      globalThis.multiApps[globalThis.currentDebugAppId || globalThis.currentAppId]
+        .NativeModules.nodejs.exposed.getTerminalSessionInfo(${id});
+      return 'present';
+    } catch (error) {
+      return String(error);
+    }})()`);
+    if (result === 'present') return true;
+    if (result?.includes(`Unknown or released terminal session: ${id}`)) return false;
+    throw new Error(`Unexpected session lookup result: ${result}`);
   }
 
   attribute(node: NodeInfo, name: string) {

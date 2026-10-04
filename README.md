@@ -112,8 +112,8 @@ owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal FrameBuffer 对�
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
 
 ```text
-TerminalView.tsx / useTerminalSession.ts（BTS）/ preload.ts
-  新增 tab → createTerminalSession() → u32 ID → 账户默认 shell / portable-pty
+state/session.ts / terminalSessions.ts / preload.ts（BTS）
+  新增 tab → JS 分配 number ID → createTerminalSession(id) → 账户默认 shell / portable-pty
        ↓
 NativeTerminalView.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
@@ -154,10 +154,14 @@ PTY 计算线程只更新网格；VSync 消费最新网格，空闲帧跳过 sna
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
 TerminalView 和 NativeTerminalView 在内容区仅挂载一次，切换 tab 更新 terminal-id，保留 session 和 renderer。
-useTerminalSession hook 维护 tab 到 session ID 的映射；关闭 tab 或内容组件卸载时调用
-closeTerminalSession(id)，异步结束 shell。没有选中 tab 时传 ID 0 解绑并隐藏 view，Rust 帧监听停止；
+tab ID 就是 session ID；全局 `sessionRegistry` 中的 `sessionAtom` 写入时统一同步 Rust session：
+创建 tab 时创建 session，关闭 tab 或删除 workspace 时调用 `closeTerminalSession(id)`。
+React 组件只读取 atom 派生的 ID 和错误，卸载或重新挂载不会创建或关闭 session；registry 销毁时释放剩余 session。没有选中 tab 时传 ID 0 解绑并隐藏 view，Rust 帧监听停止；
 loading 和配置错误不会卸载 native element。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
+
+`src/app/__tests__/terminalSessions.test.ts` 不挂载 React，验证 atom 分配数字 ID、关闭后台 tab、
+删除 workspace、创建失败和 registry 释放；UI 测试验证卸载/重新挂载保留 session。
 
 `native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
 `terminal_pty.rs` 验证真实 shell 往返、resize、退出；`renderer.rs` 验证真实网格
@@ -200,7 +204,8 @@ pnpm run tsc         # tsc --build：检查根 tsconfig 引用的所有项目
 pnpm run typecheck   # 同 pnpm run tsc
 pnpm test            # ReactLynx 交互、Effect 状态与 JSON 配置读写测试
 pnpm run test:node   # 截图比较器回归测试
-pnpm run test:e2e    # 构建 + Rstest/Lynx DevTool E2E + PNG 基准对比
+pnpm run test:e2e    # 构建 + windowless Rstest/Lynx DevTool E2E + PNG 基准对比
+pnpm run test:e2e:windowed # 用原生窗口运行同一套 E2E，供排查窗口行为
 pnpm run test:e2e:update # 显式生成或更新截图基准，更新后检查 PNG
 pnpm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
 pnpm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
@@ -222,9 +227,12 @@ tsconfig.json
 
 运行时验收默认使用 Lynx 的 DOM/Input 和 `view.takeScreenshot`，由 Rstack 的
 Rstest 组织测试。截图覆盖 native terminal surface；测试等待 VSync 实际呈现的像素，
-不调用 `renderFrame`。E2E 当前需要 macOS 桌面和 Metal，运行前关闭已有的 Catus 应用。
-窗口尺寸固定为 1120×760；当前 `darwin-arm64` 基准在 Retina 2× 下生成，需保持
-同样的显示比例、系统字体和 emoji 版本，其他环境需显式建立并检查对应基准。
+不调用 `renderFrame`。E2E 默认设置 `LynxWindow({ windowless: true, deviceScaleFactor: 2 })`，
+不创建原生父窗口、不抢占焦点；启动时检查原生窗口句柄全为 0，防止运行时忽略该选项。
+`pnpm run test:e2e:windowed` 可显式切回原生窗口；两种模式使用相同测试和截图基准。
+当前仍需 macOS Metal 和 native CADisplayLink，尚未验证锁屏或完全无显示器的 CI 环境。
+运行前关闭已有的 Catus 应用。viewport 固定为 1120×760、windowless 比例固定为 2×；
+`darwin-arm64` 基准还依赖系统字体和 emoji 版本，其他环境需显式建立并检查对应基准。
 
 ```text
 tests/fixtures/fake-pty.mjs（JS 子进程，raw PTY，无系统 shell 配置）
@@ -251,8 +259,10 @@ tests/support/screenshots.ts
 Rust `native/src/tests/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
 `TerminalHandle::render_frame` 导入 Metal texture 并回读，验证 PTY 更新、空闲跳帧、
 无效 framebuffer、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
-调用 `createTerminalSession()` 仍启动账户默认 shell；可选 `{ program, args }` 供测试启动
+调用 `createTerminalSession(id)` 启动账户默认 shell；第二个可选参数 `{ program, args }` 供测试启动
 fake PTY，桌面 preload 仅在设置 `CATUS_E2E_PTY` 时注入它。
+JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返回 void，重复 ID 和保留值 0 被拒绝。
+关闭 tab 的 E2E 测试直接查询 Rust 注册表，确认对应 ID 已删除且其他 session 仍可查询。
 
 ## Native 演示交互（NativeDemo.tsx）
 

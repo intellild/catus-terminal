@@ -13,8 +13,9 @@ export declare class RustCounter {
 export declare function closeTerminalSession(id: number): void;
 
 export declare function createTerminalSession(
+  id: number,
   command?: TerminalSessionCommand | undefined | null,
-): number;
+): void;
 
 export declare function getTerminalSessionInfo(id: number): TerminalSessionInfo;
 

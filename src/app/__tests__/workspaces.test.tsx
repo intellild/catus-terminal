@@ -4,19 +4,21 @@ import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/tes
 import defaults from '../../../config/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
-import type { TerminalHost } from '../state/useTerminalSession';
+import { sessionRegistry } from '../state/sessionRegistry';
+import { closeTab, sessionAtom } from '../state/session';
+import type { TerminalHost } from '../state/terminalSessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
 beforeEach(() => {
+  sessionRegistry.reset();
   // Testing-library resolves selectors but does not implement native UI methods.
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const prototype = Object.getPrototypeOf(query.selectUniqueID(0));
   rstest.spyOn(prototype, 'invoke').mockReturnValue({ exec: rstest.fn() });
-  let next = 0;
   rstest.stubGlobal('NativeModules', {
     nodejs: {
       exposed: {
-        createTerminalSession: rstest.fn(() => ++next),
+        createTerminalSession: rstest.fn(),
         closeTerminalSession: rstest.fn(),
       },
     },
@@ -85,7 +87,7 @@ test('the native view stays mounted through empty/loading/error states without J
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   unmount();
-  expect(terminalHost.closeTerminalSession).toHaveBeenCalledOnce();
+  expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
 });
 
 test('Lynx tabs and dock indicators follow workspace startup, switching, creation and closing', async () => {
@@ -117,6 +119,7 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(root.querySelector('#tab-2')).toBeNull();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   expect(terminalHost.createTerminalSession).toHaveBeenCalledTimes(3);
+  expect(rstest.mocked(terminalHost.createTerminalSession).mock.calls).toEqual([[1], [2], [3]]);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#workspace-node')!);
   await findByText('Node.js 3');
@@ -128,6 +131,8 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   await rstest.waitFor(() => expect(Number(surface.getAttribute('terminal-id'))).toBe(0));
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledTimes(2);
+  expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(3);
+  expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(2);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
   fireEvent.tap(root.querySelector('#start-terminal')!);
   await findByText('Node.js 4');
@@ -187,13 +192,21 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(3);
 });
 
-test('closing terminal content releases its PTY instances', async () => {
+test('React unmount and remount preserve global sessions; atom writes release them', async () => {
   const { unmount } = render(<App host={makeHost()} />);
   await waitForTerminal();
   const host = NativeModules.nodejs.exposed as TerminalHost;
-  const id = rstest.mocked(host.createTerminalSession).mock.results[0]!.value!;
+  const id = rstest.mocked(host.createTerminalSession).mock.calls[0]![0];
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
   unmount();
+  expect(host.closeTerminalSession).not.toHaveBeenCalled();
+  render(<App host={makeHost()} />);
+  await waitForTerminal();
+  expect(host.createTerminalSession).toHaveBeenCalledOnce();
+  expect(
+    Number(elementTree.root!.querySelector('#terminal-surface')!.getAttribute('terminal-id')),
+  ).toBe(id);
+  act(() => sessionRegistry.update(sessionAtom, (state) => closeTab(state, id)));
   expect(host.closeTerminalSession).toHaveBeenCalledOnce();
   expect(host.closeTerminalSession).toHaveBeenCalledWith(id);
 });

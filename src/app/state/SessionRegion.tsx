@@ -1,8 +1,8 @@
 import 'background-only';
 import '../runtime';
 import { useCallback, useEffect } from '@lynx-js/react';
-import { RegistryContext, scheduleTask } from '@effect/atom-react';
-import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
+import { RegistryContext } from '@effect/atom-react';
+import { sessionRegistry } from './sessionRegistry';
 import type { WorkspaceHost } from '../../shared/workspaces';
 import { TabBar } from '../components/TabBar';
 import { WorkspaceList } from '../components/WorkspaceList';
@@ -12,40 +12,11 @@ import { StatusBar } from '../components/StatusBar';
 import { WorkspaceSettings } from '../components/WorkspaceSettings';
 import { useLoadWorkspaces, useWorkspaceSession } from './useWorkspaceSession';
 
-// App creates only this empty scope on the main thread. Each background region
-// attaches to the same registry without exposing Effect to the first-frame code.
-export interface SessionScope {
-  registry?: AtomRegistry.AtomRegistry;
-  mounts?: number;
-  disposeTimer?: ReturnType<typeof setTimeout>;
-}
 type Region = 'bootstrap' | 'workspaces' | 'tabs' | 'content' | 'status' | 'settings';
 
-export function SessionRegion({
-  scope,
-  region,
-  host,
-}: {
-  scope: SessionScope;
-  region: Region;
-  host?: WorkspaceHost;
-}) {
-  const registry = (scope.registry ??= AtomRegistry.make({ scheduleTask }));
-  useEffect(() => {
-    if (scope.disposeTimer !== undefined) clearTimeout(scope.disposeTimer);
-    scope.mounts = (scope.mounts ?? 0) + 1;
-    return () => {
-      scope.mounts! -= 1;
-      if (scope.mounts === 0) {
-        scope.disposeTimer = setTimeout(() => {
-          registry.dispose();
-          scope.registry = undefined;
-        }, 500);
-      }
-    };
-  }, [scope, registry]);
+export function SessionRegion({ region, host }: { region: Region; host?: WorkspaceHost }) {
   return (
-    <RegistryContext.Provider value={registry}>
+    <RegistryContext.Provider value={sessionRegistry}>
       {region === 'bootstrap' ? (
         <SessionLoader host={host} />
       ) : (
@@ -118,7 +89,11 @@ function RegionContent({
           onRetry={session.loadConfig}
           onAdd={session.addTab}
         >
-          <TerminalView tabs={view.state.tabs} id={load.error ? undefined : view.activeTab?.id} />
+          <TerminalView
+            id={load.error ? undefined : view.activeTab?.id}
+            sessionId={load.error ? 0 : view.terminalId}
+            error={view.terminalError}
+          />
         </TerminalContent>
       );
     case 'status':

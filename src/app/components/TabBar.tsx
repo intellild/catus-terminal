@@ -10,10 +10,10 @@ export function TabBar({
   onLayout,
 }: {
   tabs?: readonly TerminalTab[];
-  activeTabId?: string;
+  activeTabId?: number;
   loading?: boolean;
-  onSelect?(id: string): void;
-  onClose?(id: string): void;
+  onSelect?(id: number): void;
+  onClose?(id: number): void;
   onAdd?(): void;
   onLayout?(): void;
 }) {

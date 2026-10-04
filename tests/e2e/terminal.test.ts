@@ -6,7 +6,7 @@ let app: LynxApp;
 const red = [205, 77, 77];
 const blue = [108, 158, 225];
 let nodeId: number;
-let firstId: string;
+let firstId: number;
 
 beforeEach(async () => {
   app = new LynxApp();
@@ -14,7 +14,9 @@ beforeEach(async () => {
   await app.terminalFrame(red);
   const node = (await app.node('#terminal-surface'))!;
   nodeId = node.nodeId;
-  firstId = app.attribute(node, 'terminal-id')!;
+  firstId = Number(app.attribute(node, 'terminal-id'));
+  expect(firstId).toBe(1);
+  expect(await app.sessionExists(firstId)).toBe(true);
 });
 afterEach(async () => {
   await app.close();
@@ -28,7 +30,7 @@ async function updateTerminal() {
 }
 
 test('starts the first workspace and presents the fake PTY through native VSync', async () => {
-  expect(Number(firstId)).toBeGreaterThan(0);
+  expect(firstId).toBeGreaterThan(0);
   expect(await app.node('#running-test')).toBeDefined();
   await expectScreenshot('initial-workspace', await app.screenshot());
 });
@@ -43,21 +45,30 @@ test('new tabs get independent PTYs; switching back preserves contents and the n
   await app.tap('#new-tab');
   await waitFor('second session ID', async () => {
     const node = await app.node('#terminal-surface');
-    return node && app.attribute(node, 'terminal-id') !== firstId ? node : undefined;
+    return node && Number(app.attribute(node, 'terminal-id')) === 2 ? node : undefined;
   });
   await app.terminalFrame(red);
   expect((await app.node('#terminal-surface'))!.nodeId).toBe(nodeId);
   await expectScreenshot('second-tab', await app.screenshot());
   await app.tap('#tab-1');
+  await waitFor('first session rebound', async () => {
+    const node = await app.node('#terminal-surface');
+    return node && Number(app.attribute(node, 'terminal-id')) === firstId ? node : undefined;
+  });
   await app.terminalFrame(blue);
   const node = (await app.node('#terminal-surface'))!;
   expect(node.nodeId).toBe(nodeId);
-  expect(app.attribute(node, 'terminal-id')).toBe(firstId);
+  expect(Number(app.attribute(node, 'terminal-id'))).toBe(firstId);
   await expectScreenshot('updated-terminal', await app.screenshot('#terminal-viewport'));
 });
 
 test('workspace first activation creates a session and its dock indicator', async () => {
   await app.tap('#workspace-other');
+  await waitFor('other workspace session bound', async () => {
+    const node = await app.node('#terminal-surface');
+    return node && Number(app.attribute(node, 'terminal-id')) === 2 ? node : undefined;
+  });
+  await waitFor('other workspace dock indicator', () => app.node('#running-other'));
   await app.terminalFrame(red);
   expect(await app.node('#running-other')).toBeDefined();
   expect(await app.node('#tab-2')).toBeDefined();
@@ -70,10 +81,27 @@ test('closing the last tab unbinds the persistent native view and removes the do
   await waitFor('new tab', () => app.node('#tab-2'));
   await app.tap('#workspace-other');
   await waitFor('other workspace tab', () => app.node('#tab-3'));
+  for (const id of [1, 2, 3]) {
+    await waitFor(`session ${id} created in Rust registry`, async () =>
+      (await app.sessionExists(id)) ? true : undefined,
+    );
+  }
   await app.tap('#close-tab-3');
+  await waitFor('session 3 removed from Rust registry', async () =>
+    !(await app.sessionExists(3)) ? true : undefined,
+  );
+  expect(await app.sessionExists(1)).toBe(true);
+  expect(await app.sessionExists(2)).toBe(true);
   await app.tap('#workspace-test');
   await app.tap('#close-tab-2');
+  await waitFor('session 2 removed from Rust registry', async () =>
+    !(await app.sessionExists(2)) ? true : undefined,
+  );
+  expect(await app.sessionExists(1)).toBe(true);
   await app.tap('#close-tab-1');
+  await waitFor('session 1 removed from Rust registry', async () =>
+    !(await app.sessionExists(1)) ? true : undefined,
+  );
   const node = await waitFor('session unbound', async () => {
     const node = await app.node('#terminal-surface');
     return node && app.attribute(node, 'terminal-id') === '0' ? node : undefined;
