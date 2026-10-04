@@ -108,7 +108,7 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 计算与渲染分别位于 `native/src/terminal_core/` 和 `native/src/renderer.rs`。
 前者无需 Lynx、字体或 GPU：读线程接收 PTY 字节流，持续使用 Alacritty 的
 VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
-owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal FrameBuffer 对象和网格，
+owned `GridSnapshot`。`TerminalRenderer` 接收借用的 IOSurface FrameBuffer 对象和网格，
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
 
 ```text
@@ -124,31 +124,29 @@ NativeTerminalMacOS.mm / OnLayoutChanged
 terminal_core/pty.rs（独立读线程）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
-frame_clock.rs（Rust）/ native VSync（BTS）
-  全局 broadcast → register_frame_listener / FrameListener
+NativeVSyncMonitorMacOS.mm / CADisplayLink（UI 线程）
+  VSync → frame_callbacks.rs / 已注册 Rust 回调（同步执行，检查 deadline）
        ↓
-NativeFrameHost.mm（UI 线程）
-  消费 Rust listener 的帧信号 → native view 绘制 → 完成后 Rust 续订
+NativeTerminalMacOS.mm（同一 UI 线程）
+  按缓存 layout 获取 Lynx IOSurface → render_surface(iosurface, deadline)
        ↓
 terminal_view.rs
-  session renderer / viewport → 检查 revision → GridSnapshot
-       ↓
-NativeTerminalMacOS.mm
-  借用 Lynx IOSurface → 使用 renderer 的 MTLDevice 创建 MTLTexture
+  检查锁忙、过期和 revision → session viewport / GridSnapshot
        ↓
 renderer.rs / glyph_renderer.rs
-  接收 framebuffer + 网格 → crossfont atlas → wgpu 绘制
+  校验 IOSurface → 全局 MTLDevice 创建纹理 → wgpu 导入 → atlas 绘制
        ↓
 GPU 完成 → Lynx SwapBack / MarkDirty
 ```
 
-帧调度由 Rust 的 `frame_clock.rs` 管理，全局 `tokio::sync::broadcast` 分发 native VSync。
-C++ 通过 `register_frame_listener()` 注册 Rust receiver，Lynx extension 提供 observer。
-macOS 14+ 使用 SDK 的 custom VSync monitor 接口，把 `CADisplayLink` 注册到 UI main run loop；
-当前 Lynxtron 的默认 monitor 在 BTS run loop 上无法触发回调。
-RAF 在 BTS 注册和回调，native 内投递到 UI 线程绘制，GPU 完成后再续订；没有 JS 每帧桥接。
-PTY 计算线程只更新网格；VSync 消费最新网格，空闲帧跳过 snapshot、纹理导入和 GPU 提交。
-广播按窗口和 runtime generation 过滤，慢 receiver 合并 tick；零尺寸、解绑、detach、后台和销毁停止续订。
+Rust 的 `frame_callbacks.rs` 保存渲染回调注册；native view 持有 registration，释放时自动注销。
+macOS 14+ 的 `CADisplayLink` 在 UI main run loop 上持续运行，每次 VSync 同步进入 Rust，
+再直接调用对应 native view 的渲染回调；旧版 macOS 使用同一 UI run loop 上的 60Hz timer。
+回调不使用帧 ID、broadcast、BTS observer 或跨线程帧任务，PTY 线程只更新自身网格。
+每次读取最新网格，空闲时跳过 snapshot、纹理导入和 GPU 提交；view/session/grid/atlas 锁忙时直接跳过。
+VSync 的 target timestamp 转成统一的 monotonic deadline；回调、提交和 SwapBack 前检查是否过期。
+提交前过期会丢弃 encoder 并使未上传的 atlas handles 失效；提交后过期仍等待 GPU 完成以安全归还借用的 buffer，
+但不呈现该帧，下一次 VSync 重新读取最新内容。零尺寸、解绑、detach、后台和销毁停止执行渲染回调。
 窗口尺寸或 backing scale 变化会重新计算行列、通知 PTY，并绘制新网格。
 
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
@@ -172,8 +170,8 @@ loading 和配置错误不会卸载 native element。字体逐字符栅格化；
 实际保留元素引用的 ID 切换及 ID 0 解绑验证见
 [持续挂载 view 验证报告](docs/terminal-persistent-view-verification.json)，记录的是 native VSync 重构之前的实现。
 实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
-历史报告使用 DevTool 手动调用 renderFrame；Rust native VSync 的续订、订阅释放和旧回调失效由独立 Rust 测试覆盖。
-当前 [native VSync 验证报告](docs/terminal-native-vsync-verification.json) 记录 Rust/C++ 注册链路和实测结果；
+独立 Rust 测试覆盖同线程直接回调、过期帧丢弃、注销、后台/销毁及 session/atlas 锁忙后的恢复。
+历史 [native VSync 验证报告](docs/terminal-native-vsync-verification.json) 记录此前广播/队列实现的实测结果；
 默认 shell 提示符及 PTY 写入后的中文输出均自动绘制，未手动调用 `renderFrame`。
 通过 Lynx `view.takeScreenshot` 截取的本地截图 `docs/terminal-native-vsync.png` 包含 native surface；暂不提交截图，待 UI 稳定后再纳入版本管理。
 
@@ -257,8 +255,8 @@ tests/support/screenshots.ts
 当前自动化验收结果和基准尺寸/hash 见 [E2E 验证报告](docs/terminal-e2e-verification.json)。
 
 Rust `native/src/tests/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
-`TerminalHandle::render_frame` 导入 Metal texture 并回读，验证 PTY 更新、空闲跳帧、
-无效 framebuffer、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
+`TerminalHandle::render_surface` 导入真实 IOSurface 并回读，验证 PTY 更新、空闲跳帧、
+无效 framebuffer、尺寸/像素布局不匹配、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
 调用 `createTerminalSession(id)` 启动账户默认 shell；第二个可选参数 `{ program, args }` 供测试启动
 fake PTY，桌面 preload 仅在设置 `CATUS_E2E_PTY` 时注入它。
 JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返回 void，重复 ID 和保留值 0 被拒绝。
@@ -291,9 +289,12 @@ glyph_renderer.rs
   共享 pipeline / sampler / 页 bind group
   每个 session 独立 instance buffer
        ↓
-NativeTerminalMacOS.mm / frame.rs
-  Lynx layout → Viewport；借用 IOSurface → 同一 MTLDevice 创建 MTLTexture
-  FrameBuffer { metal_texture } + session viewport → TerminalRenderer::render_grid
+NativeTerminalMacOS.mm / terminal_view.rs
+  Lynx layout → Rust resize；C++ 直接传 IOSurface + deadline
+       ↓
+renderer.rs / frame.rs
+  FrameBuffer { iosurface } + session viewport → Rust 校验和 Metal texture 导入
+  TerminalRenderer::render_grid → wgpu 绘制
        ↓
 共享锁下编码上传、绘制、提交并等待 GPU → Lynx SwapBack / MarkDirty
 ```
@@ -454,8 +455,8 @@ native/
   src/terminal_session.rs              u32 注册表、session renderer 及生命周期
   src/terminal_view.rs                 cxx 桥、layout resize 与帧调度适配
   src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
-  src/frame.rs                        FrameBuffer / Viewport 描述及 cxx 共享类型
-  src/frame_clock.rs                  Rust native VSync、全局 broadcast 和订阅
+  src/frame.rs                        Rust IOSurface FrameBuffer 与 cxx Viewport
+  src/frame_callbacks.rs              UI 线程同步回调注册与 deadline 丢帧
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存
   src/tests/                           counter、atlas、font 独立测试模块
@@ -472,9 +473,9 @@ native/
     NativeInputElement.h               属性、事件、setValue/getValue/focus 方法
     NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
     NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
-    NativeTerminalMacOS.mm             借用 IOSurface，创建 Metal texture，绘制 native-terminal
-    NativeTerminalRegistration.mm      extension 生命周期和 native VSync observer
-    NativeFrameHost.h/mm               native BTS/UI task queue 桥接
+    NativeTerminalMacOS.mm             获取 Lynx IOSurface，交给 Rust 渲染并呈现
+    NativeTerminalRegistration.mm      extension 生命周期和 display link
+    NativeFrameCallbacks.h/mm          Rust 回调注册对象和 C++ 渲染目标
     NativeVSyncMonitorMacOS.h/mm        UI main run loop 上的 macOS display link
 src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```

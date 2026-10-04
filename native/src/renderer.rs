@@ -6,11 +6,17 @@ use crate::{
     terminal_core::grid::{GridSize, GridSnapshot},
 };
 use glyph_renderer::{GlyphRenderer, SharedGlyphs};
-use objc2::{rc::Retained, runtime::ProtocolObject};
-use objc2_metal::{MTLTexture, MTLTextureType};
+#[cfg(test)]
+use objc2::rc::Retained;
+use objc2_core_foundation::CFRetained;
+use objc2_io_surface::IOSurfaceRef;
+use objc2_metal::{
+    MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
+    MTLTextureUsage,
+};
 use std::{
+    ptr::NonNull,
     sync::{LazyLock, Mutex, MutexGuard},
-    time::Duration,
 };
 
 static GPU: LazyLock<Result<GpuContext, String>> = LazyLock::new(GpuContext::new);
@@ -76,6 +82,7 @@ pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String
 }
 
 impl TerminalRenderer {
+    #[cfg(test)]
     pub(crate) fn metal_device(&self) -> usize {
         // The global context outlives every view and every imported framebuffer.
         let hal = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
@@ -88,6 +95,7 @@ impl TerminalRenderer {
         let mut shared = self.gpu.glyphs()?;
         GlyphRenderer::grid_size(&mut shared, viewport)
     }
+    #[cfg(test)]
     pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool, String> {
         Ok(self.rendered_grid
             != Some(RenderedGrid {
@@ -97,36 +105,85 @@ impl TerminalRenderer {
             }))
     }
 
+    pub(crate) fn try_needs_grid(
+        &self,
+        revision: u64,
+        viewport: &Viewport,
+    ) -> Result<Option<bool>, String> {
+        match self.gpu.glyphs.try_lock() {
+            Ok(shared) => Ok(Some(
+                self.rendered_grid
+                    != Some(RenderedGrid {
+                        revision,
+                        viewport: *viewport,
+                        generation: shared.cache.atlas.generation(),
+                    }),
+            )),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err("Shared glyph cache lock poisoned".into())
+            }
+        }
+    }
+
     /// # Safety
-    /// The framebuffer must be a live BGRA8 MTLTexture from metal_device(), backed
-    /// by the exclusively acquired Lynx IOSurface. Keep it alive until this returns.
+    /// The framebuffer must contain a live, exclusively borrowed IOSurfaceRef
+    /// which remains valid until this synchronous call completes.
     pub(crate) unsafe fn render_grid(
         &mut self,
         frame: &FrameBuffer,
         viewport: &Viewport,
         grid: &GridSnapshot,
-    ) -> Result<(), String> {
+        deadline: i64,
+    ) -> Result<bool, String> {
+        if crate::frame_callbacks::expired(deadline) {
+            return Ok(false);
+        }
         let Viewport { width, height, .. } = *viewport;
-        if frame.metal_texture == 0
-            || width == 0
+        if width == 0
             || height == 0
             || width > self.gpu.device.limits().max_texture_dimension_2d
             || height > self.gpu.device.limits().max_texture_dimension_2d
         {
-            return Err("Invalid terminal texture or dimensions".into());
+            return Err("Invalid terminal texture dimensions".into());
         }
         viewport.font_pixels()?;
-        // Retain the borrowed framebuffer for the imported HAL texture.
-        let raw =
-            unsafe { Retained::retain(frame.metal_texture as *mut ProtocolObject<dyn MTLTexture>) }
-                .ok_or("Could not retain Metal texture")?;
+        let ptr = NonNull::new(frame.iosurface as *mut IOSurfaceRef)
+            .ok_or("Lynx back buffer is unavailable")?;
+        // Retain only our own reference; never consume Lynx's borrowed ownership.
+        let surface = unsafe { CFRetained::retain(ptr) };
+        if surface.width() != width as usize
+            || surface.height() != height as usize
+            || surface.bytes_per_element() != 4
+        {
+            return Err("Unexpected Lynx IOSurface dimensions or pixel layout".into());
+        }
+        let raw = objc2::rc::autoreleasepool(|_| {
+            let device = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }
+                .ok_or("Shared GPU is not a Metal device")?;
+            // Dimensions and format were validated before constructing the descriptor.
+            let descriptor = unsafe {
+                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                    MTLPixelFormat::BGRA8Unorm,
+                    width as usize,
+                    height as usize,
+                    false,
+                )
+            };
+            descriptor.setUsage(MTLTextureUsage::RenderTarget);
+            descriptor.setStorageMode(MTLStorageMode::Shared);
+            device
+                .raw_device()
+                .newTextureWithDescriptor_iosurface_plane(&descriptor, &surface, 0)
+                .ok_or_else(|| String::from("Metal could not import the Lynx IOSurface"))
+        })?;
         let size = wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
         };
-        // SAFETY: C++ creates this texture using our exact MTLDevice and BGRA8
-        // render-target descriptor. Every grid pass clears the framebuffer.
+        // SAFETY: The imported texture was created above using this wgpu device
+        // and a BGRA8 render-target descriptor. Every grid pass clears it.
         let hal_texture = unsafe {
             wgpu::hal::metal::Device::texture_from_raw(
                 raw,
@@ -160,17 +217,47 @@ impl TerminalRenderer {
                     wgpu::TextureUses::UNINITIALIZED,
                 )
         };
-        self.render_into(&texture.create_view(&Default::default()), viewport, grid)
+        self.render_into_before(
+            &texture.create_view(&Default::default()),
+            viewport,
+            grid,
+            Some(deadline),
+        )
     }
 
+    #[cfg(test)]
     fn render_into(
         &mut self,
         target: &wgpu::TextureView,
         viewport: &Viewport,
         grid: &GridSnapshot,
     ) -> Result<(), String> {
+        self.render_into_before(target, viewport, grid, None)
+            .map(|_| ())
+    }
+
+    fn render_into_before(
+        &mut self,
+        target: &wgpu::TextureView,
+        viewport: &Viewport,
+        grid: &GridSnapshot,
+        deadline: Option<i64>,
+    ) -> Result<bool, String> {
         let gpu = self.gpu;
-        let mut shared = gpu.glyphs()?;
+        let mut shared = if deadline.is_some() {
+            match gpu.glyphs.try_lock() {
+                Ok(shared) => shared,
+                Err(std::sync::TryLockError::WouldBlock) => return Ok(false),
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    return Err("Shared glyph cache lock poisoned".into());
+                }
+            }
+        } else {
+            gpu.glyphs()?
+        };
+        if deadline.is_some_and(crate::frame_callbacks::expired) {
+            return Ok(false);
+        }
         let validation = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
         let mut result = self.glyphs.draw_grid(
@@ -182,14 +269,16 @@ impl TerminalRenderer {
             viewport,
             grid,
         );
-        if result.is_ok() {
+        let expired_before_submit = deadline.is_some_and(crate::frame_callbacks::expired);
+        if result.is_ok() && !expired_before_submit {
             let submission = gpu.queue.submit([encoder.finish()]);
             // Lynx may swap the borrowed double buffer only after GPU writes finish.
             result = gpu
                 .device
                 .poll(wgpu::PollType::Wait {
                     submission_index: Some(submission),
-                    timeout: Some(Duration::from_secs(10)),
+                    // A frame deadline cannot cancel submitted GPU writes to a borrowed buffer.
+                    timeout: None,
                 })
                 .map(|_| ())
                 .map_err(|e| e.to_string());
@@ -202,18 +291,34 @@ impl TerminalRenderer {
             shared.clear();
             return Err(error);
         }
+        if expired_before_submit {
+            // draw_grid can create glyph handles whose uploads are in the
+            // discarded encoder. Invalidate them rather than exposing stale data.
+            shared.clear();
+            self.rendered_grid = None;
+            return Ok(false);
+        }
+        if deadline.is_some_and(crate::frame_callbacks::expired) {
+            // Submitted GPU work has finished, so the borrowed buffer is safe,
+            // but it is too late to present. Leave this session dirty.
+            self.rendered_grid = None;
+            return Ok(false);
+        }
         self.rendered_grid = Some(RenderedGrid {
             revision: grid.revision,
             viewport: *viewport,
             generation: shared.cache.atlas.generation(),
         });
-        Ok(())
+        Ok(true)
     }
 }
 
 #[cfg(test)]
 #[path = "tests/renderer_support.rs"]
 pub(crate) mod test_support;
+
+#[cfg(test)]
+use std::time::Duration;
 
 #[cfg(test)]
 #[path = "tests/renderer.rs"]

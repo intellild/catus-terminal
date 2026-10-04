@@ -84,28 +84,33 @@ Read the docs below in advance to help you understand the library or frameworks 
     Switching tabs only updates numeric `terminal-id`, with no view keys or active
     props. ID 0 unbinds the session while keeping the hidden native element mounted.
     TerminalContent must keep its children mounted across loading/config errors.
-    `src/frame_clock.rs` owns native VSync scheduling and a process-wide LazyLock
-    tokio broadcast channel. C++ calls register_frame_listener per native view;
-    Rust retains receivers, active listener counts and runtime generations.
+    `src/frame_callbacks.rs` owns UI-thread callback registrations, without frame
+    IDs, broadcast channels, runtime observers or pending frame tasks. C++ registers
+    a shared callback target and owns its Rust registration; dropping it unregisters.
     PTY threads only update their own grid; VSync reads the latest grid and draws.
-    `cxx/NativeTerminalRegistration.mm` passes the extension's observer to Rust.
-    `cxx/NativeVSyncMonitorMacOS.mm` installs the SDK custom VSync monitor on macOS 14+:
-    CADisplayLink must run on the UI main run loop; the current Lynxtron BTS loop
-    does not drive the default macOS monitor. Older platforms keep the SDK fallback.
-    `cxx/NativeFrameHost.mm` only bridges native BTS/UI task queues and surfaces:
-    RAF registration/callback runs on BTS, UI rendering completes before renewal.
-    ID 0, invalid layout, detach, background and destruction stop frame renewal.
-    Queued callbacks retain weak clock/view references; stale generations cannot
-    restart a replaced runtime. No JS RAF or per-frame invoke is used.
+    `cxx/NativeVSyncMonitorMacOS.mm` owns a continuous CADisplayLink on the UI
+    main run loop (macOS 14+), with a UI timer fallback on older macOS versions.
+    Each tick calls Rust inline, and Rust invokes the native view's render callback
+    on that same UI thread. `NativeFrameCallbacks.h/mm` owns the Rust registry.
+    Detached/unbound views and background/destroyed extensions skip callbacks.
+    Check the monotonic target deadline before each callback, GPU submission and
+    presentation. Busy view/session/grid/atlas locks drop the tick without waiting.
+    Submitted GPU work must finish before returning the borrowed Lynx buffer, even
+    when the frame expires; expired output is not swapped and remains dirty.
+    No JS RAF or per-frame cross-thread task dispatch is used.
   - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
     owns the shared device, queue and mutex-protected glyph resources. Each session
     owns an instance buffer and rendered grid key through its session. Hold the shared lock
     through atlas uploads, queue submission and GPU completion; rollback clears
     the atlas and changes its generation, invalidating every view. Closing or
     rebinding a view must never clear the global atlas.
-    `src/frame.rs` defines the cxx `FrameBuffer` / `Viewport` descriptors.
-    `cxx/NativeTerminalMacOS.mm` imports the borrowed Lynx IOSurface using the
-    shared MTLDevice; wait for GPU completion before swapping buffers.
+    `src/frame.rs` defines the cxx `Viewport` and Rust-only IOSurface `FrameBuffer`.
+    `cxx/NativeTerminalMacOS.mm` acquires the buffer using its cached layout, then
+    calls Rust `render_surface(iosurface, deadline)`. Rust checks contention, idle
+    revisions, dimensions and pixel layout, creates the Metal texture with the
+    shared device, imports into wgpu and waits for GPU completion. C++ only swaps
+    and marks dirty if rendering succeeded before the deadline. No FrameInfo,
+    device pointer or per-frame viewport is returned to C++.
     Native terminal accepts only required numeric `terminal-id` and standard Lynx props.
     OnPropertiesChanged resolves that u32 ID to the session and its renderer.
     OnLayoutChanged computes the physical viewport and calls resize_viewport, which
@@ -124,7 +129,7 @@ Read the docs below in advance to help you understand the library or frameworks 
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
   - Register ordinary additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
-    terminal uses a custom extension module to receive the native VSync observer.
+    terminal uses a custom extension module to own its UI display-link lifecycle.
     add sources to `cxx/CMakeLists.txt` and types to `elements.d.ts`.
 
 ## Common Patterns

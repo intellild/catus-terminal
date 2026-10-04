@@ -138,6 +138,22 @@ impl TerminalSession {
     pub fn snapshot(&self) -> GridSnapshot {
         self.grid.lock().unwrap().snapshot()
     }
+    #[cfg(feature = "native-view")]
+    pub(crate) fn try_snapshot(&self) -> Result<Option<GridSnapshot>, String> {
+        self.try_grid(|grid| grid.snapshot())
+    }
+    #[cfg(feature = "native-view")]
+    pub(crate) fn try_revision(&self) -> Result<Option<u64>, String> {
+        self.try_grid(|grid| grid.revision())
+    }
+    #[cfg(feature = "native-view")]
+    fn try_grid<T>(&self, read: impl FnOnce(&TerminalGrid) -> T) -> Result<Option<T>, String> {
+        match self.grid.try_lock() {
+            Ok(grid) => Ok(Some(read(&grid))),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+            Err(std::sync::TryLockError::Poisoned(_)) => Err("Terminal grid lock poisoned".into()),
+        }
+    }
     pub fn revision(&self) -> u64 {
         self.grid.lock().unwrap().revision()
     }

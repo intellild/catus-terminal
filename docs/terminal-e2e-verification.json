@@ -19,7 +19,7 @@
   "checks": {
     "e2e": {
       "passed": 5,
-      "consecutiveNormalComparisonRuns": 2,
+      "consecutiveNormalComparisonRuns": 1,
       "mode": "Lynxtron windowless; same existing PNG baselines"
     },
     "screenshots": {
@@ -35,9 +35,9 @@
       "node": 1
     },
     "rust": {
-      "passed": 25,
-      "newSessionRenderingTests": 2,
-      "frameClockTests": 4
+      "passed": 28,
+      "newSessionRenderingTests": 4,
+      "frameCallbackTests": 4
     },
     "clippy": "passed with -D warnings",
     "napi": "passed",
@@ -52,8 +52,9 @@
     "Independent tab sessions and retained native element / contents on rebind",
     "First activation of another workspace and dock indicators",
     "Closing last tabs: ID 0 unbind, dock indicator removal, persistent view",
-    "Rust session framebuffer import/readback, idle frames, invalid framebuffer, DPI resize and closed handles",
-    "PNG comparator rejects a missing glyph, blank framebuffer and dimension changes"
+    "Rust imports real borrowed IOSurfaces and reads back pixels; idle/expired/busy frames, invalid handles, dimension/pixel-layout mismatches, DPI resize and closed handles",
+    "PNG comparator rejects a missing glyph, blank framebuffer and dimension changes",
+    "Direct same-thread callbacks, registration release, expired ticks and session/atlas contention without replaying old frames"
   ],
   "scope": "macOS arm64 Metal. Default E2E uses LynxWindow windowless with a fixed 2x scale and no OS focus calls. Native CADisplayLink still uses the available screen; locked-screen or displayless CI is not verified. Windowless screenshots match the existing darwin-arm64 baselines. Font/emoji/OS changes may require reviewed baselines.",
   "screenshots": [
@@ -92,5 +93,13 @@
       "sha256": "73b8ab4bd445bcfccf6e4fc31e3a343a963b8c229afeeebb4b029f3074fd4329",
       "changedPixels": 0
     }
+  ],
+  "nativeFrameFlow": [
+    "CADisplayLink on UI main run loop",
+    "Rust registered callbacks invoked synchronously on that same thread",
+    "C++ acquires Lynx IOSurface using cached layout and passes only the surface handle and deadline to Rust",
+    "Rust render_surface checks session/grid/atlas contention, revision and deadline; validates IOSurface dimensions and pixel layout",
+    "Rust creates MTLTexture on the shared wgpu device, imports it into wgpu, draws and waits for submitted GPU work to complete",
+    "C++ swaps only rendered, unexpired frames; FrameInfo/device/viewport queries have been removed"
   ]
 }

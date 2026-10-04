@@ -1,4 +1,6 @@
 {
+  "historical": true,
+  "supersededBy": "terminal-e2e-verification.json: direct UI-thread callbacks replace broadcast/queue scheduling",
   "date": "2026-10-04",
   "runtime": { "platform": "macOS arm64", "lynxtron": "0.0.28", "backend": "Metal" },
   "architecture": {

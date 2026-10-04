@@ -192,3 +192,42 @@ fn concurrent_views_keep_separate_buffers_and_failed_uploads_invalidate_all_view
     draw(&mut second, &b, &viewport, &green);
     assert!(!second.needs_grid(green.revision, &viewport).unwrap());
 }
+
+#[test]
+fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let mut renderer = create_terminal_renderer().unwrap();
+    let viewport = viewport(1.);
+    let grid = grid(&renderer, &viewport, "\x1b[?25l DROP / RETRY");
+    let target = target(&renderer);
+    let view = target.create_view(&Default::default());
+    let initial_uploads = uploads(&renderer);
+    assert!(
+        !renderer
+            .render_into_before(&view, &viewport, &grid, Some(0))
+            .unwrap()
+    );
+    assert!(renderer.needs_grid(grid.revision, &viewport).unwrap());
+    assert_eq!(uploads(&renderer), initial_uploads);
+    let shared = renderer.gpu.glyphs().unwrap();
+    assert!(
+        renderer
+            .try_needs_grid(grid.revision, &viewport)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !renderer
+            .render_into_before(&view, &viewport, &grid, Some(i64::MAX))
+            .unwrap()
+    );
+    drop(shared);
+    assert!(renderer.needs_grid(grid.revision, &viewport).unwrap());
+    assert_eq!(uploads(&renderer), initial_uploads);
+    assert!(
+        renderer
+            .render_into_before(&view, &viewport, &grid, Some(i64::MAX))
+            .unwrap()
+    );
+    assert!(!renderer.needs_grid(grid.revision, &viewport).unwrap());
+}

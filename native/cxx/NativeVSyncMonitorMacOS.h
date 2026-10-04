@@ -1,9 +1,15 @@
 #pragma once
 #include <capi/lynx_view_capi.h>
-#include <lynx_vsync_monitor.h>
+#include <functional>
+#include <memory>
 
 namespace catus {
-// macOS 14+ display links must be scheduled on the UI run loop in Lynxtron.
-std::shared_ptr<lynx::pub::LynxVSyncMonitor> InstallVSyncMonitor(lynx_view_t* view);
-void StopVSyncMonitor(const std::shared_ptr<lynx::pub::LynxVSyncMonitor>& monitor);
+class NativeVSyncSource {
+ public:
+  virtual ~NativeVSyncSource() = default;
+  virtual void Stop() = 0;
+};
+// Creates a continuous display link on the UI run loop. Callbacks run inline.
+std::shared_ptr<NativeVSyncSource> StartVSync(
+    lynx_view_t* view, std::function<void(int64_t)> callback);
 }

@@ -8,7 +8,6 @@ mod ffi {
     unsafe extern "C++" {
         include!("catus-native/src/frame.rs.h");
         type Viewport = crate::frame::Viewport;
-        type FrameBuffer = crate::frame::FrameBuffer;
     }
     extern "Rust" {
         type TerminalHandle;
@@ -16,11 +15,12 @@ mod ffi {
         fn write(self: &TerminalHandle, text: &str) -> Result<()>;
         fn key(self: &TerminalHandle, key: &str, control: bool, alt: bool) -> Result<()>;
         fn resize_viewport(self: &TerminalHandle, viewport: &Viewport) -> Result<()>;
-        fn viewport(self: &TerminalHandle) -> Result<Viewport>;
-        fn metal_device(self: &TerminalHandle) -> Result<usize>;
         fn invalidate_frame(self: &TerminalHandle);
-        fn needs_frame(self: &TerminalHandle) -> Result<bool>;
-        unsafe fn render_frame(self: &TerminalHandle, frame: &FrameBuffer) -> Result<bool>;
+        unsafe fn render_surface(
+            self: &TerminalHandle,
+            iosurface: usize,
+            deadline: i64,
+        ) -> Result<bool>;
     }
 }
 
@@ -51,6 +51,7 @@ impl TerminalHandle {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn viewport(&self) -> Result<Viewport, String> {
         self.session
             .rendering
@@ -61,22 +62,13 @@ impl TerminalHandle {
             .ok_or_else(|| "Waiting for terminal layout".into())
     }
 
-    fn metal_device(&self) -> Result<usize, String> {
-        self.session
-            .rendering
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|state| state.renderer.metal_device())
-            .ok_or_else(|| "Waiting for terminal layout".into())
-    }
-
     fn invalidate_frame(&self) {
         if let Some(state) = self.session.rendering.lock().unwrap().as_mut() {
             state.renderer.invalidate_grid();
         }
     }
 
+    #[cfg(test)]
     fn needs_frame(&self) -> Result<bool, String> {
         if let Some(error) = self.session.core.error() {
             return Err(error);
@@ -88,22 +80,43 @@ impl TerminalHandle {
             .needs_grid(self.session.core.revision(), &state.viewport)
     }
 
-    // SAFETY: Native view lends an exclusive framebuffer on this session's MTLDevice.
-    unsafe fn render_frame(&self, frame: &FrameBuffer) -> Result<bool, String> {
-        let mut rendering = self.session.rendering.lock().unwrap();
-        let state = rendering.as_mut().ok_or("Waiting for terminal layout")?;
-        if !state
-            .renderer
-            .needs_grid(self.session.core.revision(), &state.viewport)?
-        {
+    // SAFETY: C++ lends a live IOSurfaceRef exclusively until this returns.
+    // Submitted GPU writes must finish even if the frame expires. Busy/idle/
+    // expired ticks return false without retaining pending frame work.
+    unsafe fn render_surface(&self, iosurface: usize, deadline: i64) -> Result<bool, String> {
+        if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }
-        let snapshot = self.session.core.snapshot();
-        unsafe {
-            state
-                .renderer
-                .render_grid(frame, &state.viewport, &snapshot)?;
+        let Some(mut rendering) = try_lock(&self.session.rendering)? else {
+            return Ok(false);
+        };
+        let state = rendering.as_mut().ok_or("Waiting for terminal layout")?;
+        let Some(revision) = self.session.core.try_revision()? else {
+            return Ok(false);
+        };
+        if state.renderer.try_needs_grid(revision, &state.viewport)? != Some(true) {
+            return Ok(false);
         }
-        Ok(true)
+        let Some(snapshot) = self.session.core.try_snapshot()? else {
+            return Ok(false);
+        };
+        unsafe {
+            state.renderer.render_grid(
+                &FrameBuffer { iosurface },
+                &state.viewport,
+                &snapshot,
+                deadline,
+            )
+        }
+    }
+}
+
+fn try_lock<T>(
+    mutex: &std::sync::Mutex<T>,
+) -> Result<Option<std::sync::MutexGuard<'_, T>>, String> {
+    match mutex.try_lock() {
+        Ok(guard) => Ok(Some(guard)),
+        Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+        Err(std::sync::TryLockError::Poisoned(_)) => Err("Terminal renderer lock poisoned".into()),
     }
 }

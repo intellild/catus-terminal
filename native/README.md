@@ -14,8 +14,8 @@ native/
   src/terminal_session.rs      u32 session 注册表、PTY 和 session renderer 生命周期
   src/terminal_view.rs         cxx 桥、layout resize / revision 与 view 适配
   src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
-  src/frame.rs                 FrameBuffer / Viewport 描述和 cxx 共享类型
-  src/frame_clock.rs           native VSync、全局 broadcast 和 Rust 监听生命周期
+  src/frame.rs                 Rust IOSurface FrameBuffer / cxx Viewport
+  src/frame_callbacks.rs       UI 线程同步回调注册与过期帧丢弃
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
   src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
   src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
@@ -27,8 +27,8 @@ native/
     NativeInputRust.cc         C++ → Rust 调用
     NativeInputMacOS.mm        AppKit 输入框实现
     NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal view
-    NativeTerminalRegistration.mm  extension 生命周期和 observer 注入
-    NativeFrameHost.h/mm       BTS/UI task queue 的 cxx 桥接
+    NativeTerminalRegistration.mm  extension 生命周期和 display link
+    NativeFrameCallbacks.h/mm  Rust 注册对象与 native render callback
     NativeVSyncMonitorMacOS.h/mm  UI main run loop 上的 macOS display link
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
@@ -87,7 +87,7 @@ PTY 读写线程。`terminal_session.rs` 管理生命周期，`terminal_view.rs`
 字体 advance、line height（含 CoreText leading）和 padding 计算行列，resize PTY。
 属性晚于 layout 到达时，绑定 session 后应用缓存的 layout；UI 不传宽高或行列参数。
 `renderFrame()` 只读取 session 的 renderer/viewport、检查 revision、生成快照并绘制。
-`renderer.rs` 接收计算后的网格、`FrameBuffer { metal_texture }` 和 session 的
+`renderer.rs` 接收计算后的网格、`FrameBuffer { iosurface }` 和 session 的
 viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 
 | native-terminal 接口 | 用途 |
@@ -98,22 +98,22 @@ viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-`frame_clock.rs` 使用一个全局 `LazyLock<tokio::sync::broadcast::Sender<FrameTick>>`。
-C++ view 调用 Rust 的 `register_frame_listener()`，receiver 保留在 Rust，按 LynxView
-clock ID 和 runtime generation 过滤信号，落后时合并 tick，绘制最新网格。
-`NativeTerminalRegistration.mm` 在 extension `OnRuntimeAttach` 中把 VSync observer 交给 Rust。
-macOS 14+ 在 `OnLynxViewCreate` 安装 SDK custom VSync monitor，使 `CADisplayLink`
-运行于 UI main run loop，避免当前 Lynxtron 默认 monitor 的 BTS run loop 不产生帧回调。
-Rust 管理注册、续订、监听生命周期和在途帧；`NativeFrameHost.mm` 仅桥接 Lynx SDK 的
-BTS task queue、native RAF 和 macOS UI task queue。RAF 注册/回调在 BTS，surface
-绘制在 UI；完成 GPU wait 和 SwapBack 后才续订下一帧，避免帧重叠。
+`frame_callbacks.rs` 保存弱引用的回调注册，C++ view 调用 `register_frame_callback()`，
+持有 registration；销毁 view 时清除 C++ render callback 并释放注册。
+`NativeTerminalRegistration.mm` 在 UI 生命周期里启动、停止原生 display link。
+macOS 14+ 的 `CADisplayLink` 在 UI main run loop 上持续触发；旧版 macOS 使用 60Hz UI timer。
+VSync 同步调用 Rust，Rust 直接执行 C++ view 的渲染回调，整个调用链在同一 UI 线程上。
+没有帧 ID、broadcast、BTS observer、在途帧队列或每帧跨线程投递。
+每个回调都检查本次 VSync 的 monotonic deadline；view/session/grid/atlas 锁忙则直接丢帧。
+提交前过期丢弃 encoder 并撤销未上传的 atlas handles；提交后过期先等待 GPU 完成，
+再丢弃呈现，保持网格 dirty。不会把还在写入的借用 buffer 还给 Lynx，也不会重放旧帧。
 PTY 读线程只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
-ID 0、零尺寸、detach、后台和销毁停止续订；重新激活丢弃旧 tick，runtime 重建使旧回调失效。
-Rust 测试在 `src/tests/frame_clock.rs`，覆盖共享广播、独立窗口、慢 receiver、帧串行与生命周期。
+ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
+Rust 测试在 `src/tests/frame_callbacks.rs`，覆盖同步执行、同线程、过期帧、注销和生命周期。
 `src/tests/terminal_rendering.rs` 使用真实 portable-pty 启动
-`../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_frame` 导入 framebuffer 并回读
-Metal 像素。覆盖网格更新、空闲跳帧、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
+`../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
+Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
 `src/tests/renderer_support.rs` 仅在测试中编译，保留 GPU 实现的私有可见性。
 桌面自动化与截图对比通过根目录 `pnpm run test:e2e` 运行。
 逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
@@ -123,9 +123,12 @@ Metal 像素。覆盖网格更新、空闲跳帧、坏 framebuffer、重新绑�
 
 `native-terminal` 使用 `CatusNativeTerminalElement` 注册，启用
 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
-`IOSurfaceRef`。C++ 用 Rust renderer 的 `MTLDevice` 创建对应的 BGRA8Unorm
-texture，通过 cxx 交给 Rust wgpu 导入并绘制；GPU 完成后才 `SwapBack` 和
-`MarkDirty`。没有独立的 NSView 或 CAMetalLayer。
+`IOSurfaceRef`。C++ 用缓存的 layout 获取 buffer，直接调用 Rust 的
+`render_surface(iosurface, deadline)`；Rust 内部检查锁忙、idle revision、尺寸和
+像素布局，使用全局共享 MTLDevice 创建 BGRA8Unorm texture，再导入 wgpu 绘制。
+Rust 等待已提交 GPU 工作完成；C++ 仅在返回已绘制且未过期时 `SwapBack` 和
+`MarkDirty`。FrameInfo 已删除，device 和 viewport 不再每帧回传 C++。
+没有独立的 NSView 或 CAMetalLayer。
 
 `renderer.rs` 使用全局 `LazyLock<Result<GpuContext, String>>` 惰性创建一次 device、
 queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。

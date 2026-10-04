@@ -1,11 +1,8 @@
-#include "NativeFrameHost.h"
-#include "catus-native/src/frame_clock.rs.h"
+#include "NativeFrameCallbacks.h"
+#include "catus-native/src/frame_callbacks.rs.h"
 #include <lynx_native_view.h>
 #include "catus-native/src/terminal_view.rs.h"
 #include "rust/cxx.h"
-
-#import <Metal/Metal.h>
-#import <IOSurface/IOSurface.h>
 
 #include <cmath>
 #include <mutex>
@@ -19,16 +16,17 @@ using lynx::pub::LynxValue;
 
 class NativeTerminalView : public lynx::pub::LynxNativeView {
  public:
-  explicit NativeTerminalView(std::shared_ptr<catus::NativeFrameHost> host)
-      : frame_host_(std::move(host)), frame_target_(frame_host_->RegisterListener()) {
-    frame_target_->render = [this] {
-      std::lock_guard lock(mutex_);
-      Render();
+  explicit NativeTerminalView(std::shared_ptr<catus::NativeFrameCallbacks> host)
+      : frame_callbacks_(std::move(host)), frame_target_(std::make_shared<catus::NativeFrameTarget>()),
+        frame_registration_(frame_callbacks_->callbacks().register_frame_callback(frame_target_)) {
+    frame_target_->render = [this](int64_t deadline) {
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (lock.owns_lock() && catus::monotonic_now_ns() < deadline) Render(deadline);
     };
   }
 
   ~NativeTerminalView() override {
-    frame_target_->listener->set_active(false);
+    frame_registration_->set_active(false);
     frame_target_->render = nullptr;
   }
 
@@ -148,7 +146,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 
  private:
   void UpdateFrameLoop() {
-    frame_target_->listener->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
+    frame_registration_->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
         viewport_.width != 0 && viewport_.height != 0);
   }
 
@@ -159,46 +157,24 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     }
   }
 
-  bool Render() {
+  bool Render(int64_t deadline = std::numeric_limits<int64_t>::max()) {
+    if (catus::monotonic_now_ns() >= deadline) return true;
     if (terminal_id_ == 0) return true;
     if (!attached_ || !terminal_ || viewport_.width == 0 || viewport_.height == 0) {
       error_ = "Waiting for an attached terminal and non-zero layout";
       return false;
     }
     try {
-      if (!(*terminal_)->needs_frame()) {
-        error_.clear();
-        FocusAfterFirstFrame();
-        return true;
-      }
-      const auto viewport = (*terminal_)->viewport();
-      // Borrowed IOSurface; Lynx owns its double buffer and presentation.
-      auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(viewport.width, viewport.height));
+      // Lynx owns the IOSurface. Rust imports it and finishes GPU writes before return.
+      auto* surface = AcquireSurface(viewport_.width, viewport_.height);
       if (surface == nullptr) {
         error_ = "Lynx back buffer is unavailable";
         return false;
       }
-      if (IOSurfaceGetWidth(surface) != viewport.width || IOSurfaceGetHeight(surface) != viewport.height ||
-          IOSurfaceGetBytesPerElement(surface) != 4) {
-        error_ = "Unexpected Lynx IOSurface dimensions or pixel layout";
-        return false;
-      }
-      @autoreleasepool {
-        // Use wgpu's actual MTLDevice, not a separately created Metal device.
-        id<MTLDevice> device = (__bridge id<MTLDevice>)(void*)(*terminal_)->metal_device();
-        auto desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-            width:viewport.width height:viewport.height mipmapped:NO];
-        desc.usage = MTLTextureUsageRenderTarget;
-        desc.storageMode = MTLStorageModeShared;
-        id<MTLTexture> texture = [device newTextureWithDescriptor:desc iosurface:surface plane:0];
-        if (texture == nil) {
-          error_ = "Metal could not import the Lynx IOSurface";
-          return false;
-        }
-        // Rust retains the texture and waits for GPU completion before return.
-        const auto handle = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-        const catus::FrameBuffer frame{handle};
-        if (!(*terminal_)->render_frame(frame)) return true;
+      if (!(*terminal_)->render_surface(reinterpret_cast<uintptr_t>(surface), deadline)) return true;
+      if (catus::monotonic_now_ns() >= deadline) {
+        (*terminal_)->invalidate_frame();
+        return true;
       }
       if (!SwapBack()) {
         (*terminal_)->invalidate_frame();
@@ -216,8 +192,9 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
 
   std::mutex mutex_;
-  std::shared_ptr<catus::NativeFrameHost> frame_host_;
+  std::shared_ptr<catus::NativeFrameCallbacks> frame_callbacks_;
   std::shared_ptr<catus::NativeFrameTarget> frame_target_;
+  rust::Box<catus::FrameRegistration> frame_registration_;
   std::optional<rust::Box<catus::TerminalHandle>> terminal_;
   uint32_t terminal_id_ = 0;
   catus::Viewport viewport_{};
@@ -229,6 +206,6 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 }  // namespace
 
 lynx_native_view_t* catus::CreateNativeTerminalView(void* opaque) {
-  auto host = static_cast<NativeFrameHost*>(opaque)->shared_from_this();
+  auto host = static_cast<NativeFrameCallbacks*>(opaque)->shared_from_this();
   return (new NativeTerminalView(std::move(host)))->native_view();
 }

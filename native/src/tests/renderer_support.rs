@@ -1,115 +1,102 @@
 use super::*;
+use objc2_core_foundation::{CFDictionary, CFNumber};
+use objc2_io_surface::{
+    IOSurfaceLockOptions, kIOSurfaceBytesPerElement, kIOSurfaceBytesPerRow, kIOSurfaceHeight,
+    kIOSurfacePixelFormat, kIOSurfaceWidth,
+};
 
 // All tests that deliberately invalidate the shared atlas must hold this lock.
 pub(crate) static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+// Real IOSurface storage exercises the same native-buffer import as Lynx.
 pub(crate) struct Target {
-    texture: wgpu::Texture,
-    gpu: &'static GpuContext,
-    viewport: Viewport,
+    surface: CFRetained<IOSurfaceRef>,
 }
 
 impl Target {
-    pub(crate) fn new(renderer: &TerminalRenderer, viewport: Viewport) -> Self {
-        let gpu = renderer.gpu;
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Session framebuffer test"),
-            size: wgpu::Extent3d {
-                width: viewport.width,
-                height: viewport.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        // Initialize wgpu's original handle before importing the same Metal texture
-        // as an external framebuffer, so readback does not clear external writes.
-        let view = texture.create_view(&Default::default());
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        {
-            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-        }
-        gpu.queue.submit([encoder.finish()]);
-        Self {
-            texture,
-            gpu,
-            viewport,
-        }
+    pub(crate) fn new(viewport: Viewport) -> Self {
+        Self::with_bytes_per_element(viewport, 4)
     }
 
-    pub(crate) fn frame(&self) -> FrameBuffer {
-        let hal = unsafe { self.texture.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
-        FrameBuffer {
-            metal_texture: hal.raw_handle() as *const _ as usize,
+    pub(crate) fn with_bytes_per_element(viewport: Viewport, bytes: u32) -> Self {
+        let values = [
+            CFNumber::new_i64(viewport.width.into()),
+            CFNumber::new_i64(viewport.height.into()),
+            CFNumber::new_i64(bytes.into()),
+            CFNumber::new_i64(((viewport.width * bytes).div_ceil(256) * 256).into()),
+            CFNumber::new_i64(
+                u32::from_be_bytes(if bytes == 4 { *b"BGRA" } else { *b"L008" }).into(),
+            ),
+        ];
+        // IOSurface keys are CFStrings; numeric layout values are CFNumbers.
+        let properties = CFDictionary::from_slices(
+            &unsafe {
+                [
+                    kIOSurfaceWidth,
+                    kIOSurfaceHeight,
+                    kIOSurfaceBytesPerElement,
+                    kIOSurfaceBytesPerRow,
+                    kIOSurfacePixelFormat,
+                ]
+            },
+            &values.iter().map(|value| &**value).collect::<Vec<_>>(),
+        );
+        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }.unwrap();
+        let target = Self { surface };
+        let _lock = SurfaceLock::new(&target.surface, IOSurfaceLockOptions::empty());
+        // Initialize the owned allocation to make skipped-frame comparisons deterministic.
+        unsafe {
+            target
+                .surface
+                .base_address()
+                .as_ptr()
+                .cast::<u8>()
+                .write_bytes(0, target.surface.alloc_size());
         }
+        drop(_lock);
+        target
+    }
+
+    pub(crate) fn surface(&self) -> usize {
+        CFRetained::as_ptr(&self.surface).as_ptr() as usize
     }
 
     pub(crate) fn pixels(&self) -> Vec<u8> {
-        let Viewport { width, height, .. } = self.viewport;
-        let stride = (width * 4).div_ceil(256) * 256;
-        let buffer = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: (stride * height) as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(stride),
-                    rows_per_image: Some(height),
-                },
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
+        // render_surface waits for GPU completion; lock before CPU readback.
+        let _lock = SurfaceLock::new(&self.surface, IOSurfaceLockOptions::ReadOnly);
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                self.surface.base_address().as_ptr().cast::<u8>(),
+                self.surface.alloc_size(),
+            )
+        };
+        bytes
+            .chunks_exact(self.surface.bytes_per_row())
+            .take(self.surface.height())
+            .flat_map(|row| {
+                row[..self.surface.width() * self.surface.bytes_per_element()]
+                    .iter()
+                    .copied()
+            })
+            .collect()
+    }
+}
+
+struct SurfaceLock<'a> {
+    surface: &'a IOSurfaceRef,
+    options: IOSurfaceLockOptions,
+}
+impl<'a> SurfaceLock<'a> {
+    fn new(surface: &'a IOSurfaceRef, options: IOSurfaceLockOptions) -> Self {
+        assert_eq!(unsafe { surface.lock(options, std::ptr::null_mut()) }, 0);
+        Self { surface, options }
+    }
+}
+impl Drop for SurfaceLock<'_> {
+    fn drop(&mut self) {
+        assert_eq!(
+            unsafe { self.surface.unlock(self.options, std::ptr::null_mut()) },
+            0
         );
-        self.gpu.queue.submit([encoder.finish()]);
-        let (tx, rx) = std::sync::mpsc::channel();
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                tx.send(result).unwrap();
-            });
-        self.gpu
-            .device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-        rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
-        let pixels = buffer
-            .slice(..)
-            .get_mapped_range()
-            .unwrap()
-            .chunks_exact(stride as usize)
-            .flat_map(|row| row[..width as usize * 4].iter().copied())
-            .collect();
-        buffer.unmap();
-        pixels
     }
 }

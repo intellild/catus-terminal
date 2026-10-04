@@ -6,7 +6,7 @@ pub mod font;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod frame;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
-mod frame_clock;
+mod frame_callbacks;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod renderer;
 pub mod terminal_core;

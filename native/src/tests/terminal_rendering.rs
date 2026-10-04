@@ -52,12 +52,11 @@ fn layout(handle: &TerminalHandle, viewport: Viewport) -> Target {
     handle.resize_viewport(&viewport).unwrap();
     let size = handle.session.core.snapshot().size;
     wait_text(handle, &format!("SIZE {}x{}", size.columns, size.rows));
-    let state = handle.session.rendering.lock().unwrap();
-    Target::new(&state.as_ref().unwrap().renderer, viewport)
+    Target::new(viewport)
 }
 fn render(handle: &TerminalHandle, target: &Target) -> bool {
-    // Target owns a live BGRA8 texture from this session's shared Metal device.
-    unsafe { handle.render_frame(&target.frame()).unwrap() }
+    // Target owns an IOSurface borrowed by the synchronous Rust render call.
+    unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() }
 }
 
 #[test]
@@ -99,7 +98,7 @@ fn pty_session_renders_updates_to_borrowed_framebuffer_and_skips_idle_frames() {
     handle.invalidate_frame();
     assert!(handle.needs_frame().unwrap());
     // A rejected framebuffer must not mark this grid as already presented.
-    assert!(unsafe { handle.render_frame(&FrameBuffer { metal_texture: 0 }) }.is_err());
+    assert!(unsafe { handle.render_surface(0, i64::MAX) }.is_err());
     assert!(handle.needs_frame().unwrap());
     assert!(render(&handle, &target));
     assert_eq!(target.pixels(), updated);
@@ -163,4 +162,74 @@ fn rebinding_and_dpi_resize_keep_session_renderer_and_isolate_session_contents()
     assert!(acquire_terminal(first.0).is_err());
     assert!(rebound.write("x").is_err());
     assert!(b.write("still alive").is_ok());
+}
+
+#[test]
+fn session_drops_expired_and_busy_frames_then_renders_the_latest_grid() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let session = FakeSession::new(2004);
+    let handle = session.handle();
+    let viewport = Viewport {
+        width: 512,
+        height: 256,
+        pixel_ratio: 1.,
+    };
+    let target = layout(&handle, viewport);
+    wait_text(&handle, "FAKE PTY READY");
+    let initial = target.pixels();
+    assert!(!unsafe { handle.render_surface(target.surface(), 0).unwrap() });
+    assert_eq!(target.pixels(), initial);
+    assert!(handle.needs_frame().unwrap());
+    let held = handle.session.rendering.lock().unwrap();
+    assert!(!unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() });
+    drop(held);
+    handle.write("update\r").unwrap();
+    wait_text(&handle, "FAKE PTY UPDATED");
+    assert!(unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() });
+    assert!(
+        target
+            .pixels()
+            .chunks_exact(4)
+            .any(|pixel| pixel[..3] == [225, 158, 108])
+    );
+    assert!(!handle.needs_frame().unwrap());
+}
+
+#[test]
+fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let session = FakeSession::new(2005);
+    let handle = session.handle();
+    let viewport = Viewport {
+        width: 512,
+        height: 256,
+        pixel_ratio: 1.,
+    };
+    let valid = layout(&handle, viewport);
+    wait_text(&handle, "FAKE PTY READY");
+    let wrong_size = Target::new(Viewport {
+        width: 128,
+        ..viewport
+    });
+    assert!(
+        unsafe { handle.render_surface(wrong_size.surface(), i64::MAX) }
+            .unwrap_err()
+            .contains("dimensions or pixel layout")
+    );
+    assert!(handle.needs_frame().unwrap());
+    let wrong_pixels = Target::with_bytes_per_element(viewport, 1);
+    assert!(
+        unsafe { handle.render_surface(wrong_pixels.surface(), i64::MAX) }
+            .unwrap_err()
+            .contains("dimensions or pixel layout")
+    );
+    assert!(handle.needs_frame().unwrap());
+    assert!(render(&handle, &valid));
+    assert!(
+        valid
+            .pixels()
+            .chunks_exact(4)
+            .any(|pixel| pixel[..3] == [77, 77, 205])
+    );
+    assert!(!handle.needs_frame().unwrap());
 }
