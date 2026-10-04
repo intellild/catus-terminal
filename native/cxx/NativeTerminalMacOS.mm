@@ -62,11 +62,17 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     const auto type = value.Type();
     if (type != lynx_value_double && type != lynx_value_int32 && type != lynx_value_int64) return;
     const double number = value.Number();
-    if (!std::isfinite(number) || number <= 0 ||
+    if (!std::isfinite(number) || number < 0 ||
         number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number) return;
     std::lock_guard lock(mutex_);
     const auto id = static_cast<uint32_t>(number);
     if (id == terminal_id_) return;
+    if (id == 0) {
+      terminal_.reset();
+      terminal_id_ = 0;
+      error_.clear();
+      return;
+    }
     try {
       auto terminal = catus::acquire_terminal(id);
       if (viewport_.width != 0 && viewport_.height != 0) terminal->resize_viewport(viewport_);
@@ -122,6 +128,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 
  private:
   bool Render() {
+    if (terminal_id_ == 0) return true;
     if (!attached_ || !terminal_ || viewport_.width == 0 || viewport_.height == 0) {
       error_ = "Waiting for an attached terminal and non-zero layout";
       return false;

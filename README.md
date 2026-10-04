@@ -112,8 +112,8 @@ owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal FrameBuffer 对�
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
 
 ```text
-TerminalView.tsx（BTS）/ preload.ts
-  mount → createTerminalSession() → u32 ID → 账户默认 shell / portable-pty
+TerminalView.tsx / useTerminalSession.ts（BTS）/ preload.ts
+  新增 tab → createTerminalSession() → u32 ID → 账户默认 shell / portable-pty
        ↓
 NativeTerminalView.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
@@ -145,15 +145,20 @@ GPU 完成 → Lynx SwapBack / MarkDirty
 
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
-外层 TerminalView 随 tab 保持挂载，切换 tab 只重建内层 native view，保留 session 和 renderer；
-关闭 tab 或内容组件卸载调用 closeTerminalSession(id)，异步结束 shell。字体逐字符栅格化；尚未实现 IME、
+TerminalView 和 NativeTerminalView 在内容区仅挂载一次，切换 tab 更新 terminal-id，保留 session 和 renderer。
+useTerminalSession hook 维护 tab 到 session ID 的映射；关闭 tab 或内容组件卸载时调用
+closeTerminalSession(id)，异步结束 shell。没有选中 tab 时传 ID 0 解绑并隐藏 view，RAF 跳过绘制；
+loading 和配置错误不会卸载 native element。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
 
 `native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
 `terminal_pty.rs` 验证真实 shell 往返、resize、退出；`renderer.rs` 验证真实网格
 在 Metal 上绘制和回读、颜色与 atlas 复用。`test:napi` 同时验证默认 shell 导出。
 数字 ID、props 切换、session renderer 保留及真实 layout resize 见
-[session 验证报告](docs/terminal-session-verification.json)。
+[session 验证报告](docs/terminal-session-verification.json)；该报告记录单一 view 重构之前的实现。
+当前 UI 回归测试还验证切换、空 workspace、重建 tab 和错误重试过程中始终复用同一 native element。
+实际保留元素引用的 ID 切换及 ID 0 解绑验证见
+[持续挂载 view 验证报告](docs/terminal-persistent-view-verification.json)。
 实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
 本次桌面实测通过 DevTool 手动调用 renderFrame；电脑锁屏，窗口持续 RAF 与
 真实键盘输入尚未完成实测，RAF 续帧/取消已由单元测试覆盖。

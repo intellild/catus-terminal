@@ -70,51 +70,57 @@ export function TerminalContent({
               <text className="text-[12px] font-bold text-[#20392f]">Try again</text>
             </view>
           </view>
-        ) : (
-          <>
-            <view className="h-[55px] py-0 px-[24px] flex flex-row items-center justify-between shrink-0">
-              <view className="flex flex-row items-center gap-[10px] flex-1 min-w-0">
-                <text className="text-[18px] text-[#778b86]">~</text>
-                <text
-                  id="session-directory"
-                  className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {activeTab ? 'Default shell · home directory' : 'Choose a workspace'}
-                </text>
-              </view>
+        ) : null}
+        <>
+          <view
+            className={
+              error
+                ? 'hidden'
+                : 'h-[55px] py-0 px-[24px] flex flex-row items-center justify-between shrink-0'
+            }
+          >
+            <view className="flex flex-row items-center gap-[10px] flex-1 min-w-0">
+              <text className="text-[18px] text-[#778b86]">~</text>
               <text
-                id="session-label"
-                className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]"
+                id="session-directory"
+                className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
               >
-                {activeTab ? `SESSION ${String(activeTab.number).padStart(2, '0')}` : 'NO SESSION'}
+                {activeTab ? 'Default shell · home directory' : 'Choose a workspace'}
               </text>
             </view>
-            {children}
-            {!children || !activeTab ? (
-              <view className="flex-1 flex flex-col items-center justify-center p-[24px]">
-                <text id="terminal-placeholder" className="text-[18px] text-[#7c8998]">
-                  {loading ? 'Getting things ready.' : 'Open a terminal tab in this workspace.'}
-                </text>
-                {!loading && !activeTab ? (
-                  <view
-                    id="start-terminal"
-                    className="p-[12px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
-                    bindtap={onAdd}
-                  >
-                    <text className="text-[12px] text-[#20392f]">+ New terminal</text>
-                  </view>
-                ) : null}
-              </view>
-            ) : null}
-            <view className="py-[17px] px-[24px] flex flex-row justify-between shrink-0">
-              <text className="text-[9px] text-[#596574]">
-                {workspace?.name ?? 'Catus'} ·{' '}
-                {activeTab ? `Tab ${activeTab.number}` : 'No open tabs'}
+            <text id="session-label" className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]">
+              {activeTab ? `SESSION ${String(activeTab.number).padStart(2, '0')}` : 'NO SESSION'}
+            </text>
+          </view>
+          {children}
+          {!error && (!children || !activeTab) ? (
+            <view className="flex-1 flex flex-col items-center justify-center p-[24px]">
+              <text id="terminal-placeholder" className="text-[18px] text-[#7c8998]">
+                {loading ? 'Getting things ready.' : 'Open a terminal tab in this workspace.'}
               </text>
-              <text className="text-[9px] text-[#596574]">Default shell</text>
+              {!loading && !activeTab ? (
+                <view
+                  id="start-terminal"
+                  className="p-[12px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
+                  bindtap={onAdd}
+                >
+                  <text className="text-[12px] text-[#20392f]">+ New terminal</text>
+                </view>
+              ) : null}
             </view>
-          </>
-        )}
+          ) : null}
+          <view
+            className={
+              error ? 'hidden' : 'py-[17px] px-[24px] flex flex-row justify-between shrink-0'
+            }
+          >
+            <text className="text-[9px] text-[#596574]">
+              {workspace?.name ?? 'Catus'} ·{' '}
+              {activeTab ? `Tab ${activeTab.number}` : 'No open tabs'}
+            </text>
+            <text className="text-[9px] text-[#596574]">Default shell</text>
+          </view>
+        </>
       </view>
     </>
   );

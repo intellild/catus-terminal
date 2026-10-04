@@ -1,10 +1,23 @@
 import 'background-only';
-import { useMainThreadRef } from '@lynx-js/react';
+import { useCallback, useMainThreadRef } from '@lynx-js/react';
 import type { MainThreadRef } from '@lynx-js/react';
 import type { KeyEvent, MainThread } from '@lynx-js/types';
 
 export function NativeTerminalView({ sessionId }: { sessionId: number }) {
   const frameLoop = useMainThreadRef<FrameLoop | null>(null);
+  const attach = useCallback(
+    (element: MainThread.Element | null) => {
+      'main thread';
+      stopFrames(frameLoop);
+      if (!element) return;
+      frameLoop.current = { element, request: 0, stopped: false, needsFocus: true };
+      requestFrame(frameLoop);
+      return () => {
+        stopFrames(frameLoop);
+      };
+    },
+    [frameLoop],
+  );
 
   const key = (event: KeyEvent) => {
     'background only';
@@ -20,29 +33,15 @@ export function NativeTerminalView({ sessionId }: { sessionId: number }) {
       .exec();
   };
   return (
-    <view className="flex-1 min-h-0 flex flex-col [-x-app-region:no-drag]">
-      {sessionId ? (
-        <native-terminal
-          key={sessionId}
-          id="terminal-surface"
-          terminal-id={sessionId}
-          focusable
-          className="flex-1 w-full min-h-0"
-          main-thread:ref={(element) => {
-            'main thread';
-            stopFrames(frameLoop);
-            if (!element) return;
-            frameLoop.current = { element, request: 0, stopped: false, needsFocus: true };
-            requestFrame(frameLoop);
-            return () => {
-              stopFrames(frameLoop);
-            };
-          }}
-          bindtap={focus}
-          catchkeydown={key}
-        />
-      ) : null}
-    </view>
+    <native-terminal
+      id="terminal-surface"
+      terminal-id={sessionId}
+      focusable
+      className={sessionId === 0 ? 'hidden' : 'flex-1 w-full min-h-0'}
+      main-thread:ref={attach}
+      bindtap={focus}
+      catchkeydown={key}
+    />
   );
 }
 
@@ -74,6 +73,10 @@ function requestFrame(ref: MainThreadRef<FrameLoop | null>) {
   if (!loop || loop.stopped) return;
   loop.request = requestAnimationFrame(() => {
     if (loop.stopped) return;
+    if (!Number(loop.element.getAttribute('terminal-id'))) {
+      requestFrame(ref);
+      return;
+    }
     // Schedule only after the native method finishes; idle grids do not draw.
     loop.element.invoke('renderFrame').then(
       () => {

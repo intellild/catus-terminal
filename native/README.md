@@ -63,11 +63,13 @@ native/
 ## 终端对象和帧接口
 
 `createTerminalSession()` 是 napi-rs 导出的默认 shell 创建函数，返回正整数 `u32`。
-`TerminalView` 在 mount 时调用它，把数字 ID 传给内层 `NativeTerminalView`；
-unmount 时调用 `closeTerminalSession(id)` 删除注册项并关闭 PTY。
+单一 `TerminalView` 通过 `useTerminalSession` hook 维护 tab → 数字 ID 的映射，
+新 tab 创建 session、关闭 tab 删除对应 session，整个内容区 unmount 时关闭剩余 session。
+`TerminalView` 与 `NativeTerminalView` 持续挂载，切换 tab 只更新 `terminal-id`，无需 active 或 key。
+没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，RAF 跳过绘制；loading/配置错误也保持挂载。
 注册表强引用 session；每个 session 拥有计算层和带锁的 renderer/viewport。
 renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
-切换 tab 保持外层组件挂载，只卸载/重建 native view，保留 shell 和 renderer。
+切换 tab 保留同一个 native element、shell 和 renderer，由 OnPropertiesChanged 更新 session 绑定。
 C++ 的 `OnPropertiesChanged` 校验数字 ID，并取得共享 `TerminalHandle`。
 诊断/主机 API 为 `writeTerminalSession(id, text)` 和 `getTerminalSessionInfo(id)`。
 
@@ -82,7 +84,7 @@ viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
-| `terminal-id: number` | 绑定 u32 session ID |
+| `terminal-id: number` | 正数绑定 u32 session ID，0 解绑 |
 | `renderFrame()` | 使用 session 的 viewport 绘制最新网格，空闲时跳过 GPU；成功返回 true |
 | `focus()` | 获得 Lynx 键盘焦点 |
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |

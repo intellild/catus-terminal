@@ -4,7 +4,7 @@ import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/tes
 import defaults from '../../../config/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
-import type { TerminalHost } from '../components/TerminalView';
+import type { TerminalHost } from '../state/useTerminalSession';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
 beforeEach(() => {
@@ -38,6 +38,14 @@ beforeEach(() => {
   });
 });
 
+async function waitForTerminal() {
+  await rstest.waitFor(() =>
+    expect(
+      Number(elementTree.root!.querySelector('#terminal-surface')?.getAttribute('terminal-id')),
+    ).toBeGreaterThan(0),
+  );
+}
+
 function makeHost() {
   const payload = {
     config: parseWorkspaceConfig(defaults),
@@ -70,15 +78,52 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
+test('the native view stays mounted through empty/loading/error states and skips frames without a session', async () => {
+  const main = lynxTestingEnv.mainThread.globalThis;
+  const pending: Array<() => void> = [];
+  const raf = rstest.fn((callback: () => void) => {
+    pending.push(callback);
+    return pending.length;
+  });
+  Object.assign(main, { requestAnimationFrame: raf });
+  Object.assign(main.lynx, { requestAnimationFrame: raf });
+  const host = makeHost();
+  rstest.mocked(host.loadWorkspaces).mockRejectedValueOnce(new Error('Temporary config error'));
+  const { unmount } = render(<App host={host} />);
+  const root = elementTree.root!;
+  await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
+  const surface = root.querySelector('#terminal-surface')!;
+  expect(Number(surface.getAttribute('terminal-id'))).toBe(0);
+  await rstest.waitFor(() => expect(pending).toHaveLength(1));
+  lynxTestingEnv.switchToMainThread();
+  try {
+    pending[0]!();
+    expect(main.__InvokeUIMethod).not.toHaveBeenCalled();
+    expect(pending).toHaveLength(2);
+  } finally {
+    lynxTestingEnv.switchToBackgroundThread();
+  }
+  fireEvent.tap(root.querySelector('#retry-config')!);
+  await waitForTerminal();
+  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(pending).toHaveLength(2);
+  const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
+  expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
+  expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
+  unmount();
+  expect(terminalHost.closeTerminalSession).toHaveBeenCalledOnce();
+});
+
 test('Lynx tabs and dock indicators follow workspace startup, switching, creation and closing', async () => {
   render(<App host={makeHost()} />, { enableMainThread: true });
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
-  await rstest.waitFor(() => expect(root.querySelector('#terminal-surface')).not.toBeNull());
+  await waitForTerminal();
   expect(root.querySelector('#session-directory')?.textContent).toBe(
     'Default shell · home directory',
   );
-  const firstId = root.querySelector('#terminal-surface')?.getAttribute('terminal-id');
+  const surface = root.querySelector('#terminal-surface')!;
+  const firstId = surface.getAttribute('terminal-id');
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(root.querySelector('#running-shell')).not.toBeNull();
@@ -96,6 +141,7 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
     expect(root.querySelector('#terminal-surface')?.getAttribute('terminal-id')).toBe(firstId),
   );
   expect(root.querySelector('#tab-2')).toBeNull();
+  expect(root.querySelector('#terminal-surface')).toBe(surface);
   expect(terminalHost.createTerminalSession).toHaveBeenCalledTimes(3);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#workspace-node')!);
@@ -105,10 +151,14 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   await findByText('Open a terminal tab in this workspace.');
   expect(root.querySelector('#running-node')).toBeNull();
   expect(root.querySelector('#running-shell')).not.toBeNull();
+  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  await rstest.waitFor(() => expect(Number(surface.getAttribute('terminal-id'))).toBe(0));
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledTimes(2);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
   fireEvent.tap(root.querySelector('#start-terminal')!);
   await findByText('Node.js 4');
+  await waitForTerminal();
+  expect(root.querySelector('#terminal-surface')).toBe(surface);
 });
 
 test('workspace editor persists JSON and rejects invalid arguments without saving', async () => {
@@ -116,7 +166,7 @@ test('workspace editor persists JSON and rejects invalid arguments without savin
   render(<App host={host} />);
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
-  await rstest.waitFor(() => expect(root.querySelector('#terminal-surface')).not.toBeNull());
+  await waitForTerminal();
   fireEvent.tap(root.querySelector('#workspace-settings')!);
   await findByText('Launch profile');
   const input = root.querySelector('#profile-args')!;
@@ -146,7 +196,7 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   render(<App host={host} />);
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
-  await rstest.waitFor(() => expect(root.querySelector('#terminal-surface')).not.toBeNull());
+  await waitForTerminal();
   fireEvent.tap(root.querySelector('#workspace-settings')!);
   fireEvent.tap(root.querySelector('#add-workspace')!);
   fireEvent.tap(root.querySelector('#save-workspace')!);
@@ -165,9 +215,7 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
 
 test('closing terminal content releases its PTY instances', async () => {
   const { unmount } = render(<App host={makeHost()} />);
-  await rstest.waitFor(() =>
-    expect(elementTree.root!.querySelector('#terminal-surface')).not.toBeNull(),
-  );
+  await waitForTerminal();
   const host = NativeModules.nodejs.exposed as TerminalHost;
   const id = rstest.mocked(host.createTerminalSession).mock.results[0]!.value!;
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
@@ -198,6 +246,7 @@ test('main-thread RAF waits for native completion and cancels on terminal unmoun
   });
   Object.assign(main.lynx, { requestAnimationFrame: raf, cancelAnimationFrame: cancel });
   const { unmount } = render(<App host={makeHost()} />);
+  await waitForTerminal();
   await rstest.waitFor(() => expect(pending).toHaveLength(1));
   lynxTestingEnv.switchToMainThread();
   try {
@@ -217,9 +266,7 @@ test('main-thread RAF waits for native completion and cancels on terminal unmoun
 
 test('terminal forwards control keys to the native PTY and keeps macOS shortcuts with the host', async () => {
   render(<App host={makeHost()} />);
-  await rstest.waitFor(() =>
-    expect(elementTree.root!.querySelector('#terminal-surface')).not.toBeNull(),
-  );
+  await waitForTerminal();
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const invoke = rstest.spyOn(Object.getPrototypeOf(query.selectUniqueID(0)), 'invoke');
   invoke.mockClear();

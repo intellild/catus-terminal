@@ -68,9 +68,13 @@ Read the docs below in advance to help you understand the library or frameworks 
     Alacritty streaming parser, owned display grid and basic key encoding.
     `src/terminal_view.rs` orchestrates resizing/snapshots and exposes the cxx bridge.
     `src/terminal_session.rs` owns the u32 registry and each session's renderer.
-    `components/TerminalSurface.tsx` keeps one `TerminalView` mounted per tab.
-    `TerminalView` creates a numeric session ID on mount and closes it on unmount;
-    only the active tab mounts `NativeTerminalView`. Its Main Thread Script
+    `components/TerminalView.tsx` and its `NativeTerminalView` mount once for the
+    content region. `state/useTerminalSession.ts` owns the tab-to-u32 registry,
+    creates sessions for new tabs and closes removed sessions or all on unmount.
+    Switching tabs only updates numeric `terminal-id`, with no view keys or active
+    props. ID 0 unbinds the session while keeping the hidden native element mounted.
+    TerminalContent must keep its children mounted across loading/config errors.
+    NativeTerminalView's stable Main Thread Script ref
     schedules main-thread Lynx RAF (BTS global RAF aliases are absent), invoking `renderFrame` after the previous call completes.
     RAF callbacks/cleanup nested inside MTS functions must remain plain callbacks,
     without a second `main thread` directive. Idle revisions skip GPU work.

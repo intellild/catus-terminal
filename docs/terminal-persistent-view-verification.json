@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-04",
+  "runtime": { "platform": "macOS arm64", "lynxtron": "0.0.28", "backend": "Metal" },
+  "checks": {
+    "persistent_native_element": "Saved a main-thread Element reference before switching tabs; the same reference read terminal-id values 1, 2, then 1 after UI tab switches",
+    "zero_unbinds_session": { "write_error_code": 7, "message": "Terminal is not attached" },
+    "rebind_after_zero": { "session_id": 2, "renderFrame": true },
+    "ui_lifecycle": "Tests preserve element identity through tab switching, empty workspace, new tab, loading, config failure and retry; removed tabs release only their sessions",
+    "raf_lifecycle": "Stable ref keeps one frame loop; ID 0 skips native invocations; unmount cancels pending RAF and closes remaining sessions",
+    "ui_tests": 17,
+    "typecheck": "passed",
+    "lint": "passed",
+    "format": "passed",
+    "full_build": "passed",
+    "runtime_frame_trigger": "DevTool props and UI tab interactions with explicit renderFrame; continuous RAF and physical keyboard were not tested"
+  }
+}

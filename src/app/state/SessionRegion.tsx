@@ -6,7 +6,7 @@ import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import type { WorkspaceHost } from '../../shared/workspaces';
 import { TabBar } from '../components/TabBar';
 import { WorkspaceList } from '../components/WorkspaceList';
-import { TerminalSurface } from '../components/TerminalSurface';
+import { TerminalView } from '../components/TerminalView';
 import { TerminalContent } from '../components/TerminalContent';
 import { StatusBar } from '../components/StatusBar';
 import { WorkspaceSettings } from '../components/WorkspaceSettings';
@@ -118,7 +118,7 @@ function RegionContent({
           onRetry={session.loadConfig}
           onAdd={session.addTab}
         >
-          <TerminalSurface tabs={view.state.tabs} activeId={view.activeTab?.id} />
+          <TerminalView tabs={view.state.tabs} id={load.error ? undefined : view.activeTab?.id} />
         </TerminalContent>
       );
     case 'status':
