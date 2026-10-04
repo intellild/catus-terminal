@@ -11,6 +11,10 @@ import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
 beforeEach(() => {
   sessionRegistry.reset();
+  Object.assign(lynxTestingEnv.mainThread.globalThis, {
+    requestAnimationFrame: rstest.fn(() => 1),
+    cancelAnimationFrame: rstest.fn(),
+  });
   // Testing-library resolves selectors but does not implement native UI methods.
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const prototype = Object.getPrototypeOf(query.selectUniqueID(0));
@@ -65,7 +69,7 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
-test('the native view stays mounted through empty/loading/error states without JS frame scheduling', async () => {
+test('the native view stays mounted through empty/loading/error states with one app RAF driver', async () => {
   const main = lynxTestingEnv.mainThread.globalThis;
   const raf = rstest.fn();
   const invoke = rstest.fn();
@@ -77,12 +81,12 @@ test('the native view stays mounted through empty/loading/error states without J
   await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
   const surface = root.querySelector('#terminal-surface')!;
   expect(Number(surface.getAttribute('terminal-id'))).toBe(0);
-  expect(raf).not.toHaveBeenCalled();
+  expect(raf).toHaveBeenCalledOnce();
   expect(invoke).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#retry-config')!);
   await waitForTerminal();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
-  expect(raf).not.toHaveBeenCalled();
+  expect(raf).toHaveBeenCalledOnce();
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();

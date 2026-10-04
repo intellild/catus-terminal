@@ -124,8 +124,8 @@ NativeTerminalMacOS.mm / OnLayoutChanged
 terminal_core/pty.rs（独立读线程）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
-NativeVSyncMonitorMacOS.mm / CADisplayLink（UI 线程）
-  VSync → frame_callbacks.rs / 已注册 Rust 回调（同步执行，检查 deadline）
+frameDriver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs
+  dispatchAnimationFrame() → UI → Rust 全局回调注册对象
        ↓
 NativeTerminalMacOS.mm（同一 UI 线程）
   按缓存 layout 获取 Lynx IOSurface → render_surface(iosurface, deadline)
@@ -139,15 +139,18 @@ renderer.rs / glyph_renderer.rs
 GPU 完成 → Lynx SwapBack / MarkDirty
 ```
 
-Rust 的 `frame_callbacks.rs` 保存渲染回调注册；native view 持有 registration，释放时自动注销。
-macOS 14+ 的 `CADisplayLink` 在 UI main run loop 上持续运行，每次 VSync 同步进入 Rust，
-再直接调用对应 native view 的渲染回调；旧版 macOS 使用同一 UI run loop 上的 60Hz timer。
-回调不使用帧 ID、broadcast、BTS observer 或跨线程帧任务，PTY 线程只更新自身网格。
-每次读取最新网格，空闲时跳过 snapshot、纹理导入和 GPU 提交；view/session/grid/atlas 锁忙时直接跳过。
-VSync 的 target timestamp 转成统一的 monotonic deadline；回调、提交和 SwapBack 前检查是否过期。
-提交前过期会丢弃 encoder 并使未上传的 atlas handles 失效；提交后过期仍等待 GPU 完成以安全归还借用的 buffer，
-但不呈现该帧，下一次 VSync 重新读取最新内容。零尺寸、解绑、detach、后台和销毁停止执行渲染回调。
-窗口尺寸或 backing scale 变化会重新计算行列、通知 PTY，并绘制新网格。
+当前使用独立的 JS RAF 适配器绕过 native observer 的 NSRunLoop/libuv 问题：
+`src/app/frameDriver.ts` 由 App 挂载时启动一个 MTS RAF 循环，卸载时取消；
+跨线程调用函数在外层 MTS 创建，嵌套 RAF 回调只调用该函数。
+preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_driver.rs`
+使用 native monotonic clock 创建约 16.7ms 的预算并转发到 UI。
+`frame_callbacks.rs` 中的全局 `LazyLock` 保存弱引用的窗口注册对象，在 UI
+遍历仍有效的回调；关闭窗口或 view 不会被全局对象保活。
+不保存帧队列；延迟、过期和资源忙的帧丢弃，PTY 只更新网格。
+后续替换帧信号来源时可直接调用 `dispatch_frame_callbacks(deadline)`，
+无需修改 terminal session、IOSurface 导入或 atlas 渲染。
+项目自建的 CADisplayLink、timer 和单次 native RAF 探针已移除。
+原 native RAF 调查记录见 [验证文档](docs/terminal-native-raf-verification.md)。
 
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
@@ -228,7 +231,7 @@ Rstest 组织测试。截图覆盖 native terminal surface；测试等待 VSync 
 不调用 `renderFrame`。E2E 默认设置 `LynxWindow({ windowless: true, deviceScaleFactor: 2 })`，
 不创建原生父窗口、不抢占焦点；启动时检查原生窗口句柄全为 0，防止运行时忽略该选项。
 `pnpm run test:e2e:windowed` 可显式切回原生窗口；两种模式使用相同测试和截图基准。
-当前仍需 macOS Metal 和 native CADisplayLink，尚未验证锁屏或完全无显示器的 CI 环境。
+当前需要 macOS Metal 和活跃显示器；显示器睡眠时 JS RAF 不回调，截图 E2E 会超时。
 运行前关闭已有的 Catus 应用。viewport 固定为 1120×760、windowless 比例固定为 2×；
 `darwin-arm64` 基准还依赖系统字体和 emoji 版本，其他环境需显式建立并检查对应基准。
 
@@ -456,7 +459,8 @@ native/
   src/terminal_view.rs                 cxx 桥、layout resize 与帧调度适配
   src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
   src/frame.rs                        Rust IOSurface FrameBuffer 与 cxx Viewport
-  src/frame_callbacks.rs              UI 线程同步回调注册与 deadline 丢帧
+  src/frame_driver.rs                 napi-rs JS RAF 适配器
+  src/frame_callbacks.rs              全局回调注册与 UI 同步分发 / deadline 丢帧
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存
   src/tests/                           counter、atlas、font 独立测试模块
@@ -474,9 +478,8 @@ native/
     NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
     NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
     NativeTerminalMacOS.mm             获取 Lynx IOSurface，交给 Rust 渲染并呈现
-    NativeTerminalRegistration.mm      extension 生命周期和 display link
+    NativeTerminalRegistration.mm      extension 生命周期和 terminal view 注册
     NativeFrameCallbacks.h/mm          Rust 回调注册对象和 C++ 渲染目标
-    NativeVSyncMonitorMacOS.h/mm        UI main run loop 上的 macOS display link
 src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```
 

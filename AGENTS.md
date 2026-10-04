@@ -85,19 +85,27 @@ Read the docs below in advance to help you understand the library or frameworks 
     props. ID 0 unbinds the session while keeping the hidden native element mounted.
     TerminalContent must keep its children mounted across loading/config errors.
     `src/frame_callbacks.rs` owns UI-thread callback registrations, without frame
-    IDs, broadcast channels, runtime observers or pending frame tasks. C++ registers
+    IDs, broadcast channels or pending frame tasks. C++ registers
     a shared callback target and owns its Rust registration; dropping it unregisters.
     PTY threads only update their own grid; VSync reads the latest grid and draws.
-    `cxx/NativeVSyncMonitorMacOS.mm` owns a continuous CADisplayLink on the UI
-    main run loop (macOS 14+), with a UI timer fallback on older macOS versions.
-    Each tick calls Rust inline, and Rust invokes the native view's render callback
-    on that same UI thread. `NativeFrameCallbacks.h/mm` owns the Rust registry.
-    Detached/unbound views and background/destroyed extensions skip callbacks.
+    `src/app/frameDriver.ts` owns one app MTS RAF loop with unmount cleanup.
+    Import/call it from App, not exclusively from a background-only module; its
+    runOnBackground implementation must be included in the main-thread bundle.
+    Create the runOnBackground callable in the outer MTS function; nested RAF
+    callbacks must use that local callable, without another main-thread directive.
+    Preload exposes napi-rs dispatchAnimationFrame. `src/frame_driver.rs` assigns
+    a native monotonic 16.7ms budget and posts to UI; `frame_callbacks.rs` has a
+    process-wide LazyLock registry of weak per-window registries. UI dispatch
+    visits live registrations without holding registry locks during callbacks.
+    The budget starts at N-API receipt, not the JS timestamp or display target.
+    Future native frame sources call dispatch_frame_callbacks(deadline) directly.
+    The native RAF probe, project-owned CADisplayLink and timer were removed.
+    `NativeFrameCallbacks.h/mm` owns the per-window Rust registry and UI adapter.
     Check the monotonic target deadline before each callback, GPU submission and
     presentation. Busy view/session/grid/atlas locks drop the tick without waiting.
     Submitted GPU work must finish before returning the borrowed Lynx buffer, even
     when the frame expires; expired output is not swapped and remains dirty.
-    No JS RAF or per-frame cross-thread task dispatch is used.
+    No application frame queue, broadcast or frame IDs are maintained.
   - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
     owns the shared device, queue and mutex-protected glyph resources. Each session
     owns an instance buffer and rendered grid key through its session. Hold the shared lock
@@ -129,7 +137,7 @@ Read the docs below in advance to help you understand the library or frameworks 
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
   - Register ordinary additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
-    terminal uses a custom extension module to own its UI display-link lifecycle.
+    terminal uses a custom extension module for view registration.
     add sources to `cxx/CMakeLists.txt` and types to `elements.d.ts`.
 
 ## Common Patterns
@@ -165,9 +173,9 @@ Use NodeJS ≥ 22 and TypeScript.
   `windowless: true`, `deviceScaleFactor: 2`; asserts a zero native window handle
   and never steals OS focus. `pnpm run test:e2e:windowed` runs the same suite
   with a native window. Each case owns its app
-  process, uses the official daemon connector, and waits for native VSync pixels.
-  It never calls `renderFrame`. Requires macOS Metal and the native display link;
-  locked-screen/displayless CI is not verified. Unsupported
+  process, uses the official daemon connector, and waits for JS RAF pixels.
+  It never calls `renderFrame`. Display sleep prevents RAF callbacks and causes timeouts.
+  Requires macOS Metal; locked-screen/displayless CI is not verified. Unsupported
   platforms fail explicitly. Close any existing Catus app first.
   `pnpm run test:e2e:update` explicitly updates baseline PNGs; review them.
   Baselines live in `tests/e2e/__screenshots__/<platform>-<arch>/`; size changes

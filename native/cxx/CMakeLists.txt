@@ -32,9 +32,8 @@ add_library(catus_native STATIC
   NativeTerminalMacOS.mm
   NativeTerminalRegistration.mm
   NativeFrameCallbacks.mm
-  NativeVSyncMonitorMacOS.mm
 )
-set_source_files_properties(NativeInputMacOS.mm NativeTerminalMacOS.mm NativeTerminalRegistration.mm NativeFrameCallbacks.mm NativeVSyncMonitorMacOS.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+set_source_files_properties(NativeInputMacOS.mm NativeTerminalMacOS.mm NativeTerminalRegistration.mm NativeFrameCallbacks.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 target_compile_features(catus_native PRIVATE cxx_std_17)
 target_include_directories(catus_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"

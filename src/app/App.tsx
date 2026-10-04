@@ -14,9 +14,11 @@ import { WorkspaceList } from './components/WorkspaceList';
 import { TerminalContent } from './components/TerminalContent';
 import { StatusBar } from './components/StatusBar';
 import { SessionRegion } from './state/SessionRegion';
+import { useFrameDriver } from './frameDriver';
 import './tailwind.css';
 
 export function App({ host }: { host?: WorkspaceHost }) {
+  useFrameDriver();
   return (
     <AppLayout>
       <AppLayoutHeader>

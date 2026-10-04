@@ -19,15 +19,15 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   explicit NativeTerminalView(std::shared_ptr<catus::NativeFrameCallbacks> host)
       : frame_callbacks_(std::move(host)), frame_target_(std::make_shared<catus::NativeFrameTarget>()),
         frame_registration_(frame_callbacks_->callbacks().register_frame_callback(frame_target_)) {
-    frame_target_->render = [this](int64_t deadline) {
+    frame_target_->SetRender([this](int64_t deadline) {
       std::unique_lock lock(mutex_, std::try_to_lock);
       if (lock.owns_lock() && catus::monotonic_now_ns() < deadline) Render(deadline);
-    };
+    });
   }
 
   ~NativeTerminalView() override {
     frame_registration_->set_active(false);
-    frame_target_->render = nullptr;
+    frame_target_->SetRender(nullptr);
   }
 
   bool IsSurfaceEnabled() override { return true; }

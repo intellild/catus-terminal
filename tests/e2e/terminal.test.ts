@@ -29,7 +29,7 @@ async function updateTerminal() {
   await app.terminalFrame(blue);
 }
 
-test('starts the first workspace and presents the fake PTY through native VSync', async () => {
+test('starts the first workspace and presents the fake PTY through JS RAF', async () => {
   expect(firstId).toBeGreaterThan(0);
   expect(await app.node('#running-test')).toBeDefined();
   await expectScreenshot('initial-workspace', await app.screenshot());

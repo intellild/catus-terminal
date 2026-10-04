@@ -286,7 +286,7 @@ export class LynxApp {
     // Wait on pixels actually presented in Lynx, rather than just PTY/parser readiness.
     let last: Buffer | undefined;
     try {
-      return await waitFor('native VSync presentation', async () => {
+      return await waitFor('RAF presentation', async () => {
         last = await this.screenshot('#terminal-viewport');
         return colorPixels(last, color) > 100 ? last : undefined;
       });

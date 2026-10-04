@@ -15,7 +15,8 @@ native/
   src/terminal_view.rs         cxx 桥、layout resize / revision 与 view 适配
   src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
   src/frame.rs                 Rust IOSurface FrameBuffer / cxx Viewport
-  src/frame_callbacks.rs       UI 线程同步回调注册与过期帧丢弃
+  src/frame_driver.rs          napi-rs JS RAF 适配器
+  src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
   src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
   src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
@@ -27,9 +28,8 @@ native/
     NativeInputRust.cc         C++ → Rust 调用
     NativeInputMacOS.mm        AppKit 输入框实现
     NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal view
-    NativeTerminalRegistration.mm  extension 生命周期和 display link
+    NativeTerminalRegistration.mm  extension 生命周期和 terminal view 注册
     NativeFrameCallbacks.h/mm  Rust 注册对象与 native render callback
-    NativeVSyncMonitorMacOS.h/mm  UI main run loop 上的 macOS display link
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型
@@ -100,10 +100,17 @@ viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 
 `frame_callbacks.rs` 保存弱引用的回调注册，C++ view 调用 `register_frame_callback()`，
 持有 registration；销毁 view 时清除 C++ render callback 并释放注册。
-`NativeTerminalRegistration.mm` 在 UI 生命周期里启动、停止原生 display link。
-macOS 14+ 的 `CADisplayLink` 在 UI main run loop 上持续触发；旧版 macOS 使用 60Hz UI timer。
-VSync 同步调用 Rust，Rust 直接执行 C++ view 的渲染回调，整个调用链在同一 UI 线程上。
-没有帧 ID、broadcast、BTS observer、在途帧队列或每帧跨线程投递。
+独立的 `src/app/frameDriver.ts` 由 App 挂载时启动 MTS RAF，卸载时取消。
+外层 MTS 先创建 `runOnBackground` 调用函数，RAF 回调直接调用它；不等待 Promise 回执。
+preload 暴露 napi-rs 的 `dispatchAnimationFrame()`；`frame_driver.rs` 接收 JS 帧信号，
+用 native monotonic clock 生成约 16.7ms 的 deadline，再转发到 UI。
+`frame_callbacks.rs` 的全局 `LazyLock` 保存弱引用的窗口回调注册对象，UI 每次接到信号
+遍历有效注册并同步渲染；背景窗口、解绑和销毁的 view 不执行。
+JS timestamp 与 native clock 起点不同，因此不将 JS timestamp 当成 native deadline。
+该预算从 N-API 收到信号时开始，包含其后到 UI 的延迟；当前不是显示器的精确 target 时间。
+后续 native 帧源可以直接调用 `dispatch_frame_callbacks(deadline)`，替换 JS 适配器。
+项目自建的 CADisplayLink、timer 和单次 native RAF 探针已移除；`renderFrame` 保留为显式入口。
+原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。
 每个回调都检查本次 VSync 的 monotonic deadline；view/session/grid/atlas 锁忙则直接丢帧。
 提交前过期丢弃 encoder 并撤销未上传的 atlas handles；提交后过期先等待 GPU 完成，
 再丢弃呈现，保持网格 dirty。不会把还在写入的借用 buffer 还给 Lynx，也不会重放旧帧。

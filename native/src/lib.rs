@@ -8,6 +8,10 @@ mod frame;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod frame_callbacks;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
+mod frame_driver;
+#[cfg(all(feature = "native-view", target_os = "macos"))]
+pub use frame_driver::dispatch_animation_frame;
+#[cfg(all(feature = "native-view", target_os = "macos"))]
 mod renderer;
 pub mod terminal_core;
 mod terminal_session;

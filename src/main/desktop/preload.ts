@@ -29,6 +29,7 @@ contextBridge.exposeInLynxBTS({
           }
         : undefined,
     ),
+  dispatchAnimationFrame: () => nativeBinding.dispatchAnimationFrame(),
   closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),
   ...(process.env.CATUS_E2E_PTY
     ? { getTerminalSessionInfo: (id: number) => nativeBinding.getTerminalSessionInfo(id) }
