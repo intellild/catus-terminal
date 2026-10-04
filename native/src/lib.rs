@@ -4,7 +4,10 @@ pub mod atlas;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 pub mod font;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
-mod terminal;
+mod renderer;
+pub mod terminal_core;
+#[cfg(all(feature = "native-view", target_os = "macos"))]
+mod terminal_view;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};

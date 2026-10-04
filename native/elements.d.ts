@@ -8,7 +8,9 @@ export interface NativeInputProps extends StandardProps {
   bindinput?: (event: NativeInputEvent) => void;
 }
 
-export type NativeTerminalProps = StandardProps;
+export interface NativeTerminalProps extends StandardProps {
+  'terminal-id'?: string;
+}
 
 declare module '@lynx-js/types' {
   interface IntrinsicElements {

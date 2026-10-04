@@ -2,7 +2,8 @@
 
 使用 Lynx UI 实现的桌面终端界面，参考 Opera 的 workspace 与 tab 布局。
 左侧 dock 放置可配置的终端类型，每个 workspace 保留自己的 terminal tabs；
-内容区当前是占位符，尚未启动进程或接入 PTY。
+内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染，
+当前每个 tab 固定启动账户默认 shell（`-l -i`），工作目录为用户主目录。
 
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
 构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
@@ -72,7 +73,8 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 - 顶部 `+` 为当前 workspace 创建独立 tab；关闭最后一个 tab 后圆点消失。
 - 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
 - 左下角设置或 `Configure workspace` 可新增、编辑和移除终端类型。
-- 修改配置只影响新 tab，已有 tab 保留创建时的启动参数；tab 状态不跨应用重启保存。
+- 配置编辑与启动参数保留在 UI 状态中；当前最小终端固定使用账户默认 shell，
+  尚不执行 workspace 的 command/args/cwd。tab 状态不跨应用重启保存。
 
 默认配置模板为 `config/workspaces.json`，包含 Shell、Node.js 和 Python。
 首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过
@@ -101,6 +103,52 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 其他命令与参数原样保存，例如 `command: "ssh"`、`args: ["devbox"]`。
 编辑 JSON 后重启应用加载。真实界面截图见 [Shell](docs/workspaces-shell.jpeg)、
 [多个 tabs](docs/workspaces-tabs.jpeg)，实测结果见 [验证报告](docs/workspaces-verification.json)。
+
+## 最小终端（macOS）
+
+计算与渲染分别位于 `native/src/terminal_core/` 和 `native/src/renderer.rs`。
+前者无需 Lynx、字体或 GPU：读线程接收 PTY 字节流，持续使用 Alacritty 的
+VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
+owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal framebuffer 和网格，
+通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
+
+```text
+TerminalSurface.tsx（BTS）/ preload.ts
+  每个 tab 一个 RustTerminal → 账户默认 shell → portable-pty
+       ↓
+terminal_core/pty.rs（独立读线程）
+  字节流 → terminal_core/grid.rs / Alacritty Processor + Term
+       ↓
+Lynx 主线程 requestAnimationFrame / TerminalSurface.tsx
+  native-terminal.invoke('renderFrame')，完成后再预约下一帧
+       ↓
+terminal_view.rs
+  字体 metrics 决定行列 → PTY resize → 检查 revision → GridSnapshot
+       ↓
+NativeTerminalMacOS.mm
+  借用 Lynx IOSurface → 使用 renderer 的 MTLDevice 创建 MTLTexture
+       ↓
+renderer.rs / glyph_renderer.rs
+  接收 framebuffer + 网格 → crossfont atlas → wgpu 绘制
+       ↓
+GPU 完成 → Lynx SwapBack / MarkDirty
+```
+
+帧调度使用 Main Thread Script；当前 Lynxtron 后台线程没有全局 RAF 别名。
+锁屏时实测主线程 RAF 未触发；计算层仍继续处理 PTY 输出，后续帧读取最新网格。空闲帧跳过 snapshot、纹理导入和 GPU 提交。
+窗口尺寸或 backing scale 变化会重新计算行列、通知 PTY，并绘制新网格。
+
+已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
+颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
+关闭 tab 或内容组件卸载异步结束 shell。字体逐字符栅格化；尚未实现 IME、
+剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
+
+`native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
+`terminal_pty.rs` 验证真实 shell 往返、resize、退出；`renderer.rs` 验证真实网格
+在 Metal 上绘制和回读、颜色与 atlas 复用。`test:napi` 同时验证默认 shell 导出。
+实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
+本次桌面实测通过 DevTool 手动调用 renderFrame；电脑锁屏，窗口持续 RAF 与
+真实键盘输入尚未完成实测，RAF 续帧/取消已由单元测试覆盖。
 
 ## 环境与运行
 
@@ -179,7 +227,7 @@ native/cxx/NativeTerminalMacOS.mm / OnLayoutChanged
 Rust TerminalRenderer::metal_device → 同一个 MTLDevice
   C++ 创建 IOSurface-backed BGRA8Unorm MTLTexture
        ↓
-native/src/terminal.rs / cxx
+native/src/renderer.rs / cxx
   retain MTLTexture → wgpu-hal metal::texture_from_raw
   Device::create_texture_from_hal → wgpu Texture
        ↓
@@ -229,7 +277,7 @@ wgpu staging buffer / COPY_SRC
 Glyph handle
   page + generation + UV + 尺寸/偏移 + multicolor
        ↓
-atlas_demo.rs / instance buffer（VERTEX | COPY_DST）
+glyph_renderer.rs / instance buffer（VERTEX | COPY_DST）
   位置、UV、颜色 → 按 atlas 页切换 bind group → instanced draw
        ↓
 atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
@@ -353,11 +401,13 @@ native/
   Cargo.toml / Cargo.lock              项目 Rust crate 和依赖
   build.rs                            生成 cxx 桥，构建并链接 C++ 静态库
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
-  src/terminal.rs / triangle.wgsl       Rust wgpu renderer 和三角形 shader
+  src/terminal_core/                   portable-pty 传输与 Alacritty 网格计算
+  src/terminal_view.rs                 cxx 桥、尺寸同步与帧调度适配
+  src/renderer.rs / triangle.wgsl       独立 Rust wgpu renderer 和三角形 shader
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存
   src/tests/                           counter、atlas、font 独立测试模块
-  src/atlas_demo.rs / atlas.wgsl        真实字体验证、instance buffer 与采样 shader
+  src/glyph_renderer.rs / atlas.wgsl        真实字体验证、instance buffer 与采样 shader
   package.json                        @catus/native 本地 workspace
   lynx.lib.json                        声明 macOS arm64/x64 原生产物
   elements.d.ts                       自定义标签及事件的 TypeScript 类型

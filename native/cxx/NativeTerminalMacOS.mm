@@ -1,6 +1,6 @@
 #include <lynx/registration.h>
 #include <lynx_native_view.h>
-#include "catus-native/src/terminal.rs.h"
+#include "catus-native/src/terminal_view.rs.h"
 #include "rust/cxx.h"
 
 #import <Metal/Metal.h>
@@ -10,6 +10,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <stdexcept>
 
 namespace {
 using lynx::pub::LynxValue;
@@ -21,6 +22,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   void OnAttach() override {
     std::lock_guard lock(mutex_);
     attached_ = true;
+    if (renderer_) (*renderer_)->invalidate_grid();
     Render();
   }
   void OnDetach() override {
@@ -29,6 +31,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
   void OnDestroy() override {
     std::lock_guard lock(mutex_);
+    terminal_.reset();
     renderer_.reset();
   }
   void OnLayoutChanged(float left, float top, float width, float height,
@@ -50,11 +53,62 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     pixel_ratio_ = pixel_ratio;
     Render();
   }
+  void OnPropertiesChanged(const LynxValue& attrs, const LynxValue& events) override {
+    (void)events;
+    if (!attrs.HasProperty("terminal-id")) return;
+    auto value = attrs.GetProperty("terminal-id");
+    if (value.Type() != lynx_value_string) return;
+    std::lock_guard lock(mutex_);
+    const auto id = value.StdString();
+    if (id == terminal_id_) return;
+    try {
+      if (id.empty()) terminal_.reset();
+      else terminal_.emplace(catus::acquire_terminal(id));
+      terminal_id_ = id;
+      if (renderer_) (*renderer_)->clear_atlas();
+      Render();
+    } catch (const rust::Error& error) { error_ = error.what(); }
+  }
   void OnMethodInvoked(const char* method, const LynxValue& params,
       std::function<void(int, LynxValue&&)> callback) override {
-    (void)params;
     std::unique_lock lock(mutex_);
     const std::string name = method ? method : "";
+    if (name == "focus") {
+      lock.unlock();
+      RequestFocus();
+      callback(kSuccess, LynxValue(true));
+      return;
+    }
+    if (name == "write" || name == "key") {
+      try {
+        if (!terminal_) throw std::runtime_error("Terminal is not attached");
+        if (name == "write") {
+          const auto text = params.GetProperty("text");
+          if (text.Type() != lynx_value_string) throw std::runtime_error("Expected text");
+          (*terminal_)->write(text.StdString());
+        } else {
+          const auto key = params.GetProperty("key");
+          if (key.Type() != lynx_value_string) throw std::runtime_error("Expected key");
+          const auto control = params.GetProperty("control");
+          const auto alt = params.GetProperty("alt");
+          (*terminal_)->key(key.StdString(), control.Type() == lynx_value_bool && control.Bool(), alt.Type() == lynx_value_bool && alt.Bool());
+        }
+        lock.unlock();
+        callback(kSuccess, LynxValue(true));
+      } catch (const std::exception& error) {
+        auto result = LynxValue(std::string(error.what()));
+        lock.unlock();
+        callback(kInvalidStateError, std::move(result));
+      }
+      return;
+    }
+    if (name == "renderFrame") {
+      const bool ok = Render();
+      auto result = ok ? LynxValue(true) : LynxValue(error_);
+      lock.unlock();
+      callback(ok ? kSuccess : kInvalidStateError, std::move(result));
+      return;
+    }
     if (name != "getRendererInfo" && name != "renderTriangle" && name != "renderAtlas" && name != "clearAtlas") {
       lock.unlock();
       callback(kMethodNotFound, LynxValue(LynxValue::kCreateAsNullTag));
@@ -76,13 +130,16 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 
  private:
   bool Render() {
-    pixel_verified_ = false;
     if (!attached_ || width_ == 0 || height_ == 0) {
       error_ = "Waiting for an attached, non-zero layout";
       return false;
     }
     try {
       if (!renderer_) renderer_.emplace(catus::create_terminal_renderer());
+      if (terminal_ && !catus::prepare_terminal_frame(**renderer_, **terminal_, width_, height_, pixel_ratio_)) {
+        error_.clear();
+        return true;
+      }
       // Borrowed IOSurface; Lynx owns its double buffer and presentation.
       auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(width_, height_));
       if (surface == nullptr) {
@@ -108,11 +165,14 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         }
         // Rust retains the texture and waits for GPU completion before return.
         const auto handle = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-        if (atlas_mode_) (*renderer_)->render_atlas(handle, width_, height_, static_cast<float>(pixel_ratio_));
+        if (terminal_) {
+          if (!catus::render_terminal(**renderer_, **terminal_, handle, width_, height_, pixel_ratio_)) return true;
+        } else if (atlas_mode_) (*renderer_)->render_atlas(handle, width_, height_, static_cast<float>(pixel_ratio_));
         else (*renderer_)->render_triangle(handle, width_, height_);
         SamplePixels(surface);
       }
       if (!SwapBack()) {
+        (*renderer_)->invalidate_grid();
         error_ = "Lynx could not swap the rendered back buffer";
         return false;
       }
@@ -151,7 +211,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 
   LynxValue Snapshot() const {
     LynxValue result(LynxValue::kCreateAsMapTag);
-    result.SetProperty("mode", LynxValue(std::string(atlas_mode_ ? "atlas" : "triangle")));
+    result.SetProperty("mode", LynxValue(std::string(terminal_ ? "terminal" : atlas_mode_ ? "atlas" : "triangle")));
     result.SetProperty("atlasPages", LynxValue(static_cast<int32_t>(renderer_ ? (*renderer_)->atlas_pages() : 0)));
     result.SetProperty("atlasUploads", LynxValue(static_cast<int64_t>(renderer_ ? (*renderer_)->atlas_uploads() : 0)));
     result.SetProperty("atlasInstances", LynxValue(static_cast<int32_t>(renderer_ ? (*renderer_)->atlas_instances() : 0)));
@@ -172,11 +232,18 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     result.SetProperty("cornerRGB", LynxValue(static_cast<int32_t>(corner_rgb_)));
     result.SetProperty("pixelVerified", LynxValue(pixel_verified_));
     result.SetProperty("error", LynxValue(error_));
+    if (terminal_) {
+      result.SetProperty("shell", LynxValue(std::string((*terminal_)->shell())));
+      result.SetProperty("exited", LynxValue((*terminal_)->exited()));
+      result.SetProperty("screenText", LynxValue(std::string((*terminal_)->screen_text())));
+    }
     return result;
   }
 
   std::mutex mutex_;
   std::optional<rust::Box<catus::TerminalRenderer>> renderer_;
+  std::optional<rust::Box<catus::TerminalHandle>> terminal_;
+  std::string terminal_id_;
   uint32_t width_ = 0, height_ = 0;
   float pixel_ratio_ = 1;
   bool attached_ = false, pixel_verified_ = false, atlas_mode_ = false;

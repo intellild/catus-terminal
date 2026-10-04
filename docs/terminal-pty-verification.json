@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-04",
+  "runtime": {
+    "platform": "macOS arm64",
+    "lynxtron": "0.0.28"
+  },
+  "scope": "Default account shell only; workspace command/args/cwd are not launched",
+  "renderer": {
+    "adapter": "Apple M5 Pro",
+    "atlasInstances": 38,
+    "atlasPages": 2,
+    "atlasUploads": 31,
+    "backend": "Metal",
+    "cachedGlyphs": 31,
+    "centerRGB": 1119257,
+    "cornerRGB": 1119257,
+    "error": "",
+    "exited": false,
+    "fontFamily": "Menlo",
+    "fontPixels": 28,
+    "frames": 2,
+    "gpuFrames": 2,
+    "height": 970,
+    "missingGlyphs": 0,
+    "mode": "terminal",
+    "pixelRatio": 2,
+    "pixelVerified": true,
+    "rasterizations": 31,
+    "screenText": "PTY -> Alacritty -> wgpu\nUnicode: 中 文  😀\n28 116\n>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "shell": "/bin/zsh",
+    "transport": "Lynx IOSurface -> MTLTexture -> wgpu",
+    "width": 2012
+  },
+  "checks": {
+    "real_default_shell": true,
+    "pty_to_alacritty_to_lynx_framebuffer": true,
+    "ansi_color_and_unicode": true,
+    "mask_and_color_atlas_pages": true,
+    "unchanged_grid_skips_gpu": true,
+    "rust_tests": 13,
+    "ui_tests": 16,
+    "napi_default_shell_round_trip": true,
+    "main_thread_raf_reschedule_and_cleanup": "unit-tested",
+    "continuous_raf_in_visible_window": "not verified: macOS locked; renderFrame invoked manually through DevTool",
+    "physical_keyboard": "not verified: macOS locked"
+  },
+  "screenshot": "terminal-pty.jpeg"
+}

@@ -3,18 +3,20 @@
 Catus Terminal 专属的 Rust/napi-rs workspace，统一导出 Rust 能力和 Lynx native
 组件。包名为 `@catus/native`，所有组件链接进同一个 `catus-native.node`。
 当前实现 `<native-input>`（macOS `NSTextField`）和 `<native-terminal>`
-（Lynx IOSurface + Rust wgpu / Metal 三角形和 glyph atlas 原型）。
+（Lynx IOSurface + Rust wgpu / Metal + Alacritty 默认 shell 终端；保留三角形和字体演示）。
 
 ```text
 native/
   Cargo.toml / Cargo.lock       Rust crate 和依赖
   build.rs                     cxx 桥、C++ 静态库构建及链接
   src/lib.rs                   napi-rs 导出和共享 Rust 状态
-  src/terminal.rs               wgpu renderer 和 Metal texture 导入
+  src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
+  src/terminal_view.rs         cxx 桥、resize / revision 与 view 适配
+  src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
   src/triangle.wgsl             三角形 shader
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
   src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
-  src/atlas_demo.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
+  src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
   src/tests/                   counter / atlas / font 独立单元测试模块
   licenses/ALACRITTY-MIT.txt     atlas 来源的 MIT 文本
   cxx/
@@ -57,6 +59,33 @@ native/
 原生侧用户输入只更新内部值并发出 `input` 事件。React 将相同文本写回时，
 不会重设 NSTextField 的值，避免破坏当前选择和输入法标记文本。
 
+## 终端对象和帧接口
+
+`RustTerminal` 是 napi-rs 导出的默认 shell 会话：`nativeId`、`shell`、`exited`、
+`write(text)`、`screenText()`、`close()`。UI 仅传递 `terminal-id`，C++ 通过注册表
+取得共享 `TerminalHandle`，不向 JS 暴露指针。每个 tab 持有一个 N-API 对象；
+切换 tab 销毁 view/renderer，但保留会话；关闭 tab 异步结束并回收 shell。
+
+`terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/pty.rs` 管理阻塞
+PTY 读写线程。`terminal_view.rs` 提供 cxx 适配和 resize/revision 检查。
+`renderer.rs` 的独立 `TerminalRenderer::render_grid` 接收计算后的网格、借用的
+Metal texture、物理尺寸及 backing scale，完全不访问 PTY。
+
+| native-terminal 接口 | 用途 |
+| --- | --- |
+| `terminal-id` | 绑定 RustTerminal 会话 |
+| `renderFrame({})` | 处理尺寸变化并绘制最新网格，空闲时跳过 GPU；成功返回 true |
+| `focus({})` | 获得 Lynx 键盘焦点 |
+| `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
+| `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
+| `getRendererInfo({})` | 渲染统计、shell、exited、screenText 和错误 |
+
+UI 的 Main Thread Script 使用 Lynx RAF 调用 `renderFrame`，完成后再预约下一帧。
+明确使用主线程 RAF，不依赖当前后台线程缺失的全局 RAF 别名。网格 revision、尺寸和 scale
+均未变化时不获取 framebuffer、不生成快照、不绘制。RAF 随 view 销毁取消。
+逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
+尚不支持 IME、选择、滚动历史 UI、完整键盘协议和复杂文本 shaping。
+
 ## 构建与加载
 
 `native-terminal` 使用 `CatusNativeTerminalElement` 注册，启用
@@ -69,7 +98,7 @@ texture，通过 cxx 交给 Rust wgpu 导入并绘制；GPU 完成后才 `SwapBa
 frames, gpuFrames, centerRGB, cornerRGB, pixelVerified, error, transport }`；
 `getRendererInfo({})` 只读取相同状态。尺寸无效、纹理导入或 GPU 绘制失败时，
 `renderTriangle` 返回状态 7。未知方法返回 3。renderer 生命周期由 view 管理。
-本原型同步等待 GPU，并读取 IOSurface 像素进行验证，尚未实现持续帧调度。
+本原型同步等待 GPU，并读取 IOSurface 像素进行验证，帧调度由 UI 的主线程 Lynx requestAnimationFrame 驱动。
 
 `renderAtlas({})` 使用字形 atlas 绘制；`clearAtlas({})` 清空字形缓存、
 复用 atlas texture 并重新上传。返回值增加 `mode`、`atlasPages`、
@@ -82,7 +111,7 @@ frames, gpuFrames, centerRGB, cornerRGB, pixelVerified, error, transport }`；
 
 `font.rs` 引入官方 crossfont 0.9.0，macOS 使用 CoreText。缓存 key 包含字体、
 字符和字号；Menlo 普通体/粗体与系统 fallback 绘制 ASCII、中文和彩色 emoji。
-空格缓存 metrics 但不上传、不绘制。字体按 22 logical px × backing scale
+空格缓存 metrics 但不上传、不绘制。演示字体按 22、终端字体按 14 logical px × backing scale
 栅格化，使用 glyph 的 top/left 和 font metrics 定位，而非缩放固定位图。
 backing scale 改变时重建 rasterizer、清空缓存并复用 atlas texture；普通 resize
 复用字形。bind group 和 instance buffer 也会复用。
@@ -90,7 +119,7 @@ backing scale 改变时重建 rasterizer、清空缓存并复用 atlas texture�
 状态额外返回 `fontFamily`、`fontPixels`、`cachedGlyphs`、`rasterizations`、
 `missingGlyphs`，便于验证重复绘制不再栅格化/上传。测试覆盖真实字体、中文
 fallback、RGBA emoji、字号失效、缓存复用，以及 Metal 上传/回读和双格式分页。
-本阶段按字符绘制，未实现 ligature、复杂文本 shaping 和 PTY。
+本阶段按字符绘制，未实现 ligature 和复杂文本 shaping；终端通过 portable-pty 连接账户默认 shell。
 
 在项目根目录运行：
 

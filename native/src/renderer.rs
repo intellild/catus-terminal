@@ -1,41 +1,9 @@
-#[path = "atlas_demo.rs"]
-mod atlas_demo;
-use atlas_demo::AtlasDemo;
+#[path = "glyph_renderer.rs"]
+mod glyph_renderer;
+use glyph_renderer::GlyphRenderer;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_metal::{MTLTexture, MTLTextureType};
 use std::time::Duration;
-
-#[cxx::bridge(namespace = "catus")]
-mod ffi {
-    extern "Rust" {
-        type TerminalRenderer;
-        fn create_terminal_renderer() -> Result<Box<TerminalRenderer>>;
-        fn metal_device(self: &TerminalRenderer) -> usize;
-        fn adapter_name(self: &TerminalRenderer) -> &str;
-        fn frames(self: &TerminalRenderer) -> u64;
-        fn atlas_pages(self: &TerminalRenderer) -> u32;
-        fn atlas_uploads(self: &TerminalRenderer) -> u64;
-        fn atlas_instances(self: &TerminalRenderer) -> u32;
-        fn cached_glyphs(self: &TerminalRenderer) -> u32;
-        fn rasterizations(self: &TerminalRenderer) -> u64;
-        fn font_pixels(self: &TerminalRenderer) -> f32;
-        fn missing_glyphs(self: &TerminalRenderer) -> u64;
-        fn clear_atlas(self: &mut TerminalRenderer);
-        unsafe fn render_atlas(
-            self: &mut TerminalRenderer,
-            metal_texture: usize,
-            width: u32,
-            height: u32,
-            pixel_ratio: f32,
-        ) -> Result<()>;
-        unsafe fn render_triangle(
-            self: &mut TerminalRenderer,
-            metal_texture: usize,
-            width: u32,
-            height: u32,
-        ) -> Result<()>;
-    }
-}
 
 pub struct TerminalRenderer {
     device: wgpu::Device,
@@ -43,10 +11,11 @@ pub struct TerminalRenderer {
     pipeline: wgpu::RenderPipeline,
     adapter_name: String,
     frames: u64,
-    atlas: AtlasDemo,
+    atlas: GlyphRenderer,
+    rendered_grid: Option<(u64, u32, u32, u32)>,
 }
 
-fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
+pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::METAL,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -89,7 +58,7 @@ fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
         multiview_mask: None,
         cache: None,
     });
-    let atlas = AtlasDemo::new(&device)?;
+    let atlas = GlyphRenderer::new(&device)?;
     if let Some(error) = pollster::block_on(validation.pop()) {
         return Err(error.to_string());
     }
@@ -100,67 +69,99 @@ fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
         adapter_name: adapter.get_info().name,
         frames: 0,
         atlas,
+        rendered_grid: None,
     }))
 }
 
 impl TerminalRenderer {
-    fn metal_device(&self) -> usize {
+    pub(crate) fn metal_device(&self) -> usize {
         // SAFETY: Metal is the only enabled backend; C++ borrows this pointer
         // only while this renderer (and hence the device) remains alive.
         let hal = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
         Retained::as_ptr(hal.raw_device()) as usize
     }
 
-    fn adapter_name(&self) -> &str {
+    pub(crate) fn adapter_name(&self) -> &str {
         &self.adapter_name
     }
-    fn frames(&self) -> u64 {
+    pub(crate) fn frames(&self) -> u64 {
         self.frames
     }
 
-    fn atlas_pages(&self) -> u32 {
+    pub(crate) fn atlas_pages(&self) -> u32 {
         self.atlas.pages()
     }
-    fn atlas_uploads(&self) -> u64 {
+    pub(crate) fn atlas_uploads(&self) -> u64 {
         self.atlas.uploads()
     }
-    fn atlas_instances(&self) -> u32 {
+    pub(crate) fn atlas_instances(&self) -> u32 {
         self.atlas.instances()
     }
-    fn cached_glyphs(&self) -> u32 {
+    pub(crate) fn cached_glyphs(&self) -> u32 {
         self.atlas.cached_glyphs()
     }
-    fn rasterizations(&self) -> u64 {
+    pub(crate) fn rasterizations(&self) -> u64 {
         self.atlas.rasterizations()
     }
-    fn font_pixels(&self) -> f32 {
+    pub(crate) fn font_pixels(&self) -> f32 {
         self.atlas.font_pixels()
     }
-    fn missing_glyphs(&self) -> u64 {
+    pub(crate) fn missing_glyphs(&self) -> u64 {
         self.atlas.missing_glyphs()
     }
-    fn clear_atlas(&mut self) {
+    pub(crate) fn invalidate_grid(&mut self) {
+        self.rendered_grid = None;
+    }
+    pub(crate) fn clear_atlas(&mut self) {
         self.atlas.clear();
+        self.rendered_grid = None;
     }
 
     // SAFETY: Both entry points forward the same texture ownership and device
     // contract documented on render().
-    unsafe fn render_triangle(
+    pub(crate) unsafe fn render_triangle(
         &mut self,
         texture: usize,
         width: u32,
         height: u32,
     ) -> Result<(), String> {
-        unsafe { self.render(texture, width, height, false, 1.) }
+        unsafe { self.render(texture, width, height, false, 1., None) }
     }
-    unsafe fn render_atlas(
+    pub(crate) unsafe fn render_atlas(
         &mut self,
         texture: usize,
         width: u32,
         height: u32,
         pixel_ratio: f32,
     ) -> Result<(), String> {
-        unsafe { self.render(texture, width, height, true, pixel_ratio) }
+        unsafe { self.render(texture, width, height, true, pixel_ratio, None) }
+    }
+
+    pub(crate) fn grid_size(
+        &mut self,
+        width: u32,
+        height: u32,
+        ratio: f32,
+    ) -> Result<crate::terminal_core::grid::GridSize, String> {
+        self.atlas.grid_size(width, height, ratio)
+    }
+    pub(crate) fn needs_grid(&self, revision: u64, width: u32, height: u32, ratio: f32) -> bool {
+        self.rendered_grid != Some((revision, width, height, ratio.to_bits()))
+    }
+    // Same borrowed-framebuffer contract as render(). Accept only computed data, never a PTY.
+    pub(crate) unsafe fn render_grid(
+        &mut self,
+        texture: usize,
+        width: u32,
+        height: u32,
+        ratio: f32,
+        grid: &crate::terminal_core::grid::GridSnapshot,
+    ) -> Result<(), String> {
+        unsafe {
+            self.render(texture, width, height, true, ratio, Some(grid))?;
+        }
+        self.rendered_grid = Some((grid.revision, width, height, ratio.to_bits()));
+        Ok(())
     }
 
     /// # Safety
@@ -174,6 +175,7 @@ impl TerminalRenderer {
         height: u32,
         draw_atlas: bool,
         pixel_ratio: f32,
+        grid: Option<&crate::terminal_core::grid::GridSnapshot>,
     ) -> Result<(), String> {
         if metal_texture == 0
             || width == 0
@@ -230,14 +232,27 @@ impl TerminalRenderer {
         let view = texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
         if draw_atlas {
-            if let Err(error) = self.atlas.draw(
-                &self.device,
-                &self.queue,
-                &mut encoder,
-                &view,
-                [width, height],
-                pixel_ratio,
-            ) {
+            let result = if let Some(grid) = grid {
+                self.atlas.draw_grid(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &view,
+                    [width, height],
+                    pixel_ratio,
+                    grid,
+                )
+            } else {
+                self.atlas.draw(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &view,
+                    [width, height],
+                    pixel_ratio,
+                )
+            };
+            if let Err(error) = result {
                 // These uploads are still in an unsubmitted encoder. Do not
                 // leave cached handles pointing at regions that were never written.
                 self.atlas.clear();
@@ -267,7 +282,7 @@ impl TerminalRenderer {
         }
         let submission = self.queue.submit([encoder.finish()]);
         // The POC deliberately waits for GPU completion before Lynx SwapBack.
-        // A continuous terminal renderer should use asynchronous GPU fences.
+        // Keep the borrowed double buffer alive until every GPU write completes.
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: Some(submission),
@@ -282,3 +297,7 @@ impl TerminalRenderer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/renderer.rs"]
+mod tests;

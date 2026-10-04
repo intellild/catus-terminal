@@ -2,7 +2,7 @@
 use crate::{atlas::Glyph, font::GlyphCache};
 use unicode_width::UnicodeWidthChar;
 
-pub struct AtlasDemo {
+pub struct GlyphRenderer {
     cache: GlyphCache,
     bindings: Vec<wgpu::BindGroup>,
     pipeline: wgpu::RenderPipeline,
@@ -12,7 +12,7 @@ pub struct AtlasDemo {
     rendered_instances: u32,
 }
 
-impl AtlasDemo {
+impl GlyphRenderer {
     pub fn new(device: &wgpu::Device) -> Result<Self, String> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Glyph atlas sampling WGSL"),
@@ -137,6 +137,154 @@ impl AtlasDemo {
                 x += ch.width().unwrap_or(0) as f32 * cell_width;
             }
         }
+        self.draw_items(device, queue, encoder, target, items, [10, 18, 31])
+    }
+
+    pub fn grid_size(
+        &mut self,
+        width: u32,
+        height: u32,
+        ratio: f32,
+    ) -> Result<crate::terminal_core::grid::GridSize, String> {
+        if !ratio.is_finite() || ratio <= 0. {
+            return Err("Invalid backing scale".into());
+        }
+        self.cache
+            .set_size((14. * ratio).round().clamp(1., 512.) as u32)?;
+        let metrics = self.cache.metrics();
+        let padding = 8. * ratio;
+        Ok(crate::terminal_core::grid::GridSize::new(
+            ((width as f32 - 2. * padding).max(0.) / metrics.average_advance.round().max(1.) as f32)
+                as usize,
+            ((height as f32 - 2. * padding).max(0.) / metrics.line_height.round().max(1.) as f32)
+                as usize,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_grid(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        dimensions: [u32; 2],
+        ratio: f32,
+        grid: &crate::terminal_core::grid::GridSnapshot,
+    ) -> Result<(), String> {
+        self.grid_size(dimensions[0], dimensions[1], ratio)?;
+        let metrics = self.cache.metrics();
+        let cw = metrics.average_advance.round().max(1.) as f32;
+        let ch = metrics.line_height.round().max(1.) as f32;
+        let pad = (8. * ratio).round();
+        let [width, height] = dimensions;
+        // A real mask page supplies the binding for solid instances as well.
+        let mask = self.cache.get(device, encoder, 'M', false)?;
+        let rgba = |rgb: [u8; 3]| {
+            [
+                rgb[0] as f32 / 255.,
+                rgb[1] as f32 / 255.,
+                rgb[2] as f32 / 255.,
+                1.,
+            ]
+        };
+        let solid = |rect, color| {
+            let mut data = instance(mask, rect, rgba(color), width, height);
+            data[12] = 2.;
+            (mask, data)
+        };
+        let mut items = vec![];
+        for cell in &grid.cells {
+            if cell.background != grid.background {
+                items.push(solid(
+                    [
+                        pad + cell.column as f32 * cw,
+                        pad + cell.row as f32 * ch,
+                        cw,
+                        ch,
+                    ],
+                    cell.background,
+                ));
+            }
+        }
+        if let Some(cursor) = &grid.cursor {
+            use alacritty_terminal::vte::ansi::CursorShape;
+            let (w, h, dy) = match cursor.shape {
+                CursorShape::Underline => (
+                    cw * if cursor.wide { 2. } else { 1. },
+                    ratio.max(1.),
+                    ch - ratio.max(1.),
+                ),
+                CursorShape::Beam => (ratio.max(1.), ch, 0.),
+                _ => (cw * if cursor.wide { 2. } else { 1. }, ch, 0.),
+            };
+            items.push(solid(
+                [
+                    pad + cursor.column as f32 * cw,
+                    pad + cursor.row as f32 * ch + dy,
+                    w,
+                    h,
+                ],
+                cursor.color,
+            ));
+        }
+        for cell in &grid.cells {
+            let x = pad + cell.column as f32 * cw;
+            let y = pad + cell.row as f32 * ch;
+            let block_cursor = grid.cursor.as_ref().is_some_and(|cursor| {
+                cursor.row == cell.row
+                    && cursor.column == cell.column
+                    && cursor.shape == alacritty_terminal::vte::ansi::CursorShape::Block
+            });
+            let color = if block_cursor {
+                grid.background
+            } else {
+                cell.foreground
+            };
+            for &character in &cell.characters {
+                if character == ' ' {
+                    continue;
+                }
+                let glyph = self.cache.get(device, encoder, character, cell.bold)?;
+                if glyph.width == 0 || glyph.height == 0 {
+                    continue;
+                }
+                items.push((
+                    glyph,
+                    instance(
+                        glyph,
+                        [
+                            x + glyph.left as f32,
+                            (y + ch + metrics.descent).round() - glyph.top as f32,
+                            glyph.width as f32,
+                            glyph.height as f32,
+                        ],
+                        rgba(color),
+                        width,
+                        height,
+                    ),
+                ));
+            }
+            let w = cw * if cell.wide { 2. } else { 1. };
+            if cell.underline {
+                items.push(solid([x, y + ch - ratio.max(1.), w, ratio.max(1.)], color));
+            }
+            if cell.strikeout {
+                items.push(solid([x, y + ch * 0.5, w, ratio.max(1.)], color));
+            }
+        }
+        self.draw_items(device, queue, encoder, target, items, grid.background)
+    }
+
+    fn draw_items(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        items: Vec<(Glyph, [f32; 16])>,
+        background: [u8; 3],
+    ) -> Result<(), String> {
         let bytes: Vec<u8> = items
             .iter()
             .flat_map(|(_, data)| data.iter().flat_map(|n| n.to_ne_bytes()))
@@ -150,8 +298,12 @@ impl AtlasDemo {
                 mapped_at_creation: false,
             }));
         }
-        let buffer = self.instances.as_ref().unwrap();
-        queue.write_buffer(buffer, 0, &bytes);
+        // An empty grid still needs to clear the surface, but has no vertex data.
+        if let Some(buffer) = &self.instances
+            && !bytes.is_empty()
+        {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
         // Flush on atlas-page changes, following Alacritty's rendering order.
         let mut batches = vec![];
         let mut start = 0;
@@ -189,16 +341,16 @@ impl AtlasDemo {
             start = end;
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Native terminal glyph atlas demo"),
+            label: Some("Native terminal glyph atlas"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.04,
-                        g: 0.07,
-                        b: 0.12,
+                        r: background[0] as f64 / 255.,
+                        g: background[1] as f64 / 255.,
+                        b: background[2] as f64 / 255.,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,
@@ -207,7 +359,12 @@ impl AtlasDemo {
             ..Default::default()
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, buffer.slice(..bytes.len() as u64));
+        if !bytes.is_empty() {
+            pass.set_vertex_buffer(
+                0,
+                self.instances.as_ref().unwrap().slice(..bytes.len() as u64),
+            );
+        }
         for (range, page) in &batches {
             pass.set_bind_group(0, &self.bindings[*page], &[]);
             pass.draw(0..6, range.clone());

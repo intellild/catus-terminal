@@ -1,3 +1,4 @@
+import type { ReactNode } from '@lynx-js/react';
 import type { Workspace } from '../../shared/workspaces';
 import type { TerminalTab } from '../state/session';
 
@@ -5,19 +6,17 @@ export function TerminalContent({
   workspace,
   activeTab,
   tabCount = 0,
-  launch,
-  command = '',
   loading = false,
   error = '',
+  children,
   onSettings,
   onRetry,
   onAdd,
 }: {
+  children?: ReactNode;
   workspace?: Workspace;
   activeTab?: TerminalTab;
   tabCount?: number;
-  launch?: { cwd: string } | null;
-  command?: string;
   loading?: boolean;
   error?: string;
   onSettings?(): void;
@@ -80,7 +79,7 @@ export function TerminalContent({
                   id="session-directory"
                   className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
                 >
-                  {launch?.cwd ?? 'Choose a workspace'}
+                  {activeTab ? 'Default shell · home directory' : 'Choose a workspace'}
                 </text>
               </view>
               <text
@@ -90,64 +89,29 @@ export function TerminalContent({
                 {activeTab ? `SESSION ${String(activeTab.number).padStart(2, '0')}` : 'NO SESSION'}
               </text>
             </view>
-            <view className="flex-1 flex flex-col items-center justify-center py-[18px] px-[30px]">
-              <view className="w-[78px] h-[68px] border border-solid border-[#35463f] rounded-[17px] bg-[#19231f] flex items-center justify-center mb-[26px]">
-                <text
-                  className="text-[30px] font-bold text-[color:var(--workspace-color)]"
-                  style={`--workspace-color: ${workspace?.color ?? '#a8e6cf'}`}
-                >
-                  {workspace?.icon ?? '>_'}
+            {children}
+            {!children || !activeTab ? (
+              <view className="flex-1 flex flex-col items-center justify-center p-[24px]">
+                <text id="terminal-placeholder" className="text-[18px] text-[#7c8998]">
+                  {loading ? 'Getting things ready.' : 'Open a terminal tab in this workspace.'}
                 </text>
-              </view>
-              <text className="text-[9px] text-[#71837e] tracking-[2px] mb-[13px]">
-                {activeTab ? `${activeTab.profile.name.toUpperCase()} WORKSPACE` : 'YOUR WORKSPACE'}
-              </text>
-              <text
-                id="terminal-placeholder"
-                className="text-[27px] font-medium text-[#dce3e7] text-center mb-[12px]"
-              >
-                {loading
-                  ? 'Getting things ready.'
-                  : activeTab
-                    ? 'A little space to make things.'
-                    : 'Start something new.'}
-              </text>
-              <text className="text-[13px] text-[#7c8998] leading-[22px] text-center">
-                {activeTab
-                  ? 'Your terminal content will appear here.'
-                  : 'Open a terminal tab in this workspace.'}
-              </text>
-              {activeTab ? (
-                <view className="mt-[25px] flex flex-row items-center gap-[10px] py-[10px] px-[17px] border border-solid border-[#2e373d] rounded-[8px] bg-[#1b2025] max-w-full">
-                  <text className="text-[12px] text-[#a8e6cf]">$</text>
-                  <text
-                    id="session-command"
-                    className="text-[12px] text-[#b6c0cc] overflow-hidden text-ellipsis whitespace-nowrap"
-                  >
-                    {command}
-                  </text>
-                </view>
-              ) : (
-                !loading && (
+                {!loading && !activeTab ? (
                   <view
                     id="start-terminal"
-                    className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
+                    className="p-[12px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
                     bindtap={onAdd}
                   >
-                    <text className="text-[12px] font-bold text-[#20392f]">+ New terminal</text>
+                    <text className="text-[12px] text-[#20392f]">+ New terminal</text>
                   </view>
-                )
-              )}
-              <text className="mt-[26px] text-[8px] tracking-[1.5px] text-[#4a5665]">
-                TERMINAL CONTENT PLACEHOLDER
-              </text>
-            </view>
+                ) : null}
+              </view>
+            ) : null}
             <view className="py-[17px] px-[24px] flex flex-row justify-between shrink-0">
               <text className="text-[9px] text-[#596574]">
                 {workspace?.name ?? 'Catus'} ·{' '}
                 {activeTab ? `Tab ${activeTab.number}` : 'No open tabs'}
               </text>
-              <text className="text-[9px] text-[#596574]">A place for every kind of work.</text>
+              <text className="text-[9px] text-[#596574]">Default shell</text>
             </view>
           </>
         )}

@@ -9,18 +9,12 @@ fn main() {
     napi_build::setup();
     let mut bridges = vec!["src/lib.rs"];
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_some() {
-        bridges.push("src/terminal.rs");
+        bridges.push("src/terminal_view.rs");
     }
+    // cxx-build tracks the bridge sources; rustc tracks modules and include_str! shaders.
     cxx_build::bridges(bridges)
         .std("c++17")
         .compile("catus-cxx-bridge");
-    println!("cargo:rerun-if-changed=src/lib.rs");
-    println!("cargo:rerun-if-changed=src/terminal.rs");
-    println!("cargo:rerun-if-changed=src/triangle.wgsl");
-    println!("cargo:rerun-if-changed=src/atlas.rs");
-    println!("cargo:rerun-if-changed=src/font.rs");
-    println!("cargo:rerun-if-changed=src/atlas_demo.rs");
-    println!("cargo:rerun-if-changed=src/atlas.wgsl");
 
     // Pure Rust/N-API checks can run without a Lynx host process.
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_none() {
@@ -71,6 +65,7 @@ fn main() {
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
+    // Cargo must rerun CMake when native sources or SDK dependency resolution change.
     for input in ["cxx", "package.json", "../pnpm-lock.yaml"] {
         println!(
             "cargo:rerun-if-changed={}",

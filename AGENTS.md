@@ -46,7 +46,8 @@ Read the docs below in advance to help you understand the library or frameworks 
     global. Bridge functions are callable, not constructable; do not expose the
     Node codec classes directly as constructors.
   - Workspaces own tabs; first activation creates a tab, closing the last tab
-    removes the dock indicator. Terminal content is a placeholder; no PTY yet.
+    removes the dock indicator. Each tab owns a portable-pty default-shell session; switching tabs preserves it,
+    closing tabs releases it. Workspace launch overrides are deferred.
   - `NativeDemo.tsx` preserves the original native rendering demonstration.
 - `config/workspaces.json`: Bundled default profiles; `$SHELL` resolves the
   account's default shell. User settings live in `~/.config/catus-terminal/`.
@@ -63,17 +64,24 @@ Read the docs below in advance to help you understand the library or frameworks 
 - Config: `lynx.config.ts` (RSpeedy) and `rsbuild.config.ts` (Host builder).
 - `native/`: Project-specific `@catus/native` workspace and Rust/napi-rs crate.
   - `src/lib.rs`: Rust exports and cxx bridge; `build.rs` builds and links native code.
-  - `src/terminal.rs` / `src/triangle.wgsl`: macOS wgpu renderer and triangle shader.
+  - `src/terminal_core/`: GPU-independent computation: portable-pty I/O threads,
+    Alacritty streaming parser, owned display grid and basic key encoding.
+    `src/terminal_view.rs` orchestrates resizing/snapshots and exposes the cxx bridge.
+    `components/TerminalSurface.tsx` owns tab sessions in BTS; its Main Thread Script
+    schedules main-thread Lynx RAF (BTS global RAF aliases are absent), invoking `renderFrame` after the previous call completes.
+    RAF callbacks/cleanup nested inside MTS functions must remain plain callbacks,
+    without a second `main thread` directive. Idle revisions skip GPU work.
+  - `src/renderer.rs` / `src/triangle.wgsl`: macOS wgpu renderer and triangle shader.
     `cxx/NativeTerminalMacOS.mm` borrows the Lynx IOSurface and imports it using
     the renderer's own MTLDevice; wait for GPU completion before swapping buffers.
   - `src/atlas.rs`: Alacritty shelf atlas port; staging-buffer rows must be aligned
     to 256 bytes. Clearing the atlas invalidates glyph handles via generation.
-    `src/atlas_demo.rs` / `src/atlas.wgsl` exercise uploads and instanced sampling
+    `src/glyph_renderer.rs` / `src/atlas.wgsl` exercise uploads and instanced sampling
     with real crossfont glyphs. `src/font.rs` caches by font/character/size, uses
     Menlo regular/bold with CoreText fallback, and invalidates on backing-scale
     changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
     Keep crossfont platform defaults; custom grayscale AA is deferred.
-  - `src/tests/`: External unit-test modules for counter, atlas and fonts;
+  - `src/tests/`: External unit-test modules for counter, atlas, fonts, terminal grids, PTYs and Metal rendering;
     attached as child modules so private implementation stays private.
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.

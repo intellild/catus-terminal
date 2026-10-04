@@ -32,6 +32,7 @@ fn vs_main(@builtin(vertex_index) index: u32,
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let bitmap = textureSample(atlas, atlas_sampler, in.uv);
+  if in.multicolor > 1.5 { return in.color; }
   if in.multicolor > 0.5 {
     // Color glyphs arrive premultiplied; the pipeline uses premultiplied blending.
     return bitmap;

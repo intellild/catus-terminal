@@ -16,9 +16,7 @@ export function StatusBar({
           {tabCount === 1 ? 'tab' : 'tabs'}
         </text>
       </view>
-      <text className="text-[10px] text-[#606d7b]">
-        {hasSession ? 'Local session · placeholder' : 'Ready'}
-      </text>
+      <text className="text-[10px] text-[#606d7b]">{hasSession ? 'Local session' : 'Ready'}</text>
     </>
   );
 }
