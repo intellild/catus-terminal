@@ -67,20 +67,27 @@ Read the docs below in advance to help you understand the library or frameworks 
   - `src/terminal_core/`: GPU-independent computation: portable-pty I/O threads,
     Alacritty streaming parser, owned display grid and basic key encoding.
     `src/terminal_view.rs` orchestrates resizing/snapshots and exposes the cxx bridge.
-    `components/TerminalSurface.tsx` owns tab sessions in BTS; its Main Thread Script
+    `src/terminal_session.rs` owns the u32 registry and each session's renderer.
+    `components/TerminalSurface.tsx` keeps one `TerminalView` mounted per tab.
+    `TerminalView` creates a numeric session ID on mount and closes it on unmount;
+    only the active tab mounts `NativeTerminalView`. Its Main Thread Script
     schedules main-thread Lynx RAF (BTS global RAF aliases are absent), invoking `renderFrame` after the previous call completes.
     RAF callbacks/cleanup nested inside MTS functions must remain plain callbacks,
     without a second `main thread` directive. Idle revisions skip GPU work.
   - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
-    owns the shared device, queue and mutex-protected glyph resources. Each view
-    keeps only an instance buffer and rendered grid key. Hold the shared lock
+    owns the shared device, queue and mutex-protected glyph resources. Each session
+    owns an instance buffer and rendered grid key through its session. Hold the shared lock
     through atlas uploads, queue submission and GPU completion; rollback clears
     the atlas and changes its generation, invalidating every view. Closing or
     rebinding a view must never clear the global atlas.
     `src/frame.rs` defines the cxx `FrameBuffer` / `Viewport` descriptors.
     `cxx/NativeTerminalMacOS.mm` imports the borrowed Lynx IOSurface using the
     shared MTLDevice; wait for GPU completion before swapping buffers.
-    Native terminal accepts only required `terminal-id` and standard Lynx props;
+    Native terminal accepts only required numeric `terminal-id` and standard Lynx props.
+    OnPropertiesChanged resolves that u32 ID to the session and its renderer.
+    OnLayoutChanged computes the physical viewport and calls resize_viewport, which
+    calculates columns/rows from font advance, line height/leading and padding.
+    renderFrame only checks revision and draws; it does not resize the PTY;
     methods are focus/write/key/renderFrame. No prototype modes or render statistics.
   - `src/atlas.rs`: Alacritty shelf atlas port; staging-buffer rows must be aligned
     to 256 bytes. Clearing the atlas invalidates glyph handles via generation.

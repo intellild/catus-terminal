@@ -11,7 +11,8 @@ native/
   build.rs                     cxx 桥、C++ 静态库构建及链接
   src/lib.rs                   napi-rs 导出和共享 Rust 状态
   src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
-  src/terminal_view.rs         cxx 桥、resize / revision 与 view 适配
+  src/terminal_session.rs      u32 session 注册表、PTY 和 session renderer 生命周期
+  src/terminal_view.rs         cxx 桥、layout resize / revision 与 view 适配
   src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
   src/frame.rs                 FrameBuffer / Viewport 描述和 cxx 共享类型
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
@@ -61,21 +62,28 @@ native/
 
 ## 终端对象和帧接口
 
-`RustTerminal` 是 napi-rs 导出的默认 shell 会话：`nativeId`、`shell`、`exited`、
-`write(text)`、`screenText()`、`close()`。UI 仅传递 `terminal-id`，C++ 通过注册表
-取得共享 `TerminalHandle`，不向 JS 暴露指针。每个 tab 持有一个 N-API 对象；
-切换 tab 销毁 view/renderer，但保留会话；关闭 tab 异步结束并回收 shell。
+`createTerminalSession()` 是 napi-rs 导出的默认 shell 创建函数，返回正整数 `u32`。
+`TerminalView` 在 mount 时调用它，把数字 ID 传给内层 `NativeTerminalView`；
+unmount 时调用 `closeTerminalSession(id)` 删除注册项并关闭 PTY。
+注册表强引用 session；每个 session 拥有计算层和带锁的 renderer/viewport。
+renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
+切换 tab 保持外层组件挂载，只卸载/重建 native view，保留 shell 和 renderer。
+C++ 的 `OnPropertiesChanged` 校验数字 ID，并取得共享 `TerminalHandle`。
+诊断/主机 API 为 `writeTerminalSession(id, text)` 和 `getTerminalSessionInfo(id)`。
 
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/pty.rs` 管理阻塞
-PTY 读写线程。`terminal_view.rs` 提供 cxx 适配和 resize/revision 检查。
-`renderer.rs` 的独立 `TerminalRenderer::render_grid` 接收计算后的网格、借用的
-`FrameBuffer { metal_texture, viewport }`，完全不访问 PTY。
-viewport 的物理尺寸和 backing scale 来自 Lynx layout；UI 不传渲染配置。
+PTY 读写线程。`terminal_session.rs` 管理生命周期，`terminal_view.rs` 提供 cxx 适配。
+`OnLayoutChanged` 接收逻辑尺寸及 backing scale，更新 viewport，再用 crossfont
+字体 advance、line height（含 CoreText leading）和 padding 计算行列，resize PTY。
+属性晚于 layout 到达时，绑定 session 后应用缓存的 layout；UI 不传宽高或行列参数。
+`renderFrame()` 只读取 session 的 renderer/viewport、检查 revision、生成快照并绘制。
+`renderer.rs` 接收计算后的网格、`FrameBuffer { metal_texture }` 和 session 的
+viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
-| `terminal-id` | 绑定 RustTerminal 会话 |
-| `renderFrame()` | 处理尺寸变化并绘制最新网格，空闲时跳过 GPU；成功返回 true |
+| `terminal-id: number` | 绑定 u32 session ID |
+| `renderFrame()` | 使用 session 的 viewport 绘制最新网格，空闲时跳过 GPU；成功返回 true |
 | `focus()` | 获得 Lynx 键盘焦点 |
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
@@ -97,7 +105,7 @@ texture，通过 cxx 交给 Rust wgpu 导入并绘制；GPU 完成后才 `SwapBa
 `renderer.rs` 使用全局 `LazyLock<Result<GpuContext, String>>` 惰性创建一次 device、
 queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。
 每个 renderer 独立保存 instance buffer 与网格 revision/viewport/generation。
-销毁或重新绑定 view 只释放其绘制状态，不清空共享缓存。原有三角形/atlas 演示、
+销毁或重新绑定 view 只释放其 session 句柄；renderer 保留至 session 释放，重挂载时使帧状态失效，不清空共享缓存。原有三角形/atlas 演示、
 渲染统计和 IOSurface 像素扫描接口已移除；错误通过实际方法的失败回调返回。
 
 `font.rs` 使用 crossfont 0.9.0 / macOS CoreText，按字体、字符和物理字号缓存字形，
@@ -107,7 +115,7 @@ DPI 改变会查找/补充另一个字号，既有字号和 atlas 区域仍保�
 
 普通字形使用 R8Unorm coverage 页；彩色字形使用 premultiplied RGBA8Unorm 页。
 位图由 256 字节行对齐 staging buffer 上传。pipeline、sampler、页 bind group 共享；
-instance buffer 每个 view 独立。保持 crossfont 平台默认 AA 和 RGB coverage 均值策略。
+instance buffer 每个 session 独立。保持 crossfont 平台默认 AA 和 RGB coverage 均值策略。
 
 共享锁覆盖字形生成、上传编码、提交和 GPU 完成，避免另一个 view 使用尚未提交的
 字形数据。失败时清空 atlas、递增 generation，所有 view 在下一帧重新绘制。

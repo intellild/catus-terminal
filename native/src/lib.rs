@@ -8,6 +8,11 @@ mod frame;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod renderer;
 pub mod terminal_core;
+mod terminal_session;
+pub use terminal_session::{
+    TerminalSessionInfo, close_terminal_session, create_terminal_session,
+    get_terminal_session_info, write_terminal_session,
+};
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod terminal_view;
 use std::collections::HashMap;

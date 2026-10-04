@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-04",
+  "runtime": {
+    "platform": "macOS arm64",
+    "lynxtron": "0.0.28",
+    "backend": "Metal"
+  },
+  "checks": {
+    "mount_creates_numeric_session": { "first": 1, "second": 2, "native_attribute_type": "number" },
+    "native_props_rebinding": "setNativeProps switched the same element 2 -> 1 -> 2; renderFrame succeeded and each session displayed its own output",
+    "tab_switch_retains_session": "Switching back to Shell 1 retained numeric ID 1 and Session ONE output after the inner native view was recreated",
+    "session_owns_renderer": "Rust test: renderer pointer remains identical after dropping and reacquiring native handles",
+    "layout_drives_pty_resize": {
+      "trigger": "Main-thread style change to flex:none; height:220px, invoking native OnLayoutChanged",
+      "before_stty_size": { "rows": 28, "columns": 116 },
+      "after_stty_size": { "rows": 12, "columns": 116 },
+      "render_frame": true
+    },
+    "session_release": "Rust, N-API and UI tests: unmount removes the ID, closes the PTY and rejects subsequent lookups; cleanup is idempotent",
+    "rust_tests": 17,
+    "ui_tests": 16,
+    "clippy": "passed",
+    "napi_smoke": "passed",
+    "typecheck": "passed",
+    "lint": "passed",
+    "full_build": "passed",
+    "runtime_frame_trigger": "manual renderFrame and lifecycle/layout callbacks; continuous RAF and physical keyboard were not tested"
+  },
+  "screenshots": ["terminal-session-layout.jpeg", "terminal-session-rebound.jpeg"]
+}

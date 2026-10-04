@@ -112,17 +112,23 @@ owned `GridSnapshot`。`TerminalRenderer` 接收借用的 Metal FrameBuffer 对�
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
 
 ```text
-TerminalSurface.tsx（BTS）/ preload.ts
-  每个 tab 一个 RustTerminal → 账户默认 shell → portable-pty
+TerminalView.tsx（BTS）/ preload.ts
+  mount → createTerminalSession() → u32 ID → 账户默认 shell / portable-pty
+       ↓
+NativeTerminalView.tsx / native-terminal
+  terminal-id → OnPropertiesChanged → 注册表 session → session renderer
+       ↓
+NativeTerminalMacOS.mm / OnLayoutChanged
+  逻辑尺寸 × backing scale → 字体 advance、line height / leading → 行列 / PTY resize
        ↓
 terminal_core/pty.rs（独立读线程）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
-Lynx 主线程 requestAnimationFrame / TerminalSurface.tsx
+Lynx 主线程 requestAnimationFrame / NativeTerminalView.tsx
   native-terminal.invoke('renderFrame')，完成后再预约下一帧
        ↓
 terminal_view.rs
-  字体 metrics 决定行列 → PTY resize → 检查 revision → GridSnapshot
+  session renderer / viewport → 检查 revision → GridSnapshot
        ↓
 NativeTerminalMacOS.mm
   借用 Lynx IOSurface → 使用 renderer 的 MTLDevice 创建 MTLTexture
@@ -139,12 +145,15 @@ GPU 完成 → Lynx SwapBack / MarkDirty
 
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
-关闭 tab 或内容组件卸载异步结束 shell。字体逐字符栅格化；尚未实现 IME、
+外层 TerminalView 随 tab 保持挂载，切换 tab 只重建内层 native view，保留 session 和 renderer；
+关闭 tab 或内容组件卸载调用 closeTerminalSession(id)，异步结束 shell。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
 
 `native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
 `terminal_pty.rs` 验证真实 shell 往返、resize、退出；`renderer.rs` 验证真实网格
 在 Metal 上绘制和回读、颜色与 atlas 复用。`test:napi` 同时验证默认 shell 导出。
+数字 ID、props 切换、session renderer 保留及真实 layout resize 见
+[session 验证报告](docs/terminal-session-verification.json)。
 实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
 本次桌面实测通过 DevTool 手动调用 renderFrame；电脑锁屏，窗口持续 RAF 与
 真实键盘输入尚未完成实测，RAF 续帧/取消已由单元测试覆盖。
@@ -206,7 +215,7 @@ tsconfig.json
 
 所有 `<native-terminal>` 通过同一个全局 `LazyLock<Result<GpuContext, String>>`
 共享 wgpu device、queue、glyph pipeline、sampler、crossfont 字形缓存和 atlas。
-每个 `TerminalRenderer` 仅保留独立 instance buffer 与网格 revision/viewport/generation。
+每个 session 拥有 `TerminalRenderer`，保留独立 instance buffer 与网格 revision/viewport/generation。
 销毁或重建 view 不清空缓存，相同字形无需重复栅格化和上传。
 
 ```text
@@ -218,11 +227,11 @@ font.rs / 共享多字号缓存
        ↓
 glyph_renderer.rs
   共享 pipeline / sampler / 页 bind group
-  每个 view 独立 instance buffer
+  每个 session 独立 instance buffer
        ↓
 NativeTerminalMacOS.mm / frame.rs
   Lynx layout → Viewport；借用 IOSurface → 同一 MTLDevice 创建 MTLTexture
-  FrameBuffer { metal_texture, viewport } → TerminalRenderer::render_grid
+  FrameBuffer { metal_texture } + session viewport → TerminalRenderer::render_grid
        ↓
 共享锁下编码上传、绘制、提交并等待 GPU → Lynx SwapBack / MarkDirty
 ```
@@ -231,7 +240,7 @@ NativeTerminalMacOS.mm / frame.rs
 清空其他 view 的字形。上传、提交和 GPU 完成保持同一共享锁，防止跨 view
 观察到尚未提交的字形。失败回滚会递增 atlas generation，所有 view 下一帧重绘。
 
-native terminal 只接收必需的 `terminal-id` 和标准 Lynx 属性，公开方法只保留
+native terminal 只接收必需的数字 `terminal-id`（u32 session ID）和标准 Lynx 属性，公开方法只保留
 `focus()`、`write({ text })`、`key({ key, control, alt })` 和 `renderFrame()`。
 UI 不传字体、DPI 或渲染模式；framebuffer 尺寸与 backing scale 来自 Lynx layout。
 三角形/atlas 原型模式、渲染统计以及 IOSurface 像素扫描接口已删除。
@@ -277,7 +286,7 @@ atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
 
 终端字体按 14 logical px × backing scale 栅格化，使用 font metrics 和 glyph
 偏移定位；Alacritty 网格确定字符列位置。跨 view 和 DPI 共用多个字号缓存，
-切回先前字号不重复栅格化或上传。每个 view 的 instance buffer 独立，页 bind group 共享。
+切回先前字号不重复栅格化或上传。每个 session 的 instance buffer 独立，页 bind group 共享。
 
 crossfont 使用平台默认抗锯齿。RGB coverage 转成均值单通道，彩色 emoji 保留
 premultiplied RGBA；自定义 grayscale、复杂 shaping、ligature 尚未实现。
@@ -380,8 +389,9 @@ native/
   build.rs                            生成 cxx 桥，构建并链接 C++ 静态库
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
   src/terminal_core/                   portable-pty 传输与 Alacritty 网格计算
-  src/terminal_view.rs                 cxx 桥、尺寸同步与帧调度适配
-  src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 view 的 renderer
+  src/terminal_session.rs              u32 注册表、session renderer 及生命周期
+  src/terminal_view.rs                 cxx 桥、layout resize 与帧调度适配
+  src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
   src/frame.rs                        FrameBuffer / Viewport 描述及 cxx 共享类型
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存

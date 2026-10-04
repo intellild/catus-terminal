@@ -19,7 +19,8 @@ contextBridge.exposeInLynxBTS({
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
   createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),
-  createDefaultTerminal: () => new nativeBinding.RustTerminal(),
+  createTerminalSession: () => nativeBinding.createTerminalSession(),
+  closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),
   echo: (message: string) => {
     return `Echo from PC Service Thread: ${message}`;
   },

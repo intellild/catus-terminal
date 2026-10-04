@@ -10,6 +10,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -22,7 +23,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   void OnAttach() override {
     std::lock_guard lock(mutex_);
     attached_ = true;
-    if (renderer_) (*renderer_)->invalidate_grid();
+    if (terminal_) (*terminal_)->invalidate_frame();
     Render();
   }
   void OnDetach() override {
@@ -32,7 +33,6 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   void OnDestroy() override {
     std::lock_guard lock(mutex_);
     terminal_.reset();
-    renderer_.reset();
   }
   void OnLayoutChanged(float left, float top, float width, float height,
                        float pixel_ratio) override {
@@ -50,21 +50,29 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     viewport_.width = static_cast<uint32_t>(std::ceil(width * pixel_ratio));
     viewport_.height = static_cast<uint32_t>(std::ceil(height * pixel_ratio));
     viewport_.pixel_ratio = pixel_ratio;
-    Render();
+    try {
+      if (terminal_) (*terminal_)->resize_viewport(viewport_);
+      Render();
+    } catch (const rust::Error& error) { error_ = error.what(); }
   }
   void OnPropertiesChanged(const LynxValue& attrs, const LynxValue& events) override {
     (void)events;
     if (!attrs.HasProperty("terminal-id")) return;
     auto value = attrs.GetProperty("terminal-id");
-    if (value.Type() != lynx_value_string) return;
+    const auto type = value.Type();
+    if (type != lynx_value_double && type != lynx_value_int32 && type != lynx_value_int64) return;
+    const double number = value.Number();
+    if (!std::isfinite(number) || number <= 0 ||
+        number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number) return;
     std::lock_guard lock(mutex_);
-    const auto id = value.StdString();
+    const auto id = static_cast<uint32_t>(number);
     if (id == terminal_id_) return;
     try {
-      if (id.empty()) terminal_.reset();
-      else terminal_.emplace(catus::acquire_terminal(id));
+      auto terminal = catus::acquire_terminal(id);
+      if (viewport_.width != 0 && viewport_.height != 0) terminal->resize_viewport(viewport_);
+      terminal_.emplace(std::move(terminal));
       terminal_id_ = id;
-      if (renderer_) (*renderer_)->invalidate_grid();
+      if (terminal_) (*terminal_)->invalidate_frame();
       Render();
     } catch (const rust::Error& error) { error_ = error.what(); }
   }
@@ -119,27 +127,27 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       return false;
     }
     try {
-      if (!renderer_) renderer_.emplace(catus::create_terminal_renderer());
-      if (!catus::prepare_terminal_frame(**renderer_, **terminal_, viewport_)) {
+      if (!(*terminal_)->needs_frame()) {
         error_.clear();
         return true;
       }
+      const auto viewport = (*terminal_)->viewport();
       // Borrowed IOSurface; Lynx owns its double buffer and presentation.
-      auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(viewport_.width, viewport_.height));
+      auto surface = reinterpret_cast<IOSurfaceRef>(AcquireSurface(viewport.width, viewport.height));
       if (surface == nullptr) {
         error_ = "Lynx back buffer is unavailable";
         return false;
       }
-      if (IOSurfaceGetWidth(surface) != viewport_.width || IOSurfaceGetHeight(surface) != viewport_.height ||
+      if (IOSurfaceGetWidth(surface) != viewport.width || IOSurfaceGetHeight(surface) != viewport.height ||
           IOSurfaceGetBytesPerElement(surface) != 4) {
         error_ = "Unexpected Lynx IOSurface dimensions or pixel layout";
         return false;
       }
       @autoreleasepool {
         // Use wgpu's actual MTLDevice, not a separately created Metal device.
-        id<MTLDevice> device = (__bridge id<MTLDevice>)(void*)(*renderer_)->metal_device();
+        id<MTLDevice> device = (__bridge id<MTLDevice>)(void*)(*terminal_)->metal_device();
         auto desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-            width:viewport_.width height:viewport_.height mipmapped:NO];
+            width:viewport.width height:viewport.height mipmapped:NO];
         desc.usage = MTLTextureUsageRenderTarget;
         desc.storageMode = MTLStorageModeShared;
         id<MTLTexture> texture = [device newTextureWithDescriptor:desc iosurface:surface plane:0];
@@ -149,11 +157,11 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         }
         // Rust retains the texture and waits for GPU completion before return.
         const auto handle = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-        const catus::FrameBuffer frame{handle, viewport_};
-        if (!catus::render_terminal(**renderer_, **terminal_, frame)) return true;
+        const catus::FrameBuffer frame{handle};
+        if (!(*terminal_)->render_frame(frame)) return true;
       }
       if (!SwapBack()) {
-        (*renderer_)->invalidate_grid();
+        (*terminal_)->invalidate_frame();
         error_ = "Lynx could not swap the rendered back buffer";
         return false;
       }
@@ -167,9 +175,8 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
 
   std::mutex mutex_;
-  std::optional<rust::Box<catus::TerminalRenderer>> renderer_;
   std::optional<rust::Box<catus::TerminalHandle>> terminal_;
-  std::string terminal_id_;
+  uint32_t terminal_id_ = 0;
   catus::Viewport viewport_{};
   bool attached_ = false;
   std::string error_;

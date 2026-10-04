@@ -10,16 +10,20 @@ export declare class RustCounter {
   toNativeHandle(): NativeCounterHandle;
 }
 
-export declare class RustTerminal {
-  readonly nativeId: string;
-  constructor();
-  write(text: string): void;
-  close(): void;
-  get shell(): string;
-  get exited(): boolean;
-  screenText(): string;
-}
+export declare function closeTerminalSession(id: number): void;
+
+export declare function createTerminalSession(): number;
+
+export declare function getTerminalSessionInfo(id: number): TerminalSessionInfo;
 
 export interface NativeCounterHandle {
   nativeId: string;
 }
+
+export interface TerminalSessionInfo {
+  shell: string;
+  exited: boolean;
+  text: string;
+}
+
+export declare function writeTerminalSession(id: number, text: string): void;

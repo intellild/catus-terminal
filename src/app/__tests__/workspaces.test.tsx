@@ -4,6 +4,7 @@ import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/tes
 import defaults from '../../../config/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
+import type { TerminalHost } from '../components/TerminalView';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
 beforeEach(() => {
@@ -15,10 +16,8 @@ beforeEach(() => {
   rstest.stubGlobal('NativeModules', {
     nodejs: {
       exposed: {
-        createDefaultTerminal: rstest.fn(() => ({
-          nativeId: `test-terminal-${++next}`,
-          close: rstest.fn(),
-        })),
+        createTerminalSession: rstest.fn(() => ++next),
+        closeTerminalSession: rstest.fn(),
       },
     },
   });
@@ -80,6 +79,8 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
     'Default shell · home directory',
   );
   const firstId = root.querySelector('#terminal-surface')?.getAttribute('terminal-id');
+  const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
+  expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(root.querySelector('#running-shell')).not.toBeNull();
   expect(root.querySelector('#running-node')).toBeNull();
   fireEvent.tap(root.querySelector('#workspace-node')!);
@@ -95,6 +96,8 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
     expect(root.querySelector('#terminal-surface')?.getAttribute('terminal-id')).toBe(firstId),
   );
   expect(root.querySelector('#tab-2')).toBeNull();
+  expect(terminalHost.createTerminalSession).toHaveBeenCalledTimes(3);
+  expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#workspace-node')!);
   await findByText('Node.js 3');
   fireEvent.tap(root.querySelector('#close-tab-3')!);
@@ -102,6 +105,8 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   await findByText('Open a terminal tab in this workspace.');
   expect(root.querySelector('#running-node')).toBeNull();
   expect(root.querySelector('#running-shell')).not.toBeNull();
+  expect(terminalHost.closeTerminalSession).toHaveBeenCalledTimes(2);
+  expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
   fireEvent.tap(root.querySelector('#start-terminal')!);
   await findByText('Node.js 4');
 });
@@ -163,12 +168,12 @@ test('closing terminal content releases its PTY instances', async () => {
   await rstest.waitFor(() =>
     expect(elementTree.root!.querySelector('#terminal-surface')).not.toBeNull(),
   );
-  const factory = (NativeModules.nodejs.exposed as { createDefaultTerminal(): { close(): void } })
-    .createDefaultTerminal;
-  const session = rstest.mocked(factory).mock.results[0]!.value!;
-  expect(session.close).not.toHaveBeenCalled();
+  const host = NativeModules.nodejs.exposed as TerminalHost;
+  const id = rstest.mocked(host.createTerminalSession).mock.results[0]!.value!;
+  expect(host.closeTerminalSession).not.toHaveBeenCalled();
   unmount();
-  expect(session.close).toHaveBeenCalledOnce();
+  expect(host.closeTerminalSession).toHaveBeenCalledOnce();
+  expect(host.closeTerminalSession).toHaveBeenCalledWith(id);
 });
 
 test('main-thread RAF waits for native completion and cancels on terminal unmount', async () => {

@@ -9,7 +9,6 @@ mod ffi {
     }
     struct FrameBuffer {
         metal_texture: usize,
-        viewport: Viewport,
     }
 }
 pub(crate) use ffi::{FrameBuffer, Viewport};

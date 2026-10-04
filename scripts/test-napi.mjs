@@ -6,7 +6,13 @@ import { buildNative } from '../native/build.mjs';
 const binary = await buildNative({ nativeView: false });
 const addon = { exports: {} };
 process.dlopen(addon, binary);
-const { RustCounter, RustTerminal } = addon.exports;
+const {
+  RustCounter,
+  createTerminalSession,
+  closeTerminalSession,
+  writeTerminalSession,
+  getTerminalSessionInfo,
+} = addon.exports;
 const first = new RustCounter(10);
 const second = new RustCounter(100);
 assert.equal(first.add(2), 12);
@@ -19,20 +25,22 @@ assert.throws(() => new RustCounter(2147483647).add(1), /overflow/);
 assert.throws(() => first.add('invalid'));
 console.log('N-API addon: constructor, instance isolation, handle and errors passed');
 
-// Exercise the same default-shell N-API instance used by the Lynx preload.
-const terminal = new RustTerminal();
+// Exercise the numeric session API used by TerminalView's mount/unmount lifecycle.
+const id = createTerminalSession();
 try {
-  assert.match(terminal.nativeId, /^terminal-\d+$/);
-  assert.ok(terminal.shell.startsWith('/'));
-  terminal.write("printf '%s%s\\n' NAPI_ PTY_OK\r");
+  assert.ok(Number.isInteger(id) && id > 0 && id <= 0xffffffff);
+  assert.ok(getTerminalSessionInfo(id).shell.startsWith('/'));
+  writeTerminalSession(id, "printf '%s%s\\n' NAPI_ PTY_OK\r");
   const deadline = Date.now() + 10_000;
-  while (!terminal.screenText().includes('NAPI_PTY_OK')) {
-    assert.ok(Date.now() < deadline, terminal.screenText());
+  while (!getTerminalSessionInfo(id).text.includes('NAPI_PTY_OK')) {
+    assert.ok(Date.now() < deadline, getTerminalSessionInfo(id).text);
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 } finally {
-  terminal.close();
+  closeTerminalSession(id);
 }
-assert.equal(terminal.exited, true);
-assert.throws(() => terminal.write('x'), /exited/);
-console.log('N-API terminal: default shell, PTY output, grid and shutdown passed');
+assert.throws(() => getTerminalSessionInfo(id), /released/);
+assert.throws(() => writeTerminalSession(id, 'x'), /released/);
+closeTerminalSession(id); // Idempotent cleanup.
+assert.throws(() => getTerminalSessionInfo(0), /Unknown/);
+console.log('N-API terminal: numeric session ID, default shell, PTY output and release passed');

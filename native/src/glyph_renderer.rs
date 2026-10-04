@@ -67,7 +67,7 @@ impl GlyphRenderer {
         viewport: &Viewport,
     ) -> Result<crate::terminal_core::grid::GridSize, String> {
         let metrics = shared.cache.metrics(viewport.font_pixels()?)?;
-        let padding = 8. * viewport.pixel_ratio;
+        let padding = (8. * viewport.pixel_ratio).round();
         Ok(crate::terminal_core::grid::GridSize::new(
             ((viewport.width as f32 - 2. * padding).max(0.)
                 / metrics.average_advance.round().max(1.) as f32) as usize,

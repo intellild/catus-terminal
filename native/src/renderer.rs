@@ -1,4 +1,4 @@
-//! One lazily initialized GPU/atlas context, with independent per-view drawing state.
+//! One lazily initialized GPU/atlas context, with independent per-session drawing state.
 #[path = "glyph_renderer.rs"]
 mod glyph_renderer;
 use crate::{
@@ -103,9 +103,10 @@ impl TerminalRenderer {
     pub(crate) unsafe fn render_grid(
         &mut self,
         frame: &FrameBuffer,
+        viewport: &Viewport,
         grid: &GridSnapshot,
     ) -> Result<(), String> {
-        let Viewport { width, height, .. } = frame.viewport;
+        let Viewport { width, height, .. } = *viewport;
         if frame.metal_texture == 0
             || width == 0
             || height == 0
@@ -114,7 +115,7 @@ impl TerminalRenderer {
         {
             return Err("Invalid terminal texture or dimensions".into());
         }
-        frame.viewport.font_pixels()?;
+        viewport.font_pixels()?;
         // Retain the borrowed framebuffer for the imported HAL texture.
         let raw =
             unsafe { Retained::retain(frame.metal_texture as *mut ProtocolObject<dyn MTLTexture>) }
@@ -159,11 +160,7 @@ impl TerminalRenderer {
                     wgpu::TextureUses::UNINITIALIZED,
                 )
         };
-        self.render_into(
-            &texture.create_view(&Default::default()),
-            &frame.viewport,
-            grid,
-        )
+        self.render_into(&texture.create_view(&Default::default()), viewport, grid)
     }
 
     fn render_into(
