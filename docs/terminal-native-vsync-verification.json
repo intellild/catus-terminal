@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-04",
+  "runtime": { "platform": "macOS arm64", "lynxtron": "0.0.28", "backend": "Metal" },
+  "architecture": {
+    "pty": "Only updates its Alacritty grid and revision; no VSync subscription or GPU access",
+    "vsync": "macOS CADisplayLink on the UI main run loop drives the SDK custom monitor; Rust FrameClock registers native RAF on BTS and publishes to a global tokio broadcast",
+    "listeners": "C++ registers Rust FrameListener receivers; window/generation filtering and lifetime stay in Rust",
+    "presentation": "Native UI task consumes frame ticks, renders the latest grid into Lynx IOSurface, waits for GPU completion, swaps and completes the Rust frame task",
+    "javascript": "No requestAnimationFrame, cancellation, main-thread ref or per-frame renderFrame invocation"
+  },
+  "checks": {
+    "rust_tests": { "passed": 21, "frame_clock_tests": 4 },
+    "clippy": "passed with -D warnings",
+    "ui_tests": { "passed": 16 },
+    "napi": "Default shell, PTY output, numeric sessions and release passed",
+    "typecheck": "passed",
+    "lint": "passed",
+    "format": "passed",
+    "native_and_desktop_build": "passed",
+    "runtime_registration": "Temporary native tracing observed extension foreground, observer attach, active Rust listener and native RAF registration; tracing code was removed",
+    "runtime_automatic_presentation": "Passed on an unlocked Mac: initial default-shell prompt and subsequent PTY printf output appeared automatically, including Chinese text. No manual renderFrame was invoked.",
+    "runtime_screenshot": "Lynx view.takeScreenshot on #application-layout returned data, width=2240, height=1520; its PNG includes the custom native terminal surface. Saved as terminal-native-vsync.png."
+  },
+  "runtime_fix": "The default macOS VSync monitor produced no callbacks even after unlocking, including Lynx BTS requestAnimationFrame. Official SDK source adds its display link to the current BTS NSRunLoop; registering a custom monitor on the UI main run loop restored frame callbacks.",
+  "scope": "Verified on macOS arm64 with Lynxtron 0.0.28. Older macOS versions retain the SDK fallback and were not runtime-tested."
+}

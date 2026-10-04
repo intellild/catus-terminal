@@ -9,3 +9,5 @@ build/
 *.log
 .DS_Store
 .idea
+tests/e2e/__screenshots__/
+docs/terminal-native-vsync.png

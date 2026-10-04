@@ -11,12 +11,18 @@ Read the docs below in advance to help you understand the library or frameworks 
 - Runtime debugging: use the `agent-lynx` CLI to inspect and verify a running Lynx application. The CLI includes the official `lynx-devtool` skill; load its complete instructions before debugging:
 
   ```bash
-  pnpm dlx agent-lynx skills get lynx-devtool
+  pnpm exec agent-lynx skills get lynx-devtool
   ```
 
   If `agent-lynx` is already available on `PATH`, omit the `pnpm dlx` prefix.
 
   If the session list is empty on the first CLI connection to a DevTool-enabled desktop app, **quit and restart the app**. The CLI enables DevTool when it connects, but existing windows need to be recreated. Run `agent-lynx list-clients` again after restarting and select the current client address.
+
+- Default verification uses Lynx capabilities and Rstest automation. Use Lynx
+  DevTool DOM/Input and `view.takeScreenshot`; do not use computer-use screenshots
+  or OS UI observations as the acceptance baseline. Runtime E2E tests live in
+  `tests/e2e`, with explicit PNG baselines and actual/diff artifacts. Never update
+  baselines to make a failure disappear without inspecting the changed images.
 
 ## Overview
 
@@ -74,10 +80,19 @@ Read the docs below in advance to help you understand the library or frameworks 
     Switching tabs only updates numeric `terminal-id`, with no view keys or active
     props. ID 0 unbinds the session while keeping the hidden native element mounted.
     TerminalContent must keep its children mounted across loading/config errors.
-    NativeTerminalView's stable Main Thread Script ref
-    schedules main-thread Lynx RAF (BTS global RAF aliases are absent), invoking `renderFrame` after the previous call completes.
-    RAF callbacks/cleanup nested inside MTS functions must remain plain callbacks,
-    without a second `main thread` directive. Idle revisions skip GPU work.
+    `src/frame_clock.rs` owns native VSync scheduling and a process-wide LazyLock
+    tokio broadcast channel. C++ calls register_frame_listener per native view;
+    Rust retains receivers, active listener counts and runtime generations.
+    PTY threads only update their own grid; VSync reads the latest grid and draws.
+    `cxx/NativeTerminalRegistration.mm` passes the extension's observer to Rust.
+    `cxx/NativeVSyncMonitorMacOS.mm` installs the SDK custom VSync monitor on macOS 14+:
+    CADisplayLink must run on the UI main run loop; the current Lynxtron BTS loop
+    does not drive the default macOS monitor. Older platforms keep the SDK fallback.
+    `cxx/NativeFrameHost.mm` only bridges native BTS/UI task queues and surfaces:
+    RAF registration/callback runs on BTS, UI rendering completes before renewal.
+    ID 0, invalid layout, detach, background and destruction stop frame renewal.
+    Queued callbacks retain weak clock/view references; stale generations cannot
+    restart a replaced runtime. No JS RAF or per-frame invoke is used.
   - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
     owns the shared device, queue and mutex-protected glyph resources. Each session
     owns an instance buffer and rendered grid key through its session. Hold the shared lock
@@ -104,7 +119,8 @@ Read the docs below in advance to help you understand the library or frameworks 
     attached as child modules so private implementation stays private.
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
-  - Register additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
+  - Register ordinary additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
+    terminal uses a custom extension module to receive the native VSync observer.
     add sources to `cxx/CMakeLists.txt` and types to `elements.d.ts`.
 
 ## Common Patterns
@@ -133,6 +149,21 @@ Use NodeJS ≥ 22 and TypeScript.
 - Build (Desktop): `pnpm run build`
 - Start (Desktop): `pnpm start`
 - Test: `pnpm run test`
+- Node test helpers: `pnpm run test:node` verifies the PNG comparator.
+  `pnpm run test:unit` runs both ReactLynx and Node unit suites.
+- E2E: `pnpm run test:e2e` builds and launches Lynxtron with an isolated config
+  and the JS fake PTY at `tests/fixtures/fake-pty.mjs`. Each case owns its app
+  process, uses the official daemon connector, and waits for native VSync pixels.
+  It never calls `renderFrame`. Requires a macOS desktop with Metal; unsupported
+  platforms fail explicitly. Close any existing Catus app first.
+  `pnpm run test:e2e:update` explicitly updates baseline PNGs; review them.
+  Baselines live in `tests/e2e/__screenshots__/<platform>-<arch>/`; size changes
+  fail. Baselines are temporarily gitignored until the UI stabilizes; a fresh
+  checkout must run `pnpm run test:e2e:update` and inspect the generated images.
+  Artifacts/logs are under `.tmp/e2e/artifacts/`. Runtime fixtures use
+  `CATUS_E2E_PTY` / `CATUS_E2E_NODE` in preload, not workspace launch overrides.
+  Rust `tests/terminal_rendering.rs` uses the same fake PTY and real Metal
+  framebuffer import/readback to verify session rendering and idle revisions.
 - TypeScript: `pnpm run tsc` (also `pnpm run typecheck`) runs `tsc --build`.
   Root `tsconfig.json` has `files: []` and references the UI, desktop and tools
   configs. Keep ReactLynx JSX in the UI project and Node types in desktop/tools.

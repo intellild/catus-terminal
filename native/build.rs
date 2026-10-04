@@ -9,10 +9,11 @@ fn main() {
     napi_build::setup();
     let mut bridges = vec!["src/lib.rs"];
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_some() {
-        bridges.extend(["src/frame.rs", "src/terminal_view.rs"]);
+        bridges.extend(["src/frame.rs", "src/frame_clock.rs", "src/terminal_view.rs"]);
     }
     // cxx-build tracks the bridge sources; rustc tracks modules and include_str! shaders.
     cxx_build::bridges(bridges)
+        .include("cxx")
         .std("c++17")
         .compile("catus-cxx-bridge");
 
@@ -62,6 +63,7 @@ fn main() {
         "Foundation",
         "IOSurface",
         "Metal",
+        "QuartzCore",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }

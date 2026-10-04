@@ -212,5 +212,9 @@ impl TerminalRenderer {
 }
 
 #[cfg(test)]
+#[path = "tests/renderer_support.rs"]
+pub(crate) mod test_support;
+
+#[cfg(test)]
 #[path = "tests/renderer.rs"]
 mod tests;

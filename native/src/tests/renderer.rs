@@ -1,8 +1,8 @@
+use super::test_support::TEST_LOCK;
 use super::*;
 use crate::terminal_core::grid::TerminalGrid;
 
 // These tests deliberately clear the process cache; isolate them from each other.
-static TEST_LOCK: Mutex<()> = Mutex::new(());
 fn viewport(ratio: f32) -> Viewport {
     Viewport {
         width: 512,

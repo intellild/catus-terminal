@@ -12,6 +12,9 @@
   "include": [
     "./lynx.config.ts",
     "./rstest.config.ts",
+    "./rstest.e2e.config.ts",
+    "./rstest.node.config.ts",
+    "./tests/**/*.ts",
     "./rsbuild.config.ts",
     "./tailwind.config.ts",
     "./rstack.config.ts"

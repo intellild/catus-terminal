@@ -21,21 +21,6 @@ beforeEach(() => {
       },
     },
   });
-  // Main-thread APIs live in a separate testing global. RAF stays manually driven.
-  const main = (
-    globalThis as unknown as {
-      lynxTestingEnv: { mainThread: { globalThis: { lynx: Record<string, unknown> } } };
-    }
-  ).lynxTestingEnv.mainThread.globalThis;
-  Object.assign(main.lynx, {
-    requestAnimationFrame: rstest.fn(() => 1),
-    cancelAnimationFrame: rstest.fn(),
-  });
-  Object.assign(main, {
-    requestAnimationFrame: rstest.fn(() => 1),
-    cancelAnimationFrame: rstest.fn(),
-    __InvokeUIMethod: rstest.fn(),
-  });
 });
 
 async function waitForTerminal() {
@@ -78,15 +63,11 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
-test('the native view stays mounted through empty/loading/error states and skips frames without a session', async () => {
+test('the native view stays mounted through empty/loading/error states without JS frame scheduling', async () => {
   const main = lynxTestingEnv.mainThread.globalThis;
-  const pending: Array<() => void> = [];
-  const raf = rstest.fn((callback: () => void) => {
-    pending.push(callback);
-    return pending.length;
-  });
-  Object.assign(main, { requestAnimationFrame: raf });
-  Object.assign(main.lynx, { requestAnimationFrame: raf });
+  const raf = rstest.fn();
+  const invoke = rstest.fn();
+  Object.assign(main, { requestAnimationFrame: raf, __InvokeUIMethod: invoke });
   const host = makeHost();
   rstest.mocked(host.loadWorkspaces).mockRejectedValueOnce(new Error('Temporary config error'));
   const { unmount } = render(<App host={host} />);
@@ -94,19 +75,12 @@ test('the native view stays mounted through empty/loading/error states and skips
   await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
   const surface = root.querySelector('#terminal-surface')!;
   expect(Number(surface.getAttribute('terminal-id'))).toBe(0);
-  await rstest.waitFor(() => expect(pending).toHaveLength(1));
-  lynxTestingEnv.switchToMainThread();
-  try {
-    pending[0]!();
-    expect(main.__InvokeUIMethod).not.toHaveBeenCalled();
-    expect(pending).toHaveLength(2);
-  } finally {
-    lynxTestingEnv.switchToBackgroundThread();
-  }
+  expect(raf).not.toHaveBeenCalled();
+  expect(invoke).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#retry-config')!);
   await waitForTerminal();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
-  expect(pending).toHaveLength(2);
+  expect(raf).not.toHaveBeenCalled();
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
@@ -222,46 +196,6 @@ test('closing terminal content releases its PTY instances', async () => {
   unmount();
   expect(host.closeTerminalSession).toHaveBeenCalledOnce();
   expect(host.closeTerminalSession).toHaveBeenCalledWith(id);
-});
-
-test('main-thread RAF waits for native completion and cancels on terminal unmount', async () => {
-  const main = lynxTestingEnv.mainThread.globalThis;
-  const pending: Array<() => void> = [];
-  const raf = rstest.fn((callback: () => void) => {
-    pending.push(callback);
-    return pending.length;
-  });
-  const cancel = rstest.fn();
-  let complete: ((result: { code: number; data: boolean }) => void) | undefined;
-  const invoke = rstest.fn(
-    (_element: unknown, method: string, _params: unknown, callback: typeof complete) => {
-      if (method === 'renderFrame') complete = callback;
-      else callback?.({ code: 0, data: true });
-    },
-  );
-  Object.assign(main, {
-    requestAnimationFrame: raf,
-    cancelAnimationFrame: cancel,
-    __InvokeUIMethod: invoke,
-  });
-  Object.assign(main.lynx, { requestAnimationFrame: raf, cancelAnimationFrame: cancel });
-  const { unmount } = render(<App host={makeHost()} />);
-  await waitForTerminal();
-  await rstest.waitFor(() => expect(pending).toHaveLength(1));
-  lynxTestingEnv.switchToMainThread();
-  try {
-    pending[0]!();
-    expect(invoke.mock.calls[0]![1]).toBe('renderFrame');
-    expect(pending).toHaveLength(1); // No next frame while native rendering is in flight.
-    complete!({ code: 0, data: true });
-    await Promise.resolve();
-    expect(pending).toHaveLength(2);
-    expect(invoke.mock.calls[1]![1]).toBe('focus');
-  } finally {
-    lynxTestingEnv.switchToBackgroundThread();
-  }
-  unmount();
-  expect(cancel).toHaveBeenCalledWith(2);
 });
 
 test('terminal forwards control keys to the native PTY and keeps macOS shortcuts with the host', async () => {

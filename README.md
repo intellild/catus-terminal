@@ -124,8 +124,11 @@ NativeTerminalMacOS.mm / OnLayoutChanged
 terminal_core/pty.rs（独立读线程）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
-Lynx 主线程 requestAnimationFrame / NativeTerminalView.tsx
-  native-terminal.invoke('renderFrame')，完成后再预约下一帧
+frame_clock.rs（Rust）/ native VSync（BTS）
+  全局 broadcast → register_frame_listener / FrameListener
+       ↓
+NativeFrameHost.mm（UI 线程）
+  消费 Rust listener 的帧信号 → native view 绘制 → 完成后 Rust 续订
        ↓
 terminal_view.rs
   session renderer / viewport → 检查 revision → GridSnapshot
@@ -139,15 +142,20 @@ renderer.rs / glyph_renderer.rs
 GPU 完成 → Lynx SwapBack / MarkDirty
 ```
 
-帧调度使用 Main Thread Script；当前 Lynxtron 后台线程没有全局 RAF 别名。
-锁屏时实测主线程 RAF 未触发；计算层仍继续处理 PTY 输出，后续帧读取最新网格。空闲帧跳过 snapshot、纹理导入和 GPU 提交。
+帧调度由 Rust 的 `frame_clock.rs` 管理，全局 `tokio::sync::broadcast` 分发 native VSync。
+C++ 通过 `register_frame_listener()` 注册 Rust receiver，Lynx extension 提供 observer。
+macOS 14+ 使用 SDK 的 custom VSync monitor 接口，把 `CADisplayLink` 注册到 UI main run loop；
+当前 Lynxtron 的默认 monitor 在 BTS run loop 上无法触发回调。
+RAF 在 BTS 注册和回调，native 内投递到 UI 线程绘制，GPU 完成后再续订；没有 JS 每帧桥接。
+PTY 计算线程只更新网格；VSync 消费最新网格，空闲帧跳过 snapshot、纹理导入和 GPU 提交。
+广播按窗口和 runtime generation 过滤，慢 receiver 合并 tick；零尺寸、解绑、detach、后台和销毁停止续订。
 窗口尺寸或 backing scale 变化会重新计算行列、通知 PTY，并绘制新网格。
 
 已实现普通键、Enter、退格、Tab、方向键、常用 Ctrl/Option 键，以及 ANSI
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell；
 TerminalView 和 NativeTerminalView 在内容区仅挂载一次，切换 tab 更新 terminal-id，保留 session 和 renderer。
 useTerminalSession hook 维护 tab 到 session ID 的映射；关闭 tab 或内容组件卸载时调用
-closeTerminalSession(id)，异步结束 shell。没有选中 tab 时传 ID 0 解绑并隐藏 view，RAF 跳过绘制；
+closeTerminalSession(id)，异步结束 shell。没有选中 tab 时传 ID 0 解绑并隐藏 view，Rust 帧监听停止；
 loading 和配置错误不会卸载 native element。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
 
@@ -158,10 +166,12 @@ loading 和配置错误不会卸载 native element。字体逐字符栅格化；
 [session 验证报告](docs/terminal-session-verification.json)；该报告记录单一 view 重构之前的实现。
 当前 UI 回归测试还验证切换、空 workspace、重建 tab 和错误重试过程中始终复用同一 native element。
 实际保留元素引用的 ID 切换及 ID 0 解绑验证见
-[持续挂载 view 验证报告](docs/terminal-persistent-view-verification.json)。
+[持续挂载 view 验证报告](docs/terminal-persistent-view-verification.json)，记录的是 native VSync 重构之前的实现。
 实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
-本次桌面实测通过 DevTool 手动调用 renderFrame；电脑锁屏，窗口持续 RAF 与
-真实键盘输入尚未完成实测，RAF 续帧/取消已由单元测试覆盖。
+历史报告使用 DevTool 手动调用 renderFrame；Rust native VSync 的续订、订阅释放和旧回调失效由独立 Rust 测试覆盖。
+当前 [native VSync 验证报告](docs/terminal-native-vsync-verification.json) 记录 Rust/C++ 注册链路和实测结果；
+默认 shell 提示符及 PTY 写入后的中文输出均自动绘制，未手动调用 `renderFrame`。
+通过 Lynx `view.takeScreenshot` 截取的本地截图 `docs/terminal-native-vsync.png` 包含 native surface；暂不提交截图，待 UI 稳定后再纳入版本管理。
 
 ## 环境与运行
 
@@ -189,6 +199,9 @@ pnpm start           # 构建并运行
 pnpm run tsc         # tsc --build：检查根 tsconfig 引用的所有项目
 pnpm run typecheck   # 同 pnpm run tsc
 pnpm test            # ReactLynx 交互、Effect 状态与 JSON 配置读写测试
+pnpm run test:node   # 截图比较器回归测试
+pnpm run test:e2e    # 构建 + Rstest/Lynx DevTool E2E + PNG 基准对比
+pnpm run test:e2e:update # 显式生成或更新截图基准，更新后检查 PNG
 pnpm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
 pnpm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
 pnpm run pack        # 本机 macOS 应用打包，不发布
@@ -206,6 +219,40 @@ tsconfig.json
 子项目启用 `composite` 和 `noEmit`；UI 单独配置 ReactLynx JSX。
 `tsc --build` 检查全部引用项目，不输出 JS 或声明文件，只在忽略目录
 `.tmp/typecheck/` 保存增量检查缓存。
+
+运行时验收默认使用 Lynx 的 DOM/Input 和 `view.takeScreenshot`，由 Rstack 的
+Rstest 组织测试。截图覆盖 native terminal surface；测试等待 VSync 实际呈现的像素，
+不调用 `renderFrame`。E2E 当前需要 macOS 桌面和 Metal，运行前关闭已有的 Catus 应用。
+窗口尺寸固定为 1120×760；当前 `darwin-arm64` 基准在 Retina 2× 下生成，需保持
+同样的显示比例、系统字体和 emoji 版本，其他环境需显式建立并检查对应基准。
+
+```text
+tests/fixtures/fake-pty.mjs（JS 子进程，raw PTY，无系统 shell 配置）
+  确定的 ANSI / 中文 / 组合字符 / emoji / 输入 / resize 输出
+       ↓
+portable-pty → Alacritty 网格 → Rust session renderer → native VSync / wgpu
+       ↓
+tests/support/lynx.ts
+  官方 connector → Lynx DOM / Input 操作 → view.takeScreenshot
+       ↓
+tests/support/screenshots.ts
+  PNG 解码 → pixelmatch（包含抗锯齿像素）→ 基准 / actual / diff
+```
+
+`tests/e2e/terminal.test.ts` 验证首个 workspace 启动、native key 输入、tab 独立 PTY
+和保留内容、workspace 首次激活、关闭最后一个 tab 后解绑并移除 dock 圆点。
+每个用例独立启动应用，在临时目录写配置，不修改用户配置。
+基准在 `tests/e2e/__screenshots__/<platform>-<arch>/`；默认缺失基准或尺寸变化直接失败。
+截图目录暂时加入 gitignore，本地基准保留；新 checkout 需先运行 `pnpm run test:e2e:update` 并检查生成的图片，再运行截图对比。
+颜色匹配阈值为 0.1，但允许的差异像素数为零，字形缺失和空白 framebuffer 会失败。
+失败产物、最后的 Lynx DOM/截图与日志保存在 `.tmp/e2e/artifacts/`。
+当前自动化验收结果和基准尺寸/hash 见 [E2E 验证报告](docs/terminal-e2e-verification.json)。
+
+Rust `native/src/tests/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
+`TerminalHandle::render_frame` 导入 Metal texture 并回读，验证 PTY 更新、空闲跳帧、
+无效 framebuffer、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
+调用 `createTerminalSession()` 仍启动账户默认 shell；可选 `{ program, args }` 供测试启动
+fake PTY，桌面 preload 仅在设置 `CATUS_E2E_PTY` 时注入它。
 
 ## Native 演示交互（NativeDemo.tsx）
 
@@ -398,6 +445,7 @@ native/
   src/terminal_view.rs                 cxx 桥、layout resize 与帧调度适配
   src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
   src/frame.rs                        FrameBuffer / Viewport 描述及 cxx 共享类型
+  src/frame_clock.rs                  Rust native VSync、全局 broadcast 和订阅
   src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
   src/font.rs                          crossfont 字体与字形缓存
   src/tests/                           counter、atlas、font 独立测试模块
@@ -414,7 +462,10 @@ native/
     NativeInputElement.h               属性、事件、setValue/getValue/focus 方法
     NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
     NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
-    NativeTerminalMacOS.mm             借用 IOSurface，创建 Metal texture，注册 native-terminal
+    NativeTerminalMacOS.mm             借用 IOSurface，创建 Metal texture，绘制 native-terminal
+    NativeTerminalRegistration.mm      extension 生命周期和 native VSync observer
+    NativeFrameHost.h/mm               native BTS/UI task queue 桥接
+    NativeVSyncMonitorMacOS.h/mm        UI main run loop 上的 macOS display link
 src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```
 

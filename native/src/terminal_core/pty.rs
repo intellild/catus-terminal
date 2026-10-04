@@ -35,6 +35,13 @@ impl TerminalSession {
         }
         Self::spawn(command, size, shell)
     }
+    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self, String> {
+        let mut command = CommandBuilder::new(program);
+        command.args(args);
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        Self::spawn(command, size, program.to_owned())
+    }
     fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self, String> {
         let pair = native_pty_system()
             .openpty(pty_size(size))

@@ -7,6 +7,7 @@ export function TerminalView({ tabs, id }: { tabs: readonly TerminalTab[]; id?: 
   const { sessionId, error } = useTerminalSession(tabs, id);
   return (
     <view
+      id="terminal-viewport"
       className={
         id === undefined ? 'hidden' : 'flex-1 min-h-0 flex flex-col [-x-app-region:no-drag]'
       }

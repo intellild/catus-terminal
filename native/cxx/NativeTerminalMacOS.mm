@@ -1,4 +1,5 @@
-#include <lynx/registration.h>
+#include "NativeFrameHost.h"
+#include "catus-native/src/frame_clock.rs.h"
 #include <lynx_native_view.h>
 #include "catus-native/src/terminal_view.rs.h"
 #include "rust/cxx.h"
@@ -18,21 +19,38 @@ using lynx::pub::LynxValue;
 
 class NativeTerminalView : public lynx::pub::LynxNativeView {
  public:
+  explicit NativeTerminalView(std::shared_ptr<catus::NativeFrameHost> host)
+      : frame_host_(std::move(host)), frame_target_(frame_host_->RegisterListener()) {
+    frame_target_->render = [this] {
+      std::lock_guard lock(mutex_);
+      Render();
+    };
+  }
+
+  ~NativeTerminalView() override {
+    frame_target_->listener->set_active(false);
+    frame_target_->render = nullptr;
+  }
+
   bool IsSurfaceEnabled() override { return true; }
 
   void OnAttach() override {
     std::lock_guard lock(mutex_);
     attached_ = true;
     if (terminal_) (*terminal_)->invalidate_frame();
-    Render();
+    UpdateFrameLoop();
   }
   void OnDetach() override {
     std::lock_guard lock(mutex_);
     attached_ = false;
+    UpdateFrameLoop();
   }
   void OnDestroy() override {
     std::lock_guard lock(mutex_);
+    attached_ = false;
     terminal_.reset();
+    terminal_id_ = 0;
+    UpdateFrameLoop();
   }
   void OnLayoutChanged(float left, float top, float width, float height,
                        float pixel_ratio) override {
@@ -45,6 +63,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         height * pixel_ratio > 8192) {
       viewport_.width = viewport_.height = 0;
       error_ = "Terminal layout is zero or exceeds the texture size limit";
+      UpdateFrameLoop();
       return;
     }
     viewport_.width = static_cast<uint32_t>(std::ceil(width * pixel_ratio));
@@ -52,8 +71,8 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     viewport_.pixel_ratio = pixel_ratio;
     try {
       if (terminal_) (*terminal_)->resize_viewport(viewport_);
-      Render();
     } catch (const rust::Error& error) { error_ = error.what(); }
+    UpdateFrameLoop();
   }
   void OnPropertiesChanged(const LynxValue& attrs, const LynxValue& events) override {
     (void)events;
@@ -71,6 +90,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       terminal_.reset();
       terminal_id_ = 0;
       error_.clear();
+      UpdateFrameLoop();
       return;
     }
     try {
@@ -79,8 +99,8 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       terminal_.emplace(std::move(terminal));
       terminal_id_ = id;
       if (terminal_) (*terminal_)->invalidate_frame();
-      Render();
     } catch (const rust::Error& error) { error_ = error.what(); }
+    UpdateFrameLoop();
   }
   void OnMethodInvoked(const char* method, const LynxValue& params,
       std::function<void(int, LynxValue&&)> callback) override {
@@ -127,6 +147,18 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
 
  private:
+  void UpdateFrameLoop() {
+    frame_target_->listener->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
+        viewport_.width != 0 && viewport_.height != 0);
+  }
+
+  void FocusAfterFirstFrame() {
+    if (needs_focus_) {
+      needs_focus_ = false;
+      RequestFocus();
+    }
+  }
+
   bool Render() {
     if (terminal_id_ == 0) return true;
     if (!attached_ || !terminal_ || viewport_.width == 0 || viewport_.height == 0) {
@@ -136,6 +168,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     try {
       if (!(*terminal_)->needs_frame()) {
         error_.clear();
+        FocusAfterFirstFrame();
         return true;
       }
       const auto viewport = (*terminal_)->viewport();
@@ -174,6 +207,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       }
       error_.clear();
       MarkDirty();
+      FocusAfterFirstFrame();
       return true;
     } catch (const rust::Error& error) {
       error_ = error.what();
@@ -182,17 +216,19 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
 
   std::mutex mutex_;
+  std::shared_ptr<catus::NativeFrameHost> frame_host_;
+  std::shared_ptr<catus::NativeFrameTarget> frame_target_;
   std::optional<rust::Box<catus::TerminalHandle>> terminal_;
   uint32_t terminal_id_ = 0;
   catus::Viewport viewport_{};
   bool attached_ = false;
+  bool needs_focus_ = true;
   std::string error_;
 };
 
-lynx_native_view_t* CreateNativeTerminalView(void* opaque) {
-  (void)opaque;
-  return (new NativeTerminalView())->native_view();
-}
 }  // namespace
 
-LYNX_REGISTER_ELEMENT("CatusNativeTerminalElement", "native-terminal", CreateNativeTerminalView, false, nullptr)
+lynx_native_view_t* catus::CreateNativeTerminalView(void* opaque) {
+  auto host = static_cast<NativeFrameHost*>(opaque)->shared_from_this();
+  return (new NativeTerminalView(std::move(host)))->native_view();
+}

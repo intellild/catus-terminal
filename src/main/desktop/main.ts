@@ -27,6 +27,10 @@ function createWindow() {
     window.loadFile(LYNX_BUNDLE_PATH);
   }
   window.show();
+  if (process.env.CATUS_E2E_PTY) {
+    app.focus({ steal: true });
+    window.focus();
+  }
 }
 
 app.whenReady().then(createWindow);

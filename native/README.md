@@ -15,6 +15,7 @@ native/
   src/terminal_view.rs         cxx 桥、layout resize / revision 与 view 适配
   src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
   src/frame.rs                 FrameBuffer / Viewport 描述和 cxx 共享类型
+  src/frame_clock.rs           native VSync、全局 broadcast 和 Rust 监听生命周期
   src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
   src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
   src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
@@ -25,7 +26,10 @@ native/
     NativeInputElement*.cc/h   输入组件及宏注册
     NativeInputRust.cc         C++ → Rust 调用
     NativeInputMacOS.mm        AppKit 输入框实现
-    NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal 组件注册
+    NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal view
+    NativeTerminalRegistration.mm  extension 生命周期和 observer 注入
+    NativeFrameHost.h/mm       BTS/UI task queue 的 cxx 桥接
+    NativeVSyncMonitorMacOS.h/mm  UI main run loop 上的 macOS display link
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型
@@ -63,10 +67,12 @@ native/
 ## 终端对象和帧接口
 
 `createTerminalSession()` 是 napi-rs 导出的默认 shell 创建函数，返回正整数 `u32`。
+可选 `{ program, args }` 用于启动测试进程；E2E preload 用 `CATUS_E2E_PTY`
+和 `CATUS_E2E_NODE` 指向 JS fixture 与 Node，不读取用户的 shell 初始化脚本。
 单一 `TerminalView` 通过 `useTerminalSession` hook 维护 tab → 数字 ID 的映射，
 新 tab 创建 session、关闭 tab 删除对应 session，整个内容区 unmount 时关闭剩余 session。
 `TerminalView` 与 `NativeTerminalView` 持续挂载，切换 tab 只更新 `terminal-id`，无需 active 或 key。
-没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，RAF 跳过绘制；loading/配置错误也保持挂载。
+没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，Rust 停止该 view 的帧监听；loading/配置错误也保持挂载。
 注册表强引用 session；每个 session 拥有计算层和带锁的 renderer/viewport。
 renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
 切换 tab 保留同一个 native element、shell 和 renderer，由 OnPropertiesChanged 更新 session 绑定。
@@ -90,9 +96,24 @@ viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-UI 的 Main Thread Script 使用 Lynx RAF 调用 `renderFrame`，完成后再预约下一帧。
-明确使用主线程 RAF，不依赖当前后台线程缺失的全局 RAF 别名。网格 revision、尺寸和 scale
-均未变化时不获取 framebuffer、不生成快照、不绘制。RAF 随 view 销毁取消。
+`frame_clock.rs` 使用一个全局 `LazyLock<tokio::sync::broadcast::Sender<FrameTick>>`。
+C++ view 调用 Rust 的 `register_frame_listener()`，receiver 保留在 Rust，按 LynxView
+clock ID 和 runtime generation 过滤信号，落后时合并 tick，绘制最新网格。
+`NativeTerminalRegistration.mm` 在 extension `OnRuntimeAttach` 中把 VSync observer 交给 Rust。
+macOS 14+ 在 `OnLynxViewCreate` 安装 SDK custom VSync monitor，使 `CADisplayLink`
+运行于 UI main run loop，避免当前 Lynxtron 默认 monitor 的 BTS run loop 不产生帧回调。
+Rust 管理注册、续订、监听生命周期和在途帧；`NativeFrameHost.mm` 仅桥接 Lynx SDK 的
+BTS task queue、native RAF 和 macOS UI task queue。RAF 注册/回调在 BTS，surface
+绘制在 UI；完成 GPU wait 和 SwapBack 后才续订下一帧，避免帧重叠。
+PTY 读线程只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
+网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
+ID 0、零尺寸、detach、后台和销毁停止续订；重新激活丢弃旧 tick，runtime 重建使旧回调失效。
+Rust 测试在 `src/tests/frame_clock.rs`，覆盖共享广播、独立窗口、慢 receiver、帧串行与生命周期。
+`src/tests/terminal_rendering.rs` 使用真实 portable-pty 启动
+`../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_frame` 导入 framebuffer 并回读
+Metal 像素。覆盖网格更新、空闲跳帧、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
+`src/tests/renderer_support.rs` 仅在测试中编译，保留 GPU 实现的私有可见性。
+桌面自动化与截图对比通过根目录 `pnpm run test:e2e` 运行。
 逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
 尚不支持 IME、选择、滚动历史 UI、完整键盘协议和复杂文本 shaping。
 

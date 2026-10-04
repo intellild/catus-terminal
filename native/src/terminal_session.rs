@@ -29,11 +29,26 @@ pub(crate) struct SessionRenderer {
 }
 
 fn create_session() -> Result<u32, String> {
+    create_session_with_command(None)
+}
+
+#[napi(object)]
+pub struct TerminalSessionCommand {
+    pub program: String,
+    pub args: Vec<String>,
+}
+
+fn create_session_with_command(command: Option<TerminalSessionCommand>) -> Result<u32, String> {
+    let size = GridSize::new(80, 24);
+    let core = match command {
+        Some(command) => TerminalSession::command(&command.program, &command.args, size)?,
+        None => TerminalSession::default_shell(size)?,
+    };
     let id = NEXT_ID
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
         .map_err(|_| "Terminal session IDs exhausted")?;
     let session = Arc::new(Session {
-        core: TerminalSession::default_shell(GridSize::new(80, 24))?,
+        core,
         #[cfg(all(feature = "native-view", target_os = "macos"))]
         rendering: Mutex::new(None),
     });
@@ -51,8 +66,12 @@ fn session(id: u32) -> Result<Arc<Session>, String> {
 }
 
 #[napi]
-pub fn create_terminal_session() -> napi::Result<u32> {
-    create_session().map_err(napi::Error::from_reason)
+pub fn create_terminal_session(command: Option<TerminalSessionCommand>) -> napi::Result<u32> {
+    match command {
+        None => create_session(),
+        Some(command) => create_session_with_command(Some(command)),
+    }
+    .map_err(napi::Error::from_reason)
 }
 
 #[napi]

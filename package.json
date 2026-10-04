@@ -19,7 +19,11 @@
     "predev": "node scripts/prepare-dev.mjs && pnpm run build:native",
     "prebuild": "pnpm run build:native",
     "tsc": "tsc --build tsconfig.json",
-    "typecheck": "pnpm run tsc"
+    "typecheck": "pnpm run tsc",
+    "test:unit": "pnpm run test && pnpm run test:node",
+    "test:node": "rstest run --config rstest.node.config.ts",
+    "test:e2e": "pnpm run build && rstest run --config rstest.e2e.config.ts",
+    "test:e2e:update": "cross-env CATUS_UPDATE_SCREENSHOTS=1 pnpm run test:e2e"
   },
   "private": true,
   "devDependencies": {
@@ -40,12 +44,16 @@
     "@rstest/core": "^0.11.1",
     "@testing-library/jest-dom": "^6.9.0",
     "@types/node": "26.6.3",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.24",
+    "agent-lynx": "0.14.2",
     "compressing": "^1.10.0",
     "concurrently": "^8.2.2",
     "cross-env": "^10.1.0",
     "jiti": "^2.7.0",
     "jsdom": "^26.1.0",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
     "rstack": "^0.8.0",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3"

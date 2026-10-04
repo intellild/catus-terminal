@@ -7,5 +7,6 @@ import { withLynxConfig } from '@lynx-js/react/testing-library/rstest-config';
 
 export default defineConfig({
   extends: withLynxConfig(),
+  include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
   resolve: { alias: { react$: '@lynx-js/react' } },
 });

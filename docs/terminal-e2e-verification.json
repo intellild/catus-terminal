@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-04",
+  "runtime": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "darwinRelease": "27.0.0",
+    "lynxtron": "0.0.28",
+    "rstest": "0.11.12",
+    "window": {
+      "width": 1120,
+      "height": 760,
+      "pixelRatio": 2
+    }
+  },
+  "driver": "agent-lynx/connector: Lynx DOM/Input, asynchronous view.takeScreenshot PNG. No computer-use baseline or manual renderFrame.",
+  "fixture": "tests/fixtures/fake-pty.mjs: real Node child inside portable-pty, raw mode; deterministic ANSI/UTF-8/input/resize output.",
+  "checks": {
+    "e2e": {
+      "passed": 5,
+      "consecutiveNormalComparisonRuns": 2
+    },
+    "screenshots": {
+      "baselines": 5,
+      "comparisonsPerRun": 6,
+      "threshold": 0.1,
+      "includeAA": true,
+      "maxChangedPixels": 0,
+      "updateRequiresExplicitCommand": true
+    },
+    "unit": {
+      "reactLynx": 16,
+      "node": 1
+    },
+    "rust": {
+      "passed": 23,
+      "newSessionRenderingTests": 2,
+      "frameClockTests": 4
+    },
+    "clippy": "passed with -D warnings",
+    "napi": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "lint": "passed",
+    "format": "passed"
+  },
+  "coverage": [
+    "Default workspace startup and automatic native VSync presentation",
+    "Native key input → PTY → Alacritty grid → wgpu framebuffer",
+    "Independent tab sessions and retained native element / contents on rebind",
+    "First activation of another workspace and dock indicators",
+    "Closing last tabs: ID 0 unbind, dock indicator removal, persistent view",
+    "Rust session framebuffer import/readback, idle frames, invalid framebuffer, DPI resize and closed handles",
+    "PNG comparator rejects a missing glyph, blank framebuffer and dimension changes"
+  ],
+  "scope": "macOS desktop with Metal. Baselines are darwin-arm64, Retina 2x with the current system fonts/emoji. Other display scales or font/OS versions may require reviewed baselines. Tests focus their window using Lynxtron APIs and wait for DevTool subscription readiness.",
+  "screenshots": [
+    {
+      "file": "tests/e2e/__screenshots__/darwin-arm64/closed-tabs.png",
+      "width": 2240,
+      "height": 1520,
+      "sha256": "e117582c629873f3fe662ac92f4550f8ed51ae7f597faad14f4d0110016d1595",
+      "changedPixels": 0
+    },
+    {
+      "file": "tests/e2e/__screenshots__/darwin-arm64/initial-workspace.png",
+      "width": 2240,
+      "height": 1520,
+      "sha256": "d5695a03d6beec8600b647a61ff3542470aa473f88faba349f29b8812e13978d",
+      "changedPixels": 0
+    },
+    {
+      "file": "tests/e2e/__screenshots__/darwin-arm64/other-workspace.png",
+      "width": 2240,
+      "height": 1520,
+      "sha256": "7ff3f04523a065f2c9fb30df169be3f2f1bb13e36934415703b47b3163aca86f",
+      "changedPixels": 0
+    },
+    {
+      "file": "tests/e2e/__screenshots__/darwin-arm64/second-tab.png",
+      "width": 2240,
+      "height": 1520,
+      "sha256": "b11a3ade3b0c7c21ff72b8b3d3d9063e46b8dd7bde152f5254852fa63ba31e58",
+      "changedPixels": 0
+    },
+    {
+      "file": "tests/e2e/__screenshots__/darwin-arm64/updated-terminal.png",
+      "width": 2012,
+      "height": 970,
+      "sha256": "73b8ab4bd445bcfccf6e4fc31e3a343a963b8c229afeeebb4b029f3074fd4329",
+      "changedPixels": 0
+    }
+  ]
+}

@@ -24,6 +24,10 @@ mod ffi {
     }
 }
 
+#[cfg(test)]
+#[path = "tests/terminal_rendering.rs"]
+mod tests;
+
 impl TerminalHandle {
     // Called by OnLayoutChanged, or when binding a session to an already-laid-out view.
     pub(crate) fn resize_viewport(&self, viewport: &Viewport) -> Result<(), String> {

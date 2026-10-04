@@ -12,12 +12,19 @@ export declare class RustCounter {
 
 export declare function closeTerminalSession(id: number): void;
 
-export declare function createTerminalSession(): number;
+export declare function createTerminalSession(
+  command?: TerminalSessionCommand | undefined | null,
+): number;
 
 export declare function getTerminalSessionInfo(id: number): TerminalSessionInfo;
 
 export interface NativeCounterHandle {
   nativeId: string;
+}
+
+export interface TerminalSessionCommand {
+  program: string;
+  args: Array<string>;
 }
 
 export interface TerminalSessionInfo {

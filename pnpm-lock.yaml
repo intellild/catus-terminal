@@ -78,9 +78,15 @@ importers:
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
       '@types/react':
         specifier: ^18.3.24
         version: 18.3.31
+      agent-lynx:
+        specifier: 0.14.2
+        version: 0.14.2
       compressing:
         specifier: ^1.10.0
         version: 1.10.6
@@ -96,6 +102,12 @@ importers:
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
+      pixelmatch:
+        specifier: ^7.2.0
+        version: 7.2.0
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       rstack:
         specifier: ^0.8.0
         version: 0.8.0(jiti@2.7.0)(jsdom@26.1.0)(typescript@5.9.3)
@@ -656,6 +668,10 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  '@lynx-js/devtool-connector@0.13.2':
+    resolution: {integrity: sha512-7NXFJFogGJAOQmIk4x95Ef9b9JbBJK5J5xviDF5OWmOeW+ZiSfCAALUMwRUlU9nXPMeH/rdtT3Kis0QtV4WDfA==}
+    engines: {node: '>=18.19'}
+
   '@lynx-js/internal-preact@11.0.0-rc.1-20260903085447-f95471a':
     resolution: {integrity: sha512-RsU+km8Ulg+HVEJpx1/lq/38GUB+KtJKypB80gbumAtswd+og0RpVppy8bZTBVZY7jSjxx2GHYPTjT61+HDPaw==}
     peerDependencies:
@@ -770,6 +786,11 @@ packages:
     resolution: {integrity: sha512-u+1d/V3PiegtfS5CSDkppEVXLjZtvNnAsfRRuWk/sayAML6zUGDBeJrAwJLYujv20Zlq5S3AgdUt7DYxeqlgTw==}
     engines: {node: '>=18'}
 
+  '@lynx-js/skill-lynx-devtool@0.14.2':
+    resolution: {integrity: sha512-9ATOTCUtEGmvXjJXPWsIUM3Yp3BJiYziZHWwKrNK3tRIfOIIPazTv3NNqclmUdR5vfK7cZ4Vb1FSwxKwpqN3ew==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@lynx-js/tailwind-preset@0.6.0':
     resolution: {integrity: sha512-LVoeJqXUdpLBF6IZVfUa1ARItruRbRV7NxvZDPG4OJsS8wQcu6SJa3cfejRFSE3IP0BBaAqlzZSonBz+Yfhj2w==}
     peerDependencies:
@@ -782,6 +803,10 @@ packages:
   '@lynx-js/template-webpack-plugin@0.16.2':
     resolution: {integrity: sha512-raz8fnerhbz/kVK+ucMj2KBodUrqfplesj5EL8+wwugLl7Ef2LswAlrmnnaHp6UTDhHWRi5kByeAmPegBj6KpQ==}
     engines: {node: ^18.14 || >=19.4}
+
+  '@lynx-js/trace-processor@0.0.1':
+    resolution: {integrity: sha512-Zyl74cKi+BDggeXroLQG4frbBuiQ0DB0yH0C3pMkUHWv17abWTdJ2mw/H9Cd1QiIr+aQHn1U2SRtsrbkmWMtJw==}
+    engines: {node: '>=18'}
 
   '@lynx-js/type-config@4.2.0':
     resolution: {integrity: sha512-Nbgd/HdQeDLQhWDC7VYq12NgciRChN5alhEyLX8VxXdVHUZEq5sUVJ3IbyKR0muPtaOEQMtXhTpPoGn+oXsLKA==}
@@ -1981,6 +2006,9 @@ packages:
   '@types/plist@3.0.5':
     resolution: {integrity: sha512-E6OCaRmAe4WDmWNsL/9RMqdkkzDCY1etutkflWk4c+AcjDU07Pcz1fQwTX0TQz+Pxqn9i4L1TU3UFpjnrcDgxA==}
 
+  '@types/pngjs@6.0.5':
+    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
+
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
 
@@ -2098,6 +2126,11 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
+
+  agent-lynx@0.14.2:
+    resolution: {integrity: sha512-GDlBDHP4IzodPXtnjcCAvUeA8ef3tjp51XgxEu/yciO8b8u31+OkvoE4Y1mbRjhUcfmMOYW5L5nb8mv0hmqs6A==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -3152,6 +3185,9 @@ packages:
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
 
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
+
   imurmurhash@0.1.4:
     resolution: {integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==}
     engines: {node: '>=0.8.19'}
@@ -3363,6 +3399,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jpeg-js@0.4.4:
+    resolution: {integrity: sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -3744,6 +3783,10 @@ packages:
     resolution: {integrity: sha512-+Lhy3TQTuzXI5hevh8sBGqbmurHbbIjAi0Z4S63nthVLmLxfbj4T54a4CfZrXIrt9iP4mVAPYMo/v99taj3wjQ==}
     engines: {node: '>= 0.4'}
 
+  obug@2.2.1:
+    resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
+    engines: {node: '>=12.20.0'}
+
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
@@ -3841,6 +3884,10 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
+  pixelmatch@7.2.0:
+    resolution: {integrity: sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg==}
+    hasBin: true
+
   pkijs@3.4.1:
     resolution: {integrity: sha512-Oo/NZcSWccq8KyoG7gLE9fnltgHns+pNCjCAp/WmjsUySi+sX7y4z4Xqu4fVb42CDHzRPl33fjzT15V1wvcyhA==}
     engines: {node: '>=16.0.0'}
@@ -3852,6 +3899,10 @@ packages:
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
     engines: {node: '>=10.4.0'}
+
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -5486,6 +5537,16 @@ snapshots:
 
   '@lynx-js/debug-metadata@0.1.0': {}
 
+  '@lynx-js/devtool-connector@0.13.2':
+    dependencies:
+      jpeg-js: 0.4.4
+      obug: 2.2.1
+      semver: 7.8.5
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@lynx-js/internal-preact@11.0.0-rc.1-20260903085447-f95471a': {}
 
   '@lynx-js/lynx-core@0.1.4': {}
@@ -5663,6 +5724,8 @@ snapshots:
     dependencies:
       '@lynx-js/webpack-runtime-globals': 0.0.8
 
+  '@lynx-js/skill-lynx-devtool@0.14.2': {}
+
   '@lynx-js/tailwind-preset@0.6.0(tailwindcss@3.4.19)':
     dependencies:
       tailwindcss: 3.4.19
@@ -5684,6 +5747,10 @@ snapshots:
       - '@lynx-js/animax'
       - '@lynx-js/lynx-core'
       - tslib
+
+  '@lynx-js/trace-processor@0.0.1':
+    dependencies:
+      immer: 10.2.0
 
   '@lynx-js/type-config@4.2.0': {}
 
@@ -6755,6 +6822,10 @@ snapshots:
       xmlbuilder: 15.1.1
     optional: true
 
+  '@types/pngjs@6.0.5':
+    dependencies:
+      '@types/node': 26.6.3
+
   '@types/prop-types@15.7.15': {}
 
   '@types/react@18.3.31':
@@ -6892,6 +6963,15 @@ snapshots:
   acorn@8.18.0: {}
 
   agent-base@7.1.4: {}
+
+  agent-lynx@0.14.2:
+    dependencies:
+      '@lynx-js/devtool-connector': 0.13.2
+      '@lynx-js/skill-lynx-devtool': 0.14.2
+      '@lynx-js/trace-processor': 0.0.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
@@ -8154,6 +8234,8 @@ snapshots:
 
   ieee754@1.2.1: {}
 
+  immer@10.2.0: {}
+
   imurmurhash@0.1.4: {}
 
   indent-string@4.0.0: {}
@@ -8359,6 +8441,8 @@ snapshots:
   jiti@1.21.7: {}
 
   jiti@2.7.0: {}
+
+  jpeg-js@0.4.4: {}
 
   js-tokens@4.0.0: {}
 
@@ -8709,6 +8793,8 @@ snapshots:
       define-properties: 1.2.1
       es-abstract: 1.24.2
 
+  obug@2.2.1: {}
+
   obug@3.0.0: {}
 
   once@1.4.0:
@@ -8805,6 +8891,10 @@ snapshots:
 
   pirates@4.0.7: {}
 
+  pixelmatch@7.2.0:
+    dependencies:
+      pngjs: 7.0.0
+
   pkijs@3.4.1:
     dependencies:
       '@noble/hashes': 1.8.0
@@ -8825,6 +8915,8 @@ snapshots:
       '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
+
+  pngjs@7.0.0: {}
 
   possible-typed-array-names@1.1.0: {}
 
