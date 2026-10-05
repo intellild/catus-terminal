@@ -5,7 +5,7 @@ use crossfont::{
     FontDesc, FontKey, GlyphKey, Metrics, Rasterize, Rasterizer, Size, Slant, Style, Weight,
 };
 
-use crate::atlas::{ATLAS_SIZE, AtlasSet, BitmapBuffer, Glyph, RasterizedGlyph};
+use super::atlas::{ATLAS_SIZE, AtlasSet, BitmapBuffer, Glyph, RasterizedGlyph};
 
 pub struct GlyphCache {
     pub atlas: AtlasSet,
@@ -165,5 +165,5 @@ fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize, Strin
 }
 
 #[cfg(test)]
-#[path = "tests/font.rs"]
+#[path = "../tests/font.rs"]
 mod tests;

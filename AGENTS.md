@@ -125,10 +125,12 @@ Read the docs below in advance to help you understand the library or frameworks 
     calculates columns/rows from font advance, line height/leading and padding.
     renderFrame only checks revision and draws; it does not resize the PTY;
     methods are focus/write/key/renderFrame. No prototype modes or render statistics.
-  - `src/atlas.rs`: Alacritty shelf atlas port; staging-buffer rows must be aligned
+  - `src/text/`: Font rasterization, glyph caching, atlas uploads and text drawing.
+    `mod.rs` exposes the glyph renderer to the GPU orchestration layer.
+    `atlas.rs` is the Alacritty shelf atlas port; staging-buffer rows must be aligned
     to 256 bytes. Clearing the atlas invalidates glyph handles via generation.
-    `src/glyph_renderer.rs` / `src/atlas.wgsl` exercise uploads and instanced sampling
-    with real crossfont glyphs. `src/font.rs` caches by font/character/size, uses
+    `src/text/glyph_renderer.rs` / `src/text/atlas.wgsl` exercise uploads and instanced sampling
+    with real crossfont glyphs. `src/text/font.rs` caches by font/character/size, uses
     Menlo regular/bold with CoreText fallback, and retains multiple physical pixel
     sizes simultaneously across views and DPI changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
     Keep crossfont platform defaults; custom grayscale AA is deferred.

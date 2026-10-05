@@ -17,9 +17,12 @@ native/
   src/frame.rs                 Rust IOSurface FrameBuffer / cxx Viewport
   src/frame_driver.rs          napi-rs JS RAF 适配器
   src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
-  src/atlas.rs                  Alacritty atlas 分配、分页和 staging buffer 上传
-  src/font.rs                  crossfont 字体、metrics 和 GlyphKey 缓存
-  src/glyph_renderer.rs / atlas.wgsl 真实字形、instance buffer 和采样验证
+  src/text/
+    mod.rs                     文字渲染模块入口
+    atlas.rs                   Alacritty atlas 分配、分页和 staging buffer 上传
+    font.rs                    crossfont 字体、metrics 和 GlyphKey 缓存
+    glyph_renderer.rs          instance buffer 和文字绘制
+    atlas.wgsl                 字形采样 shader
   src/tests/                   counter / atlas / font 独立单元测试模块
   licenses/ALACRITTY-MIT.txt     atlas 来源的 MIT 文本
   cxx/

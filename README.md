@@ -285,10 +285,10 @@ JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返
 renderer.rs / 全局 LazyLock
   首个 view 惰性初始化 Metal device + queue + Mutex<SharedGlyphs>
        ↓
-font.rs / 共享多字号缓存
+text/font.rs / 共享多字号缓存
   字体 + 字符 + 物理字号 → atlas 字形区域
        ↓
-glyph_renderer.rs
+text/glyph_renderer.rs
   共享 pipeline / sampler / 页 bind group
   每个 session 独立 instance buffer
        ↓
@@ -318,19 +318,19 @@ IOSurface 所有权归 Lynx，Rust 只 retain 导入的 MTLTexture。当前仍�
 
 ## Alacritty atlas / wgpu buffer
 
-`native/src/atlas.rs` 从本地 Alacritty `d692748d` 的
+`native/src/text/atlas.rs` 从本地 Alacritty `d692748d` 的
 `alacritty/src/renderer/text/atlas.rs` 迁移逐行分配、分页和清空复用逻辑。
 使用 1024×1024 R8Unorm coverage 页和 RGBA8Unorm premultiplied 彩色字形页，
 用 wgpu buffer 替换 GL 上传路径。来源说明和 MIT 文本保存在
 `native/licenses/ALACRITTY-MIT.txt`，并随 native 包分发。
 
 ```text
-font.rs / crossfont 0.9.0（macOS CoreText）
+text/font.rs / crossfont 0.9.0（macOS CoreText）
   Menlo 普通体/粗体 → 系统 fallback → GlyphKey 字形缓存
        ↓
 RasterizedGlyph / Gray 或 premultiplied RGBA 位图
        ↓
-AtlasSet::insert（native/src/atlas.rs）
+AtlasSet::insert（native/src/text/atlas.rs）
   校验数据 → 分配位置 → 行数据补齐到 256 字节
        ↓
 wgpu staging buffer / COPY_SRC
@@ -339,10 +339,10 @@ wgpu staging buffer / COPY_SRC
 Glyph handle
   page + generation + UV + 尺寸/偏移 + multicolor
        ↓
-glyph_renderer.rs / instance buffer（VERTEX | COPY_DST）
+text/glyph_renderer.rs / instance buffer（VERTEX | COPY_DST）
   位置、UV、颜色 → 按 atlas 页切换 bind group → instanced draw
        ↓
-atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
+text/atlas.wgsl → Lynx IOSurface → SwapBack / MarkDirty
 ```
 
 调用者传入自己的 command encoder，上传和采样可以安排在同一提交中。
@@ -461,10 +461,13 @@ native/
   src/frame.rs                        Rust IOSurface FrameBuffer 与 cxx Viewport
   src/frame_driver.rs                 napi-rs JS RAF 适配器
   src/frame_callbacks.rs              全局回调注册与 UI 同步分发 / deadline 丢帧
-  src/atlas.rs                         Alacritty atlas 分配与 wgpu staging buffer 上传
-  src/font.rs                          crossfont 字体与字形缓存
+  src/text/
+    mod.rs                            文字渲染模块入口
+    atlas.rs                          Alacritty atlas 分配与 wgpu staging buffer 上传
+    font.rs                           crossfont 字体与字形缓存
+    glyph_renderer.rs                 instance buffer 与文字绘制
+    atlas.wgsl                        字形采样 shader
   src/tests/                           counter、atlas、font 独立测试模块
-  src/glyph_renderer.rs / atlas.wgsl        真实字体验证、instance buffer 与采样 shader
   package.json                        @catus/native 本地 workspace
   lynx.lib.json                        声明 macOS arm64/x64 原生产物
   elements.d.ts                       自定义标签及事件的 TypeScript 类型

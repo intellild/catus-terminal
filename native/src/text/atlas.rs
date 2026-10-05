@@ -400,5 +400,5 @@ fn prepare_upload(glyph: &RasterizedGlyph<'_>) -> Result<Upload, AtlasError> {
 }
 
 #[cfg(test)]
-#[path = "tests/atlas.rs"]
+#[path = "../tests/atlas.rs"]
 mod tests;

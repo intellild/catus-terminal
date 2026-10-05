@@ -1,6 +1,6 @@
 //! Shared glyph resources and per-view instance buffers.
+use super::{atlas::Glyph, font::GlyphCache};
 use crate::frame::Viewport;
-use crate::{atlas::Glyph, font::GlyphCache};
 
 pub struct SharedGlyphs {
     pub cache: GlyphCache,

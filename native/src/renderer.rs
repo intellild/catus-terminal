@@ -1,11 +1,9 @@
 //! One lazily initialized GPU/atlas context, with independent per-session drawing state.
-#[path = "glyph_renderer.rs"]
-mod glyph_renderer;
 use crate::{
     frame::{FrameBuffer, Viewport},
     terminal_core::grid::{GridSize, GridSnapshot},
+    text::{GlyphRenderer, SharedGlyphs},
 };
-use glyph_renderer::{GlyphRenderer, SharedGlyphs};
 #[cfg(test)]
 use objc2::rc::Retained;
 use objc2_core_foundation::CFRetained;

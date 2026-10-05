@@ -1,8 +1,4 @@
 use napi_derive::napi;
-#[cfg(feature = "native-view")]
-pub mod atlas;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
-pub mod font;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod frame;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
@@ -15,6 +11,8 @@ pub use frame_driver::dispatch_animation_frame;
 mod renderer;
 pub mod terminal_core;
 mod terminal_session;
+#[cfg(feature = "native-view")]
+pub mod text;
 pub use terminal_session::{
     TerminalSessionCommand, TerminalSessionInfo, close_terminal_session, create_terminal_session,
     get_terminal_session_info, write_terminal_session,
