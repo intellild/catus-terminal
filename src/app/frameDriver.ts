@@ -1,3 +1,4 @@
+import { dispatchUIFrames } from './components/ui/frames';
 import { runOnBackground, runOnMainThread, useEffect, useMainThreadRef } from '@lynx-js/react';
 
 interface FrameDriverState {
@@ -7,6 +8,7 @@ interface FrameDriverState {
 
 function dispatchAnimationFrame() {
   'background only';
+  dispatchUIFrames();
   const host = NativeModules.nodejs.exposed as { dispatchAnimationFrame(): void };
   host.dispatchAnimationFrame();
 }

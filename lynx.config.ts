@@ -30,6 +30,27 @@ export default defineConfig({
   output: {
     filename: '[name].[platform].bundle',
   },
+  tools: {
+    rspack(config, { rspack }) {
+      config.module ??= {};
+      config.module.rules ??= [];
+      // Lynx UI publishes JSX with sideEffects:false. Preserve generated
+      // MTS snapshot registrations even for components only mounted in BTS.
+      config.module.rules.push({
+        test: /[\\/]@lynx-js[\\/]lynx-ui-[^\\/]+[\\/]/,
+        sideEffects: true,
+      });
+      config.plugins ??= [];
+      // TODO: remove when Lynxtron's BTS RAF advances Presence callbacks.
+      config.plugins.push(
+        new rspack.NormalModuleReplacementPlugin(/delayFrames\.(jsx|ts)$/, (resource) => {
+          if (/[\\/]@lynx-js[\\/]lynx-ui-common[\\/]/.test(resource.context)) {
+            resource.request = path.resolve(rootPath, 'src/app/components/ui/frames.ts');
+          }
+        }),
+      );
+    },
+  },
   environments: {
     lynx: {
       source: {

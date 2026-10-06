@@ -66,10 +66,15 @@
   "dependencies": {
     "@catus/native": "workspace:*",
     "@effect/atom-react": "4.0.0",
+    "@lynx-js/lynx-ui-input": "^3.139.0",
+    "@lynx-js/lynx-ui-popover": "^3.139.0",
     "background-only": "0.0.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "effect": "4.0.0",
     "react": "19.2.4",
-    "scheduler": "0.27.0"
+    "scheduler": "0.27.0",
+    "tailwind-merge": "^2.6.1"
   },
   "packageManager": "pnpm@10.34.4"
 }

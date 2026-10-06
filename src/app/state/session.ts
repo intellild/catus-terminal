@@ -122,6 +122,7 @@ export interface WorkspaceDraft {
   readonly id: string;
   readonly name: string;
   readonly command: string;
+  readonly shell: string;
   readonly type: 'local' | 'ssh';
   readonly host: string;
   readonly remoteCommand: string;
@@ -150,6 +151,7 @@ export function editWorkspace(workspace: Workspace): EditorState {
     draft: {
       ...workspace,
       type: workspace.type ?? 'local',
+      shell: workspace.shell ?? (workspace.command === '$SHELL' ? '$SHELL' : 'custom'),
       host: workspace.host ?? '',
       remoteCommand: workspace.remoteCommand ?? '',
       args: JSON.stringify(workspace.args),
@@ -173,6 +175,7 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
       host: '',
       remoteCommand: '',
       command: '$SHELL',
+      shell: '$SHELL',
       args: '["-l"]',
       cwd: '~',
       icon: '>_',
@@ -181,3 +184,7 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
     },
   };
 }
+
+export const workspaceMenuAtom = Atom.make<{ id: string; x: number; y: number } | null>(null).pipe(
+  Atom.keepAlive,
+);

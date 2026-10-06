@@ -86,7 +86,7 @@ export class LynxApp {
       await writeFile(path.join(remote, 'readme.txt'), 'SFTP fixture');
       await writeFile(
         path.join(bin, 'ssh'),
-        '#!/bin/sh\nexec /usr/libexec/sftp-server -d "$CATUS_SFTP_DIRECTORY"\n',
+        '#!/bin/sh\nfor arg in "$@"; do\n  case "$arg" in */etc/shells*) printf "/bin/zsh\\n/bin/bash\\n"; exit 0 ;; esac\ndone\nexec /usr/libexec/sftp-server -d "$CATUS_SFTP_DIRECTORY"\n',
       );
       await chmod(path.join(bin, 'ssh'), 0o755);
       fixturePath = `${bin}${path.delimiter}${fixturePath}`;
@@ -215,16 +215,21 @@ export class LynxApp {
   }
 
   async node(selector: string) {
+    return (await this.nodePath(selector))?.at(-1);
+  }
+
+  private async nodePath(selector: string) {
     const { root } = await this.cdp<{ root: NodeInfo }>('DOM.getDocument', { depth: -1 });
     const id = selector.slice(1);
-    const find = (node: NodeInfo): NodeInfo | undefined => {
-      if (this.attribute(node, 'idSelector') === id) return node;
+    const find = (node: NodeInfo, ancestors: NodeInfo[]): NodeInfo[] | undefined => {
+      const nodes = [...ancestors, node];
+      if (this.attribute(node, 'idSelector') === id) return nodes;
       for (const child of node.children ?? []) {
-        const result = find(child);
+        const result = find(child, nodes);
         if (result) return result;
       }
     };
-    return find(root);
+    return find(root, []);
   }
 
   async sessionExists(id: number) {
@@ -247,22 +252,78 @@ export class LynxApp {
   }
 
   async tap(selector: string) {
-    const node = await waitFor(selector, () => this.node(selector));
-    const { model } = await this.cdp<{ model: { content: number[] } }>('DOM.getBoxModel', {
-      nodeId: node.nodeId,
+    await this.click(selector, 'left');
+  }
+
+  async rightClick(selector: string) {
+    await this.click(selector, 'right');
+  }
+
+  async visibleTarget(selector: string) {
+    return waitFor(`visible hit target ${selector}`, async () => {
+      const nodes = await this.nodePath(selector);
+      const node = nodes?.at(-1);
+      if (!node) return undefined;
+      // Clay hit-testing can find a descendant of a hidden Presence wrapper.
+      // Wait for its ancestor visibility as well as the target's own styles.
+      if (
+        nodes?.some((ancestor) =>
+          /(?:^|;)\s*(?:visibility\s*:\s*hidden|display\s*:\s*none)\s*(?:;|$)/.test(
+            this.attribute(ancestor, 'style') ?? '',
+          ),
+        )
+      )
+        return undefined;
+      const { computedStyle } = await this.cdp<{
+        computedStyle: { name: string; value: string }[];
+      }>('CSS.getComputedStyleForNode', { nodeId: node.nodeId });
+      if (
+        computedStyle.some(
+          ({ name, value }) =>
+            (name === 'visibility' && value === 'hidden') ||
+            (name === 'display' && value === 'none'),
+        )
+      )
+        return undefined;
+      const { model } = await this.cdp<{ model: { content: number[] } }>('DOM.getBoxModel', {
+        nodeId: node.nodeId,
+      });
+      const xs = model.content.filter((_, index) => index % 2 === 0);
+      const ys = model.content.filter((_, index) => index % 2 === 1);
+      if (Math.max(...xs) <= Math.min(...xs) || Math.max(...ys) <= Math.min(...ys))
+        return undefined;
+      const left = Math.min(...xs),
+        right = Math.max(...xs);
+      const top = Math.min(...ys),
+        bottom = Math.max(...ys);
+      const inset = Math.min(4, (right - left) / 4, (bottom - top) / 4);
+      const points = [
+        [(left + right) / 2, (top + bottom) / 2],
+        [left + inset, top + inset],
+        [right - inset, top + inset],
+        [left + inset, bottom - inset],
+        [right - inset, bottom - inset],
+      ];
+      for (const [x, y] of points) {
+        const hit = await this.cdp<{ nodeId: number }>('DOM.getNodeForLocation', { x, y });
+        const contains = (target: NodeInfo): boolean =>
+          target.nodeId === hit.nodeId || !!target.children?.some(contains);
+        // Presence mounts hidden content before positioning it. Backdrops can
+        // have their center covered by content, so also check inset corners.
+        if (contains(node)) return { x: x!, y: y! };
+      }
+      return undefined;
     });
-    const xs = model.content.filter((_, index) => index % 2 === 0);
-    const ys = model.content.filter((_, index) => index % 2 === 1);
-    const x = (Math.min(...xs) + Math.max(...xs)) / 2;
-    const y = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const hit = await this.cdp<{ nodeId: number }>('DOM.getNodeForLocation', { x, y });
-    if (!hit.nodeId) throw new Error(`No Lynx hit target for ${selector}`);
+  }
+
+  private async click(selector: string, button: 'left' | 'right') {
+    const { x, y } = await this.visibleTarget(selector);
     for (const type of ['mousePressed', 'mouseReleased']) {
       await this.cdp('Input.emulateTouchFromMouseEvent', {
         type,
         x,
         y,
-        button: 'left',
+        button,
         timestamp: Date.now() / 1000,
         clickCount: 1,
       });

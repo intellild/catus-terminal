@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "workspaces": [
+    {
+      "id": "shell",
+      "name": "Shell",
+      "icon": ">_",
+      "color": "#a8e6cf",
+      "command": "$SHELL",
+      "args": [
+        "-l"
+      ],
+      "cwd": "~",
+      "type": "local"
+    },
+    {
+      "id": "local",
+      "name": "Local",
+      "icon": ">_",
+      "color": "#a8e6cf",
+      "command": "/bin/sh",
+      "args": [],
+      "cwd": "~",
+      "type": "local"
+    }
+  ]
+}

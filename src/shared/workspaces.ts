@@ -9,6 +9,8 @@ export const WorkspaceSchema = Schema.Struct({
   type: Schema.optional(Schema.Literals(['local', 'ssh'])),
   host: Schema.optional(Schema.String),
   remoteCommand: Schema.optional(Schema.String),
+  // $SHELL uses the account default; custom uses the command field.
+  shell: Schema.optional(NonEmpty),
   command: NonEmpty,
   args: Schema.Array(Schema.String),
   cwd: NonEmpty,
@@ -36,6 +38,14 @@ export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
     ) {
       throw new Error('SSH host must be a hostname, user@host or SSH config alias');
     }
+    if (
+      workspace.shell &&
+      workspace.shell !== '$SHELL' &&
+      workspace.shell !== 'custom' &&
+      (!workspace.shell.startsWith('/') || /[\s\0]/.test(workspace.shell))
+    ) {
+      throw new Error('Shell must be an absolute executable path, $SHELL or custom');
+    }
     ids.add(workspace.id);
   }
   return config;
@@ -51,6 +61,7 @@ export interface WorkspaceConfigPayload {
   readonly environment: WorkspaceEnvironment;
 }
 export interface WorkspaceHost {
+  listShells?(destination?: string): Promise<readonly import('./shells').ShellOption[]>;
   loadWorkspaces(): Promise<WorkspaceConfigPayload>;
   saveWorkspaces(config: WorkspaceConfig): Promise<WorkspaceConfigPayload>;
 }

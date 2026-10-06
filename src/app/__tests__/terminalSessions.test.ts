@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../config/workspaces.json';
+import defaults from '../../../tests/fixtures/workspaces.json';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import {
   applyConfig,
@@ -46,7 +46,7 @@ function start() {
 test('atom writes allocate and release sessions without React or UI subscriptions', () => {
   start();
   registry.update(sessionAtom, (state) => newTab(state));
-  registry.update(sessionAtom, (state) => selectWorkspace(state, 'node'));
+  registry.update(sessionAtom, (state) => selectWorkspace(state, 'local'));
   expect([...live]).toEqual([1, 2, 3]);
   expect(host.createTerminalSession.mock.calls.map(([id]) => [id])).toEqual([[1], [2], [3]]);
   // A background tab can close without rendering any terminal view.
@@ -66,14 +66,14 @@ test('atom writes allocate and release sessions without React or UI subscription
 
 test('removing a workspace closes only its sessions; registry disposal closes the remainder', () => {
   start();
-  registry.update(sessionAtom, (state) => selectWorkspace(state, 'node'));
+  registry.update(sessionAtom, (state) => selectWorkspace(state, 'local'));
   registry.update(sessionAtom, (state) => newTab(state));
   registry.update(sessionAtom, (state) =>
     applyConfig(state, {
       ...payload,
       config: {
         version: 1,
-        workspaces: payload.config.workspaces.filter((item) => item.id !== 'node'),
+        workspaces: payload.config.workspaces.filter((item) => item.id !== 'local'),
       },
     }),
   );

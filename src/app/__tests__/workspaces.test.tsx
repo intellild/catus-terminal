@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 import { beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
-import defaults from '../../../config/workspaces.json';
+import defaults from '../../../tests/fixtures/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
@@ -15,10 +15,37 @@ beforeEach(() => {
     requestAnimationFrame: rstest.fn(() => 1),
     cancelAnimationFrame: rstest.fn(),
   });
+  // Lynx UI Presence schedules its visibility transitions through BTS RAF.
+  Object.assign(lynx, { requestAnimationFrame: (callback: () => void) => setTimeout(callback, 0) });
   // Testing-library resolves selectors but does not implement native UI methods.
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const prototype = Object.getPrototypeOf(query.selectUniqueID(0));
-  rstest.spyOn(prototype, 'invoke').mockReturnValue({ exec: rstest.fn() });
+  rstest.spyOn(prototype, 'invoke').mockImplementation(function (
+    this: { _nodeSelectToken: { type: number; identifier: string } },
+    argument: unknown,
+  ) {
+    const options = argument as {
+      method: string;
+      params?: { value: string };
+      success?(result: unknown): void;
+    };
+    return {
+      exec: () => {
+        if (options.method === 'boundingClientRect')
+          options.success?.({ left: 0, top: 0, width: 470, height: 34 });
+        if (options.method === 'setValue') {
+          const token = this._nodeSelectToken;
+          const input = (
+            token.type === 0
+              ? elementTree.root?.querySelector(token.identifier)
+              : elementTree.uniqueId2Element.get(Number(token.identifier))
+          ) as HTMLInputElement;
+          input.value = options.params!.value;
+          options.success?.({});
+        }
+      },
+    };
+  });
   rstest.stubGlobal('NativeModules', {
     nodejs: {
       exposed: {
@@ -28,6 +55,47 @@ beforeEach(() => {
     },
   });
 });
+
+async function changeInput(
+  root: NonNullable<typeof elementTree.root>,
+  selector: string,
+  value: string,
+) {
+  const input = root.querySelector(selector)!;
+  const event = new Event('bindEvent:input');
+  // Testing-library copies enumerable fields into the MTS event payload.
+  Object.defineProperties(event, {
+    currentTarget: { value: { elementRefptr: input }, enumerable: true },
+    detail: {
+      value: {
+        value,
+        selectionStart: value.length,
+        selectionEnd: value.length,
+        isComposing: false,
+      },
+      enumerable: true,
+    },
+  });
+  await act(async () => {
+    input.dispatchEvent(event);
+  });
+}
+
+function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
+  fireEvent(
+    root.querySelector(`#workspace-${id}`)!,
+    Object.assign(new CustomEvent('bindEvent:mousedown'), {
+      button: 0,
+      buttons: 2,
+      pageX: 30,
+      pageY: 120,
+    }),
+  );
+}
+function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
+  contextMenu(root, id);
+  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
+}
 
 async function waitForTerminal() {
   await rstest.waitFor(() =>
@@ -44,6 +112,7 @@ function makeHost() {
     environment: { shell: '/bin/zsh', home: '/Users/test' },
   };
   const host: WorkspaceHost = {
+    listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh · /bin/zsh' }]),
     loadWorkspaces: rstest.fn(async () => payload),
     saveWorkspaces: rstest.fn(async (config: WorkspaceConfig) => ({ ...payload, config })),
   };
@@ -76,7 +145,7 @@ test('the native view stays mounted through empty/loading/error states with one 
   Object.assign(main, { requestAnimationFrame: raf, __InvokeUIMethod: invoke });
   const host = makeHost();
   rstest.mocked(host.loadWorkspaces).mockRejectedValueOnce(new Error('Temporary config error'));
-  const { unmount } = render(<App host={host} />);
+  const { unmount } = render(<App host={host} />, { enableMainThread: true });
   const root = elementTree.root!;
   await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
   const surface = root.querySelector('#terminal-surface')!;
@@ -105,14 +174,14 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(root.querySelector('#running-shell')).not.toBeNull();
-  expect(root.querySelector('#running-node')).toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-node')!);
-  await findByText('Node.js 2');
-  expect(root.querySelector('#running-node')).not.toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-node')!);
+  expect(root.querySelector('#running-local')).toBeNull();
+  fireEvent.tap(root.querySelector('#workspace-local')!);
+  await findByText('Local 2');
+  expect(root.querySelector('#running-local')).not.toBeNull();
+  fireEvent.tap(root.querySelector('#workspace-local')!);
   expect(root.querySelector('#tab-3')).toBeNull();
   fireEvent.tap(root.querySelector('#new-tab')!);
-  await findByText('Node.js 3');
+  await findByText('Local 3');
   fireEvent.tap(root.querySelector('#workspace-shell')!);
   await findByText('Shell 1');
   await rstest.waitFor(() =>
@@ -127,12 +196,12 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
     [3],
   ]);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('#workspace-node')!);
-  await findByText('Node.js 3');
+  fireEvent.tap(root.querySelector('#workspace-local')!);
+  await findByText('Local 3');
   fireEvent.tap(root.querySelector('#close-tab-3')!);
   fireEvent.tap(root.querySelector('#close-tab-2')!);
   await findByText('Open a terminal tab in this workspace.');
-  expect(root.querySelector('#running-node')).toBeNull();
+  expect(root.querySelector('#running-local')).toBeNull();
   expect(root.querySelector('#running-shell')).not.toBeNull();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   await rstest.waitFor(() => expect(Number(surface.getAttribute('terminal-id'))).toBe(0));
@@ -141,37 +210,33 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(2);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
   fireEvent.tap(root.querySelector('#start-terminal')!);
-  await findByText('Node.js 4');
+  await findByText('Local 4');
   await waitForTerminal();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
 });
 
 test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {
   const host = makeHost();
-  render(<App host={host} />);
+  render(<App host={host} />, { enableMainThread: true });
   const root = elementTree.root!;
   await waitForTerminal();
-  fireEvent.tap(root.querySelector('#workspace-settings')!);
-  await rstest.waitFor(() => expect(root.querySelector('#profile-command')).not.toBeNull());
-  const change = (selector: string, value: string) =>
-    act(() => {
-      root
-        .querySelector(selector)!
-        .dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value } }));
-    });
-  change('#profile-command', 'printf hello');
+  openEditor(root);
+  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
+  fireEvent.tap(root.querySelector('#profile-shell')!);
+  fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
+  await changeInput(root, '#profile-command', 'printf hello');
   fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
-  expect(root.querySelector('#profile-command')).toBeNull();
+  expect(root.querySelector('#profile-command')).not.toBeNull();
   fireEvent.tap(root.querySelector('#save-workspace')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
   expect(root.querySelector('#editor-error')).not.toBeNull();
-  change('#profile-host', 'user@server');
-  change('#profile-remoteCommand', 'cd /srv && exec bash -l');
+  await changeInput(root, '#profile-host', 'user@server');
+  await changeInput(root, '#profile-remoteCommand', 'cd /srv && exec bash -l');
   expect(root.querySelector('#ssh-command-preview')?.textContent).toBe(
-    "'ssh' '-t' '--' 'user@server' 'cd /srv && exec bash -l'",
+    "'ssh' '-t' '--' 'user@server' 'cd /srv && exec bash -l; printf hello'",
   );
   fireEvent.tap(root.querySelector('#workspace-type-local')!);
-  expect(root.querySelector('#profile-command')?.getAttribute('value')).toBe('printf hello');
+  expect((root.querySelector('#profile-command') as HTMLInputElement).value).toBe('printf hello');
   fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
   fireEvent.tap(root.querySelector('#save-workspace')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
@@ -181,6 +246,7 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
     host: 'user@server',
     remoteCommand: 'cd /srv && exec bash -l',
     command: 'printf hello',
+    shell: 'custom',
     args: [],
   });
   // Already running terminals keep their old profile.
@@ -189,11 +255,10 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {
   const host = makeHost();
-  render(<App host={host} />);
+  render(<App host={host} />, { enableMainThread: true });
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
-  fireEvent.tap(root.querySelector('#workspace-settings')!);
   fireEvent.tap(root.querySelector('#add-workspace')!);
   fireEvent.tap(root.querySelector('#save-workspace')!);
   await rstest.waitFor(() => expect(root.querySelector('#workspace-workspace-1')).not.toBeNull());
@@ -201,23 +266,25 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   fireEvent.tap(root.querySelector('#workspace-workspace-1')!);
   await findByText('New workspace 2');
   expect(root.querySelector('#running-workspace-1')).not.toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-settings')!);
-  fireEvent.tap(root.querySelector('#delete-workspace')!);
+  contextMenu(root, 'workspace-1');
+  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
   await findByText('Shell 1');
   expect(root.querySelector('#workspace-workspace-1')).toBeNull();
   expect(root.querySelector('#tab-2')).toBeNull();
-  expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(3);
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(
+    defaults.workspaces.length,
+  );
 });
 
 test('React unmount and remount preserve global sessions; atom writes release them', async () => {
-  const { unmount } = render(<App host={makeHost()} />);
+  const { unmount } = render(<App host={makeHost()} />, { enableMainThread: true });
   await waitForTerminal();
   const host = NativeModules.nodejs.exposed as TerminalHost;
   const id = rstest.mocked(host.createTerminalSession).mock.calls[0]![0];
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
   unmount();
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
-  render(<App host={makeHost()} />);
+  render(<App host={makeHost()} />, { enableMainThread: true });
   await waitForTerminal();
   expect(host.createTerminalSession).toHaveBeenCalledOnce();
   expect(
@@ -229,7 +296,7 @@ test('React unmount and remount preserve global sessions; atom writes release th
 });
 
 test('terminal forwards control keys to the native PTY and keeps macOS shortcuts with the host', async () => {
-  render(<App host={makeHost()} />);
+  render(<App host={makeHost()} />, { enableMainThread: true });
   await waitForTerminal();
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const invoke = rstest.spyOn(Object.getPrototypeOf(query.selectUniqueID(0)), 'invoke');
@@ -297,7 +364,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
       workspaces: [{ ...payload.config.workspaces[0]!, type: 'ssh', host: 'test-alias' }],
     },
   });
-  render(<App host={host} />);
+  render(<App host={host} />, { enableMainThread: true });
   await waitForTerminal();
   const root = elementTree.root!;
   const surface = root.querySelector('#terminal-surface');
@@ -321,4 +388,74 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   fireEvent.tap(root.querySelector('#close-tab-2')!);
   await rstest.waitFor(() => expect(fs.close).toHaveBeenCalledOnce());
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
+});
+
+test('shell Select loads candidates, saves a selected shell and allows a custom remote command', async () => {
+  const host = makeHost();
+  render(<App host={host} />, { enableMainThread: true });
+  await waitForTerminal();
+  const root = elementTree.root!;
+  openEditor(root);
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith(undefined));
+  expect(root.querySelector('#profile-command')).toBeNull();
+  fireEvent.tap(root.querySelector('#profile-shell')!);
+  await rstest.waitFor(() => expect(root.querySelector('#profile-shell-option-1')).not.toBeNull());
+  fireEvent.tap(root.querySelector('#profile-shell-option-1')!);
+  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]).toMatchObject({
+    shell: '/bin/zsh',
+    command: '/bin/zsh',
+    args: ['-l'],
+  });
+  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).toBeNull());
+  openEditor(root);
+  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
+  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
+  await changeInput(root, '#profile-host', 'remote-alias');
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith('remote-alias'));
+  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain('exec');
+  fireEvent.tap(root.querySelector('#profile-shell')!);
+  fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
+  await changeInput(root, '#profile-command', 'exec fish');
+  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledTimes(2));
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces[0]).toMatchObject({
+    type: 'ssh',
+    host: 'remote-alias',
+    shell: 'custom',
+    command: 'exec fish',
+  });
+});
+
+test('right-click edits an inactive workspace without starting it; failed deletion can retry', async () => {
+  const host = makeHost();
+  render(<App host={host} />, { enableMainThread: true });
+  await waitForTerminal();
+  const root = elementTree.root!;
+  const terminal = NativeModules.nodejs.exposed as TerminalHost;
+  contextMenu(root, 'local');
+  expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
+  expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
+  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
+  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Local');
+  expect(root.querySelector('#delete-workspace')).toBeNull();
+  expect(root.querySelector('#edit-profile-shell')).toBeNull();
+  expect(root.querySelector('#active-workspace')?.textContent).toBe('Shell');
+  fireEvent.tap(root.querySelector('#close-settings')!);
+  fireEvent.tap(root.querySelector('#workspace-local')!);
+  await rstest.waitFor(() => expect(terminal.createTerminalSession).toHaveBeenCalledTimes(2));
+  fireEvent.tap(root.querySelector('#workspace-shell')!);
+  contextMenu(root, 'local');
+  rstest.mocked(host.saveWorkspaces).mockRejectedValueOnce(new Error('Permission denied'));
+  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#workspace-menu-error')?.textContent).toContain('Permission denied'),
+  );
+  expect(root.querySelector('#workspace-local')).not.toBeNull();
+  expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
+  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-local')).toBeNull());
+  expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2);
+  expect(root.querySelector('#active-workspace')?.textContent).toBe('Shell');
 });

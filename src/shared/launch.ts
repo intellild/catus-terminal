@@ -12,14 +12,25 @@ export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnviro
         ? environment.home + workspace.cwd.slice(1)
         : workspace.cwd;
   if (workspace.type === 'ssh') {
+    const shellCommand =
+      !workspace.shell || workspace.shell === '$SHELL'
+        ? ''
+        : workspace.shell === 'custom'
+          ? workspace.command.trim()
+          : `exec ${quoteShell(workspace.shell)} -l`;
+    const remoteCommand = [workspace.remoteCommand?.trim(), shellCommand]
+      .filter(Boolean)
+      .join('; ');
     return {
       command: 'ssh',
-      args: [
-        '-t',
-        '--',
-        workspace.host!.trim(),
-        ...(workspace.remoteCommand?.trim() ? [workspace.remoteCommand.trim()] : []),
-      ],
+      args: ['-t', '--', workspace.host!.trim(), ...(remoteCommand ? [remoteCommand] : [])],
+      cwd,
+    };
+  }
+  if (workspace.shell && workspace.shell !== 'custom') {
+    return {
+      command: workspace.shell === '$SHELL' ? environment.shell : workspace.shell,
+      args: ['-l'],
       cwd,
     };
   }

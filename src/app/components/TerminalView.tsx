@@ -1,3 +1,4 @@
+import { cn } from '../lib/utils';
 import 'background-only';
 import { NativeTerminalView } from './NativeTerminalView';
 
@@ -13,13 +14,13 @@ export function TerminalView({
   return (
     <view
       id="terminal-viewport"
-      className={
-        id === undefined ? 'hidden' : 'flex-1 min-h-0 flex flex-col [-x-app-region:no-drag]'
-      }
+      className={cn(
+        id === undefined ? 'hidden' : 'flex-1 min-h-0 flex flex-col [-x-app-region:no-drag]',
+      )}
     >
       <NativeTerminalView sessionId={sessionId} />
       {error ? (
-        <text id="terminal-error" className="text-[12px] text-[#e4a4a4] p-[12px]">
+        <text id="terminal-error" className={cn('text-[12px] text-[#e4a4a4] p-[12px]')}>
           {error}
         </text>
       ) : null}

@@ -47,7 +47,33 @@ JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
-workspace 设置表单使用 Lynx 内置 `<input>`。
+workspace 设置表单通过项目 UI 组件使用官方 Lynx UI Input。
+
+`src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装官方
+`@lynx-js/lynx-ui-input`，统一样式并将表单 `onChange` 映射到 `onInput`，
+受控值同步由官方组件处理。业务组件只依赖项目 UI 组件。
+`Select` 和 `ContextMenu` 共用官方 `@lynx-js/lynx-ui-popover`。
+`PopoverProvider` 在应用内建立 portal host，让下拉内容离开滚动容器；
+Popover 的 Anchor / Positioner 负责定位，点击外部区域关闭浮层。
+`lynx.config.ts` 保留 Lynx UI 的主线程模板注册，并将其 `delayFrames` 替换为
+`ui/frames.ts`：由应用现有 MTS RAF 推进 Presence，绕过当前 Lynxtron BTS RAF
+回调不推进的问题。此适配不改变终端的帧调度，不增加 RAF 循环。
+Shell 候选项和菜单操作由业务层传入，通用组件不读取 workspace 状态。
+
+所有组件通过 `src/app/lib/utils.ts` 的 `cn(...inputs)` 合并 className：
+`clsx` 处理条件和数组，`tailwind-merge` 消除冲突，后传入的样式覆盖默认样式。
+Input、Select 和菜单项的状态样式通过 `class-variance-authority`（cva）定义 variants，
+再由 `cn(variants(...), className)` 合并调用方样式。
+
+```tsx
+<Select value={value} onValueChange={setValue}>
+  <SelectTrigger><SelectValue>{label}</SelectValue></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="$SHELL">Default shell</SelectItem>
+    <SelectItem value="custom">Custom command</SelectItem>
+  </SelectContent>
+</Select>
+```
 
 macOS 窗口使用 `frame: false` / `titleBarStyle: 'hidden'`，系统标题栏由顶部
 tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动窗口，tab 与 `+`
@@ -71,11 +97,14 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 - 首次点击未启动的 workspace 创建 tab；再次点击恢复它上次选中的 tab。
 - 顶部 `+` 为当前 workspace 创建独立 tab；关闭最后一个 tab 后圆点消失。
 - 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
-- 左下角设置或 `Configure workspace` 可新增、编辑和移除终端类型。
-- 配置编辑与启动参数保留在 UI 状态中；当前最小终端固定使用账户默认 shell，
-  尚不执行 workspace 的 command/args/cwd。tab 状态不跨应用重启保存。
+- 左下角 `+` 直接新建 workspace；workspace 上的右键菜单提供编辑和删除，
+  新建与编辑复用同一个表单。删除会释放该 workspace 的会话，至少保留一个 workspace。
+- 配置分为本地和 SSH，远程显示 Host；两者都可以选择检测到的 Shell 或输入自定义命令。
+- Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
+  远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
+- 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
 
-默认配置模板为 `config/workspaces.json`，包含 Shell、Node.js 和 Python。
+默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。
 首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过
 `CATUS_WORKSPACES_FILE=/absolute/path/workspaces.json pnpm start` 指定配置位置。
 设置面板显示实际路径。保存前通过 Effect Schema 校验，以临时文件和 rename
@@ -99,7 +128,9 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 ```
 
 `$SHELL` 使用用户账户默认 shell，`~` / `~/...` 展开为用户主目录。
-其他命令与参数原样保存，例如 `command: "ssh"`、`args: ["devbox"]`。
+`shell` 保存 `$SHELL`、检测到的绝对路径或 `custom`。选定的 Shell 以 `-l` 启动；
+`custom` 使用 `command` 字段，本地通过默认 Shell 执行，远程作为 SSH 命令执行。
+SSH 的 `remoteCommand` 可在选定 Shell 前运行额外命令。旧配置的 executable/args 仍然兼容。
 编辑 JSON 后重启应用加载。真实界面截图见 [Shell](docs/workspaces-shell.jpeg)、
 [多个 tabs](docs/workspaces-tabs.jpeg)，实测结果见 [验证报告](docs/workspaces-verification.json)。
 

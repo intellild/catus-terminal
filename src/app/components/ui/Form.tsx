@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useRef } from '@lynx-js/react';
-import type { NodesRef } from '@lynx-js/types';
+import { cn } from '../../lib/utils';
+import { createContext, useContext } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 
 // RHF-style field bindings without DOM refs or browser submit events.
@@ -46,69 +46,35 @@ export function FormField({
   );
 }
 export function FormItem({ children }: { children: ReactNode }) {
-  return <view className="flex flex-col mb-[16px] min-w-0">{children}</view>;
+  return <view className={cn('flex flex-col mb-[16px] min-w-0')}>{children}</view>;
 }
 export function FormLabel({ children }: { children: ReactNode }) {
-  return <text className="text-[12px] text-[#c3cdd6] mb-[8px]">{children}</text>;
+  return <text className={cn('text-[12px] text-[#c3cdd6] mb-[8px]')}>{children}</text>;
 }
 export function FormControl({ children }: { children: ReactNode }) {
-  return <view className="w-full">{children}</view>;
+  return <view className={cn('w-full')}>{children}</view>;
 }
 export function FormDescription({ children }: { children: ReactNode }) {
-  return <text className="text-[10px] text-[#8c99a7] leading-[17px] mt-[6px]">{children}</text>;
+  return (
+    <text className={cn('text-[10px] text-[#8c99a7] leading-[17px] mt-[6px]')}>{children}</text>
+  );
 }
 export function FormMessage() {
   const { error } = useContext(FieldContext);
-  return error ? <text className="text-[11px] text-[#e4a4a4] mt-[6px]">{error}</text> : null;
-}
-export function FormInput({
-  id,
-  value,
-  disabled,
-  onChange,
-  placeholder,
-}: {
-  id: string;
-  value: string;
-  disabled: boolean;
-  onChange(value: string): void;
-  placeholder?: string;
-}) {
-  const ref = useRef<NodesRef>(null);
-  const inputValue = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    'background only';
-    if (inputValue.current === value) return;
-    ref.current?.invoke({ method: 'setValue', params: { value } }).exec();
-    inputValue.current = value;
-  }, [value]);
-  return (
-    <input
-      id={id}
-      ref={ref}
-      className="w-full h-[34px] px-[10px] rounded-[6px] bg-[#14191f] border border-solid border-[#39444e] text-[13px] text-[#e2e8ed]"
-      {...{ value }}
-      readonly={disabled}
-      placeholder={placeholder}
-      bindinput={(event) => {
-        inputValue.current = event.detail.value;
-        onChange(event.detail.value);
-      }}
-    />
-  );
+  return error ? <text className={cn('text-[11px] text-[#e4a4a4] mt-[6px]')}>{error}</text> : null;
 }
 export function FormSubmit({ id, children }: { id: string; children: ReactNode }) {
   const control = useContext(FormContext);
   return (
     <view
       id={id}
-      className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf]"
+      className={cn('py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf]')}
       bindtap={() => {
         'background only';
         if (!control?.disabled) control?.onSubmit();
       }}
     >
-      <text className="text-[12px] font-bold text-[#20392f]">{children}</text>
+      <text className={cn('text-[12px] font-bold text-[#20392f]')}>{children}</text>
     </view>
   );
 }

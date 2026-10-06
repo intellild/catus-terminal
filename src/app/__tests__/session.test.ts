@@ -1,7 +1,7 @@
 import { expect, test, rstest } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import { terminalHostAtom } from '../state/terminalSessions';
-import defaults from '../../../config/workspaces.json';
+import defaults from '../../../tests/fixtures/workspaces.json';
 import { parseWorkspaceConfig, resolveLaunch } from '../../shared/workspaces';
 import {
   applyConfig,
@@ -24,15 +24,15 @@ test('startup opens only the first workspace and repeated activation preserves i
   let state = applyConfig(emptySession, payload);
   expect(state.tabs).toHaveLength(1);
   expect(state.tabs[0]!.workspaceId).toBe('shell');
-  state = selectWorkspace(state, 'node');
+  state = selectWorkspace(state, 'local');
   state = newTab(state);
-  const activeNode = state.activeTabs.node;
+  const activeLocal = state.activeTabs.local;
   expect(state.tabs).toHaveLength(3);
   state = selectWorkspace(state, 'shell');
   expect(state.activeTabs.shell).toBe(1);
-  state = selectWorkspace(state, 'node');
-  expect(state.activeTabs.node).toBe(activeNode);
-  expect(selectWorkspace(state, 'node').tabs).toHaveLength(3);
+  state = selectWorkspace(state, 'local');
+  expect(state.activeTabs.local).toBe(activeLocal);
+  expect(selectWorkspace(state, 'local').tabs).toHaveLength(3);
 });
 
 test('closing tabs selects a neighbor; closing the last tab stops the workspace until restarted', () => {
@@ -53,24 +53,24 @@ test('closing tabs selects a neighbor; closing the last tab stops the workspace 
 });
 
 test('profile edits apply to new tabs, while deleting a workspace removes only its sessions', () => {
-  let state = selectWorkspace(applyConfig(emptySession, payload), 'node');
+  let state = selectWorkspace(applyConfig(emptySession, payload), 'local');
   const updated = {
     ...payload,
     config: {
       version: 1 as const,
       workspaces: payload.config.workspaces.map((workspace) =>
-        workspace.id === 'node' ? { ...workspace, command: 'node-custom' } : workspace,
+        workspace.id === 'local' ? { ...workspace, command: '/bin/bash' } : workspace,
       ),
     },
   };
   state = newTab(applyConfig(state, updated));
-  expect(state.tabs[1]!.profile.command).toBe('node');
-  expect(state.tabs[2]!.profile.command).toBe('node-custom');
+  expect(state.tabs[1]!.profile.command).toBe('/bin/sh');
+  expect(state.tabs[2]!.profile.command).toBe('/bin/bash');
   state = applyConfig(state, {
     ...updated,
     config: {
       version: 1,
-      workspaces: updated.config.workspaces.filter((workspace) => workspace.id !== 'node'),
+      workspaces: updated.config.workspaces.filter((workspace) => workspace.id !== 'local'),
     },
   });
   expect(state.tabs).toHaveLength(1);
@@ -86,11 +86,11 @@ test('Effect Atom derived view reflects active tabs and dock indicators', () => 
   const release = registry.mount(sessionViewAtom);
   registry.set(sessionAtom, applyConfig(emptySession, payload));
   expect(registry.get(sessionViewAtom).runningIds.has('shell')).toBe(true);
-  registry.update(sessionAtom, (state) => selectWorkspace(state, 'python'));
-  expect(registry.get(sessionViewAtom).activeTab?.workspaceId).toBe('python');
+  registry.update(sessionAtom, (state) => selectWorkspace(state, 'local'));
+  expect(registry.get(sessionViewAtom).activeTab?.workspaceId).toBe('local');
   expect(registry.get(sessionViewAtom).runningIds.size).toBe(2);
-  registry.update(sessionAtom, (state) => closeTab(state, state.activeTabs.python!));
-  expect(registry.get(sessionViewAtom).runningIds.has('python')).toBe(false);
+  registry.update(sessionAtom, (state) => closeTab(state, state.activeTabs.local!));
+  expect(registry.get(sessionViewAtom).runningIds.has('local')).toBe(false);
   release();
   registry.dispose();
 });
@@ -147,4 +147,29 @@ test('SSH launch uses argv and quotes preview without interpolating a host into 
       payload.environment,
     ),
   ).toEqual({ command: '/bin/zsh', args: ['-lc', 'printf hello'], cwd: '/Users/test' });
+});
+
+test('selected shells launch directly locally and become a quoted SSH command remotely', () => {
+  const profile = { ...payload.config.workspaces[0]!, shell: '/bin/zsh', args: [] };
+  expect(resolveLaunch(profile, payload.environment)).toEqual({
+    command: '/bin/zsh',
+    args: ['-l'],
+    cwd: '/Users/test',
+  });
+  expect(
+    resolveLaunch(
+      { ...profile, type: 'ssh', host: 'alias', remoteCommand: 'cd /srv' },
+      payload.environment,
+    ),
+  ).toEqual({
+    command: 'ssh',
+    args: ['-t', '--', 'alias', "cd /srv; exec '/bin/zsh' -l"],
+    cwd: '/Users/test',
+  });
+  expect(
+    resolveLaunch(
+      { ...profile, type: 'ssh', host: 'alias', shell: 'custom', command: 'exec fish' },
+      payload.environment,
+    ).args,
+  ).toEqual(['-t', '--', 'alias', 'exec fish']);
 });

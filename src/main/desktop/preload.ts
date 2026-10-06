@@ -10,6 +10,7 @@
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
 import { connectSftp } from './sftp';
+import { listShells } from './shells';
 import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
 import { resolveLaunch } from '../../shared/workspaces';
 import { createWorkspaceHost } from './workspaceConfig';
@@ -20,6 +21,7 @@ contextBridge.exposeInLynxBTS({
   createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) =>
     new TextDecoder(label, options),
   connectSftp,
+  listShells,
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
   createTerminalSession: (id: number, profile?: Workspace, environment?: WorkspaceEnvironment) =>

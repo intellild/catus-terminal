@@ -17,9 +17,9 @@ import {
   selectWorkspace,
   sessionAtom,
   sessionViewAtom,
+  workspaceMenuAtom,
 } from './session';
 import type { WorkspaceDraft } from './session';
-import type { Workspace } from '../../shared/workspaces';
 
 function nativeHost(): WorkspaceHost {
   return NativeModules.nodejs.exposed as WorkspaceHost;
@@ -53,6 +53,7 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
   const setSession = useAtomSet(sessionAtom);
   const [load, setLoad] = useAtom(loadAtom);
   const [editor, setEditor] = useAtom(editorAtom);
+  const [workspaceMenu, setWorkspaceMenu] = useAtom(workspaceMenuAtom);
   const { state, workspaces, workspace, activeTab } = view;
 
   const loadConfig = useCallback(async () => {
@@ -100,11 +101,16 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
     },
     [setSession],
   );
-  const openSettings = useCallback(() => {
-    'background only';
-    const target = workspace ?? workspaces[0];
-    if (target) setEditor(editWorkspace(target));
-  }, [workspace, workspaces, setEditor]);
+  const openSettings = useCallback(
+    (id?: string) => {
+      'background only';
+      if (editor.saving) return;
+      const target = id ? workspaces.find((item) => item.id === id) : workspace;
+      setWorkspaceMenu(null);
+      if (target) setEditor(editWorkspace(target));
+    },
+    [editor.saving, workspace, workspaces, setEditor, setWorkspaceMenu],
+  );
   const updateDraft = useCallback(
     (field: keyof WorkspaceDraft, value: string) => {
       'background only';
@@ -117,7 +123,13 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
               draft: {
                 ...current.draft,
                 [field]: value,
-                ...(field === 'command' ? { args: '[]' } : {}),
+                ...(field === 'command' ? { args: '[]', shell: 'custom' } : {}),
+                ...(field === 'shell'
+                  ? {
+                      args: value === 'custom' ? '[]' : '["-l"]',
+                      ...(value !== 'custom' ? { command: value } : {}),
+                    }
+                  : {}),
               },
             }
           : current,
@@ -134,16 +146,20 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
       try {
         const checked = parseWorkspaceConfig(config);
         const payload = await Effect.runPromise(
-          Effect.tryPromise(() => (host ?? nativeHost()).saveWorkspaces(checked)),
+          Effect.tryPromise({
+            try: () => (host ?? nativeHost()).saveWorkspaces(checked),
+            catch: (error) => error,
+          }),
         );
         parseWorkspaceConfig(payload.config);
         setSession((current) => applyConfig(current, payload));
         setEditor((current) => ({ ...current, open: false, saving: false, error: '' }));
+        setWorkspaceMenu(null);
       } catch (error) {
         setEditor((current) => ({ ...current, saving: false, error: String(error) }));
       }
     },
-    [editor.saving, host, setSession, setEditor],
+    [editor.saving, host, setSession, setEditor, setWorkspaceMenu],
   );
   const saveDraft = useCallback(() => {
     'background only';
@@ -186,14 +202,28 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
       setEditor((current) => ({ ...current, error: String(error) }));
     }
   }, [editor, state.payload, workspaces, persist, setEditor]);
-  const deleteWorkspace = useCallback(() => {
+  const deleteWorkspace = useCallback(
+    (id: string) => {
+      'background only';
+      if (editor.saving || workspaces.length <= 1 || !workspaces.some((item) => item.id === id))
+        return;
+      void persist({ version: 1, workspaces: workspaces.filter((item) => item.id !== id) });
+    },
+    [editor.saving, workspaces, persist],
+  );
+  const openWorkspaceMenu = useCallback(
+    (id: string, x: number, y: number) => {
+      'background only';
+      if (editor.saving || !workspaces.some((item) => item.id === id)) return;
+      setEditor((current) => ({ ...current, error: '' }));
+      setWorkspaceMenu({ id, x, y });
+    },
+    [editor.saving, workspaces, setEditor, setWorkspaceMenu],
+  );
+  const closeWorkspaceMenu = useCallback(() => {
     'background only';
-    if (!editor.draft || editor.draft.isNew || editor.saving || workspaces.length <= 1) return;
-    void persist({
-      version: 1,
-      workspaces: workspaces.filter((item) => item.id !== editor.draft!.id),
-    });
-  }, [editor, workspaces, persist]);
+    if (!editor.saving) setWorkspaceMenu(null);
+  }, [editor.saving, setWorkspaceMenu]);
 
   const launch =
     activeTab && state.payload ? resolveLaunch(activeTab.profile, state.payload.environment) : null;
@@ -203,19 +233,20 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
   const closeSettings = useCallback(() => {
     if (!editor.saving) setEditor((current) => ({ ...current, open: false }));
   }, [editor.saving, setEditor]);
-  const selectProfile = useCallback(
-    (profile: Workspace) => {
-      if (!editor.saving) setEditor(editWorkspace(profile));
-    },
-    [editor.saving, setEditor],
-  );
   const addWorkspace = useCallback(() => {
-    if (!editor.saving) setEditor(createDraft(workspaces));
-  }, [editor.saving, workspaces, setEditor]);
+    'background only';
+    if (!editor.saving && state.payload) {
+      setWorkspaceMenu(null);
+      setEditor(createDraft(workspaces));
+    }
+  }, [editor.saving, state.payload, workspaces, setEditor, setWorkspaceMenu]);
   return {
     view,
     load,
     editor,
+    workspaceMenu,
+    openWorkspaceMenu,
+    closeWorkspaceMenu,
     launch,
     command,
     loadConfig,
@@ -229,7 +260,6 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
     saveDraft,
     deleteWorkspace,
     closeSettings,
-    selectProfile,
     addWorkspace,
   };
 }
