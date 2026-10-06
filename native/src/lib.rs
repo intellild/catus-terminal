@@ -1,3 +1,4 @@
+use anyhow::{Context, Result, anyhow};
 use napi_derive::napi;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod frame;
@@ -23,6 +24,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
+fn napi_error(error: anyhow::Error) -> napi::Error {
+    napi::Error::from_reason(format!("{error:#}"))
+}
+
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
     extern "Rust" {
@@ -40,13 +45,13 @@ struct CounterState {
 }
 
 impl CounterState {
-    fn add(&self, delta: i32) -> Result<i32, String> {
+    fn add(&self, delta: i32) -> Result<i32> {
         self.value
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
                 value.checked_add(delta)
             })
             .map(|previous| previous + delta)
-            .map_err(|_| "Counter overflow".to_owned())
+            .map_err(|_| anyhow!("Counter overflow"))
     }
 }
 
@@ -98,7 +103,7 @@ impl RustCounter {
 
     #[napi]
     pub fn add(&self, delta: i32) -> napi::Result<i32> {
-        self.state.add(delta).map_err(napi::Error::from_reason)
+        self.state.add(delta).map_err(crate::napi_error)
     }
 
     // Explicit transport for APIs which copy JS properties into LynxValue maps.
@@ -120,13 +125,13 @@ pub struct CounterHandle {
     state: Arc<CounterState>,
 }
 
-fn acquire_counter(id: &str) -> Result<Box<CounterHandle>, String> {
+fn acquire_counter(id: &str) -> Result<Box<CounterHandle>> {
     let state = registry()
         .lock()
         .unwrap()
         .get(id)
         .and_then(Weak::upgrade)
-        .ok_or_else(|| format!("Unknown or released Rust counter: {id}"))?;
+        .with_context(|| format!("Unknown or released Rust counter: {id}"))?;
     Ok(Box::new(CounterHandle { state }))
 }
 
@@ -139,7 +144,7 @@ impl CounterHandle {
         self.state.cpp_calls.load(Ordering::SeqCst)
     }
 
-    fn add_from_cpp(&self, delta: i32) -> Result<i32, String> {
+    fn add_from_cpp(&self, delta: i32) -> Result<i32> {
         let value = self.state.add(delta)?;
         self.state.cpp_calls.fetch_add(1, Ordering::SeqCst);
         Ok(value)

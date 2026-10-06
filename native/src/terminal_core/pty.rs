@@ -1,5 +1,6 @@
 //! PTY transport. Blocking I/O and VT parsing run outside the Lynx/UI threads.
 use super::grid::{GridSize, GridSnapshot, TerminalGrid};
+use anyhow::{Context, Result, anyhow};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::{
     io::{Read, Write},
@@ -11,17 +12,19 @@ use std::{
     thread,
 };
 
+type PtyError = Arc<dyn std::error::Error + Send + Sync>;
+
 pub struct TerminalSession {
     grid: Arc<Mutex<TerminalGrid>>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
     input: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
     exited: Arc<AtomicBool>,
-    error: Arc<Mutex<Option<String>>>,
+    error: Arc<Mutex<Option<PtyError>>>,
     pub shell: String,
 }
 impl TerminalSession {
-    pub fn default_shell(size: GridSize) -> Result<Self, String> {
+    pub fn default_shell(size: GridSize) -> Result<Self> {
         // Resolve the account's shell through portable-pty rather than workspace profiles.
         let mut defaults = CommandBuilder::new_default_prog();
         defaults.env_remove("SHELL");
@@ -35,28 +38,31 @@ impl TerminalSession {
         }
         Self::spawn(command, size, shell)
     }
-    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self, String> {
+    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
         let mut command = CommandBuilder::new(program);
         command.args(args);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         Self::spawn(command, size, program.to_owned())
     }
-    fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self, String> {
+    fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self> {
         let pair = native_pty_system()
             .openpty(pty_size(size))
-            .map_err(|e| e.to_string())?;
-        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let mut writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+            .context("Open terminal PTY")?;
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .context("Create PTY reader")?;
+        let mut writer = pair.master.take_writer().context("Create PTY writer")?;
         let child = pair
             .slave
             .spawn_command(command)
-            .map_err(|e| e.to_string())?;
+            .with_context(|| format!("Spawn terminal process {shell}"))?;
         drop(pair.slave);
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
         let grid = Arc::new(Mutex::new(TerminalGrid::new(size, tx.clone())));
         let exited = Arc::new(AtomicBool::new(false));
-        let error = Arc::new(Mutex::new(None));
+        let error: Arc<Mutex<Option<PtyError>>> = Arc::new(Mutex::new(None));
         let session = Self {
             grid: grid.clone(),
             master: Mutex::new(Some(pair.master)),
@@ -78,12 +84,17 @@ impl TerminalSession {
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
-                        *write_error.lock().unwrap() = Some(err.to_string());
+                        *write_error.lock().unwrap() = Some(
+                            anyhow::Error::new(err)
+                                .context("Write PTY input")
+                                .into_boxed_dyn_error()
+                                .into(),
+                        );
                         break;
                     }
                 }
             })
-            .map_err(|e| e.to_string())?;
+            .context("Start PTY writer thread")?;
         thread::Builder::new()
             .name("terminal-pty-reader".into())
             .spawn(move || {
@@ -96,40 +107,47 @@ impl TerminalSession {
                         // A closed slave reports EIO on some Unix implementations.
                         Err(err) if err.raw_os_error() == Some(5) => break,
                         Err(err) => {
-                            *error.lock().unwrap() = Some(err.to_string());
+                            *error.lock().unwrap() = Some(
+                                anyhow::Error::new(err)
+                                    .context("Read PTY output")
+                                    .into_boxed_dyn_error()
+                                    .into(),
+                            );
                             break;
                         }
                     }
                 }
                 exited.store(true, Ordering::Release);
             })
-            .map_err(|e| e.to_string())?;
+            .context("Start PTY reader thread")?;
         Ok(session)
     }
-    pub fn write(&self, bytes: Vec<u8>) -> Result<(), String> {
+    pub fn write(&self, bytes: Vec<u8>) -> Result<()> {
         if self.exited() {
-            return Err("Shell has exited".into());
+            return Err(anyhow!("Shell has exited"));
         }
         self.input
             .lock()
             .unwrap()
             .as_ref()
-            .ok_or("Terminal is closed")?
+            .context("Terminal is closed")?
             .send(bytes)
-            .map_err(|e| e.to_string())
+            .context("Send PTY input")
     }
-    pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<(), String> {
+    pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         let bytes = self.grid.lock().unwrap().key(key, control, alt);
         if let Some(bytes) = bytes {
             self.write(bytes)?;
         }
         Ok(())
     }
-    pub fn resize(&self, size: GridSize) -> Result<(), String> {
+    pub fn resize(&self, size: GridSize) -> Result<()> {
         let mut grid = self.grid.lock().unwrap();
         if grid.size() != size {
             if let Some(master) = self.master.lock().unwrap().as_ref() {
-                master.resize(pty_size(size)).map_err(|e| e.to_string())?;
+                master
+                    .resize(pty_size(size))
+                    .context("Resize terminal PTY")?;
             }
             grid.resize(size);
         }
@@ -139,19 +157,21 @@ impl TerminalSession {
         self.grid.lock().unwrap().snapshot()
     }
     #[cfg(feature = "native-view")]
-    pub(crate) fn try_snapshot(&self) -> Result<Option<GridSnapshot>, String> {
+    pub(crate) fn try_snapshot(&self) -> Result<Option<GridSnapshot>> {
         self.try_grid(|grid| grid.snapshot())
     }
     #[cfg(feature = "native-view")]
-    pub(crate) fn try_revision(&self) -> Result<Option<u64>, String> {
+    pub(crate) fn try_revision(&self) -> Result<Option<u64>> {
         self.try_grid(|grid| grid.revision())
     }
     #[cfg(feature = "native-view")]
-    fn try_grid<T>(&self, read: impl FnOnce(&TerminalGrid) -> T) -> Result<Option<T>, String> {
+    fn try_grid<T>(&self, read: impl FnOnce(&TerminalGrid) -> T) -> Result<Option<T>> {
         match self.grid.try_lock() {
             Ok(grid) => Ok(Some(read(&grid))),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(std::sync::TryLockError::Poisoned(_)) => Err("Terminal grid lock poisoned".into()),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(anyhow!("Terminal grid lock poisoned"))
+            }
         }
     }
     pub fn revision(&self) -> u64 {
@@ -166,8 +186,12 @@ impl TerminalSession {
         }
         self.exited.load(Ordering::Acquire)
     }
-    pub fn error(&self) -> Option<String> {
-        self.error.lock().unwrap().clone()
+    pub fn error(&self) -> Option<anyhow::Error> {
+        self.error
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|error| anyhow::Error::new(error.clone()))
     }
     pub fn close(&self) {
         if let Some(mut child) = self.child.lock().unwrap().take() {

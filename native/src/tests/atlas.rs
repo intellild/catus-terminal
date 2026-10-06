@@ -3,15 +3,24 @@ use super::*;
 #[test]
 fn shelves_fit_exact_edges_and_failed_allocation_does_not_consume_space() {
     let mut a = AtlasAllocator::new(8).unwrap();
-    assert_eq!(a.allocate(5, 3), Ok([0, 0]));
-    assert_eq!(a.allocate(3, 5), Ok([5, 0]));
-    assert_eq!(a.allocate(9, 1), Err(AtlasError::GlyphTooLarge));
-    assert_eq!(a.allocate(4, 4), Err(AtlasError::Full));
-    assert_eq!(a.allocate(8, 3), Ok([0, 5]));
-    assert_eq!(a.allocate(1, 1), Err(AtlasError::Full));
+    assert_eq!(a.allocate(5, 3).unwrap(), [0, 0]);
+    assert_eq!(a.allocate(3, 5).unwrap(), [5, 0]);
+    assert_eq!(
+        a.allocate(9, 1).unwrap_err().downcast_ref::<AtlasError>(),
+        Some(&AtlasError::GlyphTooLarge)
+    );
+    assert_eq!(
+        a.allocate(4, 4).unwrap_err().downcast_ref::<AtlasError>(),
+        Some(&AtlasError::Full)
+    );
+    assert_eq!(a.allocate(8, 3).unwrap(), [0, 5]);
+    assert_eq!(
+        a.allocate(1, 1).unwrap_err().downcast_ref::<AtlasError>(),
+        Some(&AtlasError::Full)
+    );
     a.clear();
-    assert_eq!(a.allocate(8, 8), Ok([0, 0]));
-    assert_eq!(a.allocate(0, 8), Ok([0, 0]));
+    assert_eq!(a.allocate(8, 8).unwrap(), [0, 0]);
+    assert_eq!(a.allocate(0, 8).unwrap(), [0, 0]);
 }
 
 #[test]
@@ -190,7 +199,10 @@ fn gpu_upload_page_rollover_clear_and_stale_handles() {
     assert_eq!(read(&device, &queue, &atlas, &third), gray);
     atlas.clear();
     assert_eq!(atlas.pages(), 3); // GPU allocation reused.
-    assert!(matches!(atlas.view(&first), Err(AtlasError::StaleGlyph)));
+    assert_eq!(
+        atlas.view(&first).unwrap_err().downcast_ref::<AtlasError>(),
+        Some(&AtlasError::StaleGlyph)
+    );
     let mut encoder = device.create_command_encoder(&Default::default());
     let reused = atlas
         .insert(

@@ -1,4 +1,5 @@
 //! CoreText/crossfont rasterization and atlas handles keyed by font, size and character.
+use anyhow::{Context, Result, anyhow};
 use std::collections::HashMap;
 
 use crossfont::{
@@ -17,10 +18,10 @@ pub struct GlyphCache {
 }
 
 impl GlyphCache {
-    pub fn new(device: &wgpu::Device) -> Result<Self, String> {
+    pub fn new(device: &wgpu::Device) -> Result<Self> {
         Ok(Self {
-            atlas: AtlasSet::new(device, ATLAS_SIZE).map_err(|e| e.to_string())?,
-            rasterizer: Rasterizer::new().map_err(|e| e.to_string())?,
+            atlas: AtlasSet::new(device, ATLAS_SIZE)?,
+            rasterizer: Rasterizer::new().context("Create font rasterizer")?,
             sizes: HashMap::new(),
             glyphs: HashMap::new(),
             rasterizations: 0,
@@ -28,7 +29,7 @@ impl GlyphCache {
         })
     }
 
-    fn font_size(&mut self, pixels: u32) -> Result<&FontSize, String> {
+    fn font_size(&mut self, pixels: u32) -> Result<&FontSize> {
         if let std::collections::hash_map::Entry::Vacant(entry) = self.sizes.entry(pixels) {
             entry.insert(load_size(&mut self.rasterizer, pixels)?);
         }
@@ -42,7 +43,7 @@ impl GlyphCache {
         self.missing = 0;
     }
 
-    pub fn metrics(&mut self, pixels: u32) -> Result<Metrics, String> {
+    pub fn metrics(&mut self, pixels: u32) -> Result<Metrics> {
         Ok(self.font_size(pixels)?.metrics)
     }
     pub fn len(&self) -> usize {
@@ -65,7 +66,7 @@ impl GlyphCache {
         pixels: u32,
         character: char,
         bold: bool,
-    ) -> Result<Glyph, String> {
+    ) -> Result<Glyph> {
         let font = self.font_size(pixels)?;
         let key = GlyphKey {
             character,
@@ -84,7 +85,10 @@ impl GlyphCache {
                 self.missing += 1;
                 bitmap
             }
-            Err(error) => return Err(error.to_string()),
+            Err(error) => {
+                return Err(anyhow::Error::new(error)
+                    .context(format!("Rasterize glyph {character:?} at {pixels}px")));
+            }
         };
         self.rasterizations += 1;
         let gray;
@@ -100,26 +104,17 @@ impl GlyphCache {
             }
             crossfont::BitmapBuffer::Rgba(bytes) => BitmapBuffer::Rgba(bytes),
         };
-        let glyph = self
-            .atlas
-            .insert(
-                device,
-                encoder,
-                &RasterizedGlyph {
-                    width: bitmap
-                        .width
-                        .try_into()
-                        .map_err(|_| "Negative glyph width")?,
-                    height: bitmap
-                        .height
-                        .try_into()
-                        .map_err(|_| "Negative glyph height")?,
-                    top: bitmap.top,
-                    left: bitmap.left,
-                    buffer,
-                },
-            )
-            .map_err(|e| e.to_string())?;
+        let glyph = self.atlas.insert(
+            device,
+            encoder,
+            &RasterizedGlyph {
+                width: bitmap.width.try_into().context("Negative glyph width")?,
+                height: bitmap.height.try_into().context("Negative glyph height")?,
+                top: bitmap.top,
+                left: bitmap.left,
+                buffer,
+            },
+        )?;
         self.glyphs.insert(key, glyph);
         Ok(glyph)
     }
@@ -131,9 +126,9 @@ struct FontSize {
     metrics: Metrics,
 }
 
-fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize, String> {
+fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize> {
     if !(1..=512).contains(&pixels) {
-        return Err("Font pixel size must be in 1..=512".into());
+        return Err(anyhow!("Font pixel size must be in 1..=512"));
     }
     // CoreText backend uses Size::as_pt() directly as bitmap pixel size. The
     // caller has already applied the Lynx view's backing scale; do not apply
@@ -151,12 +146,12 @@ fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize, Strin
                 ),
                 size,
             )
-            .map_err(|e| e.to_string())
+            .with_context(|| format!("Load Menlo {weight:?} at {pixels}px"))
     };
     let fonts = [load(Weight::Normal)?, load(Weight::Bold)?];
     let metrics = rasterizer
         .metrics(fonts[0], size)
-        .map_err(|e| e.to_string())?;
+        .context("Read font metrics")?;
     Ok(FontSize {
         fonts,
         size,

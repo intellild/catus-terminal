@@ -1,4 +1,5 @@
 //! Borrowed native framebuffer and layout description; no terminal state.
+use anyhow::{Result, anyhow};
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -16,9 +17,9 @@ pub(crate) struct FrameBuffer {
 }
 
 impl Viewport {
-    pub(crate) fn font_pixels(&self) -> Result<u32, String> {
+    pub(crate) fn font_pixels(&self) -> Result<u32> {
         if !self.pixel_ratio.is_finite() || self.pixel_ratio <= 0. {
-            return Err("Invalid backing scale".into());
+            return Err(anyhow!("Invalid backing scale"));
         }
         Ok((14. * self.pixel_ratio).round().clamp(1., 512.) as u32)
     }

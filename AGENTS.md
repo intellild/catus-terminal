@@ -106,7 +106,11 @@ Read the docs below in advance to help you understand the library or frameworks 
     Submitted GPU work must finish before returning the borrowed Lynx buffer, even
     when the frame expires; expired output is not swapped and remains dirty.
     No application frame queue, broadcast or frame IDs are maintained.
-  - `src/renderer.rs`: one process-wide `LazyLock<Result<GpuContext, String>>`
+  - Rust fallible implementations use `anyhow::Result` and preserve source errors
+    with `?` / `Context`. Only N-API exports return `napi::Result`; the shared
+    `napi_error` conversion formats the full cause chain. cxx implementations
+    return anyhow results directly. Atlas errors remain downcastable for page rollover.
+  - `src/renderer.rs`: one process-wide `LazyLock<anyhow::Result<GpuContext>>`
     owns the shared device, queue and mutex-protected glyph resources. Each session
     owns an instance buffer and rendered grid key through its session. Hold the shared lock
     through atlas uploads, queue submission and GPU completion; rollback clears

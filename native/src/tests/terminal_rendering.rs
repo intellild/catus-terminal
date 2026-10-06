@@ -214,6 +214,7 @@ fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure
     assert!(
         unsafe { handle.render_surface(wrong_size.surface(), i64::MAX) }
             .unwrap_err()
+            .to_string()
             .contains("dimensions or pixel layout")
     );
     assert!(handle.needs_frame().unwrap());
@@ -221,6 +222,7 @@ fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure
     assert!(
         unsafe { handle.render_surface(wrong_pixels.surface(), i64::MAX) }
             .unwrap_err()
+            .to_string()
             .contains("dimensions or pixel layout")
     );
     assert!(handle.needs_frame().unwrap());

@@ -2,6 +2,7 @@
 use crate::frame::{FrameBuffer, Viewport};
 use crate::renderer::create_terminal_renderer;
 use crate::terminal_session::{SessionRenderer, TerminalHandle, acquire_terminal};
+use anyhow::{Context, Result, anyhow};
 
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
@@ -30,10 +31,10 @@ mod tests;
 
 impl TerminalHandle {
     // Called by OnLayoutChanged, or when binding a session to an already-laid-out view.
-    pub(crate) fn resize_viewport(&self, viewport: &Viewport) -> Result<(), String> {
+    pub(crate) fn resize_viewport(&self, viewport: &Viewport) -> Result<()> {
         viewport.font_pixels()?;
         if viewport.width == 0 || viewport.height == 0 {
-            return Err("Waiting for non-zero terminal layout".into());
+            return Err(anyhow!("Waiting for non-zero terminal layout"));
         }
         let mut rendering = self.session.rendering.lock().unwrap();
         if rendering.is_none() {
@@ -52,14 +53,14 @@ impl TerminalHandle {
     }
 
     #[cfg(test)]
-    pub(crate) fn viewport(&self) -> Result<Viewport, String> {
+    pub(crate) fn viewport(&self) -> Result<Viewport> {
         self.session
             .rendering
             .lock()
             .unwrap()
             .as_ref()
             .map(|state| state.viewport)
-            .ok_or_else(|| "Waiting for terminal layout".into())
+            .context("Waiting for terminal layout")
     }
 
     fn invalidate_frame(&self) {
@@ -69,12 +70,12 @@ impl TerminalHandle {
     }
 
     #[cfg(test)]
-    fn needs_frame(&self) -> Result<bool, String> {
+    fn needs_frame(&self) -> Result<bool> {
         if let Some(error) = self.session.core.error() {
             return Err(error);
         }
         let rendering = self.session.rendering.lock().unwrap();
-        let state = rendering.as_ref().ok_or("Waiting for terminal layout")?;
+        let state = rendering.as_ref().context("Waiting for terminal layout")?;
         state
             .renderer
             .needs_grid(self.session.core.revision(), &state.viewport)
@@ -83,14 +84,14 @@ impl TerminalHandle {
     // SAFETY: C++ lends a live IOSurfaceRef exclusively until this returns.
     // Submitted GPU writes must finish even if the frame expires. Busy/idle/
     // expired ticks return false without retaining pending frame work.
-    unsafe fn render_surface(&self, iosurface: usize, deadline: i64) -> Result<bool, String> {
+    unsafe fn render_surface(&self, iosurface: usize, deadline: i64) -> Result<bool> {
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }
         let Some(mut rendering) = try_lock(&self.session.rendering)? else {
             return Ok(false);
         };
-        let state = rendering.as_mut().ok_or("Waiting for terminal layout")?;
+        let state = rendering.as_mut().context("Waiting for terminal layout")?;
         let Some(revision) = self.session.core.try_revision()? else {
             return Ok(false);
         };
@@ -111,12 +112,12 @@ impl TerminalHandle {
     }
 }
 
-fn try_lock<T>(
-    mutex: &std::sync::Mutex<T>,
-) -> Result<Option<std::sync::MutexGuard<'_, T>>, String> {
+fn try_lock<T>(mutex: &std::sync::Mutex<T>) -> Result<Option<std::sync::MutexGuard<'_, T>>> {
     match mutex.try_lock() {
         Ok(guard) => Ok(Some(guard)),
         Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-        Err(std::sync::TryLockError::Poisoned(_)) => Err("Terminal renderer lock poisoned".into()),
+        Err(std::sync::TryLockError::Poisoned(_)) => {
+            Err(anyhow!("Terminal renderer lock poisoned"))
+        }
     }
 }

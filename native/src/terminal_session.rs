@@ -1,5 +1,6 @@
 //! Session ownership and numeric handles; the computation module stays GPU-independent.
 use crate::terminal_core::{grid::GridSize, pty::TerminalSession};
+use anyhow::{Context, Result, anyhow};
 use napi_derive::napi;
 use std::{
     collections::HashMap,
@@ -30,17 +31,16 @@ pub struct TerminalSessionCommand {
     pub args: Vec<String>,
 }
 
-fn create_session_with_command(
-    id: u32,
-    command: Option<TerminalSessionCommand>,
-) -> Result<(), String> {
+fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
     if id == 0 {
-        return Err("Terminal session ID 0 is reserved for an unbound view".into());
+        return Err(anyhow!(
+            "Terminal session ID 0 is reserved for an unbound view"
+        ));
     }
     // Keep the entry reserved through PTY creation so concurrent callers cannot replace it.
     let mut sessions = SESSIONS.lock().unwrap();
     let std::collections::hash_map::Entry::Vacant(entry) = sessions.entry(id) else {
-        return Err(format!("Duplicate terminal session ID: {id}"));
+        return Err(anyhow!("Duplicate terminal session ID: {id}"));
     };
     let size = GridSize::new(80, 24);
     let core = match command {
@@ -56,13 +56,13 @@ fn create_session_with_command(
     Ok(())
 }
 
-fn session(id: u32) -> Result<Arc<Session>, String> {
+fn session(id: u32) -> Result<Arc<Session>> {
     SESSIONS
         .lock()
         .unwrap()
         .get(&id)
         .cloned()
-        .ok_or_else(|| format!("Unknown or released terminal session: {id}"))
+        .with_context(|| format!("Unknown or released terminal session: {id}"))
 }
 
 #[napi]
@@ -70,7 +70,7 @@ pub fn create_terminal_session(
     id: u32,
     command: Option<TerminalSessionCommand>,
 ) -> napi::Result<()> {
-    create_session_with_command(id, command).map_err(napi::Error::from_reason)
+    create_session_with_command(id, command).map_err(crate::napi_error)
 }
 
 #[napi]
@@ -86,7 +86,7 @@ pub fn close_terminal_session(id: u32) {
 pub fn write_terminal_session(id: u32, text: String) -> napi::Result<()> {
     session(id)
         .and_then(|session| session.core.write(text.into_bytes()))
-        .map_err(napi::Error::from_reason)
+        .map_err(crate::napi_error)
 }
 
 #[napi(object)]
@@ -98,7 +98,7 @@ pub struct TerminalSessionInfo {
 
 #[napi]
 pub fn get_terminal_session_info(id: u32) -> napi::Result<TerminalSessionInfo> {
-    let session = session(id).map_err(napi::Error::from_reason)?;
+    let session = session(id).map_err(crate::napi_error)?;
     Ok(TerminalSessionInfo {
         shell: session.core.shell.clone(),
         exited: session.core.exited(),
@@ -112,7 +112,7 @@ pub struct TerminalHandle {
 }
 
 #[cfg(all(feature = "native-view", target_os = "macos"))]
-pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>, String> {
+pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>> {
     Ok(Box::new(TerminalHandle {
         session: session(id)?,
     }))
@@ -120,10 +120,10 @@ pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>, String> {
 
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 impl TerminalHandle {
-    pub fn write(&self, text: &str) -> Result<(), String> {
+    pub fn write(&self, text: &str) -> Result<()> {
         self.session.core.write(text.as_bytes().to_vec())
     }
-    pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<(), String> {
+    pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         self.session.core.key(key, control, alt)
     }
 }

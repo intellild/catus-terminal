@@ -27,6 +27,14 @@ console.log('N-API addon: constructor, instance isolation, handle and errors pas
 
 // Exercise the numeric session API used by TerminalView's mount/unmount lifecycle.
 const id = 41;
+assert.throws(
+  () => createTerminalSession(id, { program: '/nonexistent/catus-test-shell', args: [] }),
+  (error) => {
+    assert.match(error.message, /Spawn terminal process \/nonexistent\/catus-test-shell/);
+    assert.match(error.message, /No such file|not found/i);
+    return true;
+  },
+);
 assert.equal(createTerminalSession(id), undefined);
 try {
   assert.ok(Number.isInteger(id) && id > 0 && id <= 0xffffffff);

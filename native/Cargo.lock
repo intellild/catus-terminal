@@ -147,6 +147,7 @@ name = "catus-native"
 version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
+ "anyhow",
  "crossfont",
  "cxx",
  "cxx-build",

@@ -16,7 +16,7 @@ fn supplied_ids_reject_duplicates_without_replacing_the_session_and_allow_reuse_
         results
             .iter()
             .filter_map(|result| result.as_ref().err())
-            .all(|error| error.contains("Duplicate"))
+            .all(|error| error.to_string().contains("Duplicate"))
     );
     let original = session(id).unwrap();
     assert!(create_session_with_command(id, None).is_err());
@@ -33,16 +33,20 @@ fn supplied_ids_reject_duplicates_without_replacing_the_session_and_allow_reuse_
 #[test]
 fn failed_pty_creation_does_not_occupy_the_supplied_id() {
     let id = 3002;
+    let error = create_session_with_command(
+        id,
+        Some(TerminalSessionCommand {
+            program: "/nonexistent/catus-test-shell".into(),
+            args: vec![],
+        }),
+    )
+    .unwrap_err();
     assert!(
-        create_session_with_command(
-            id,
-            Some(TerminalSessionCommand {
-                program: "/nonexistent/catus-test-shell".into(),
-                args: vec![],
-            })
-        )
-        .is_err()
+        error
+            .to_string()
+            .contains("Spawn terminal process /nonexistent/catus-test-shell")
     );
+    assert!(error.chain().count() > 1);
     assert!(session(id).is_err());
     create_session_with_command(id, None).unwrap();
     close_terminal_session(id);

@@ -2,6 +2,7 @@
 // The shelf allocator and page reuse follow Alacritty; GL uploads are replaced
 // with aligned wgpu staging-buffer copies. See ../licenses/ALACRITTY-MIT.txt.
 
+use anyhow::Result;
 use std::fmt;
 
 pub const ATLAS_SIZE: u32 = 1024;
@@ -62,9 +63,9 @@ pub struct AtlasAllocator {
 }
 
 impl AtlasAllocator {
-    pub fn new(size: u32) -> Result<Self, AtlasError> {
+    pub fn new(size: u32) -> Result<Self> {
         if size == 0 {
-            return Err(AtlasError::InvalidSize);
+            return Err(AtlasError::InvalidSize.into());
         }
         Ok(Self {
             size,
@@ -74,9 +75,9 @@ impl AtlasAllocator {
         })
     }
 
-    pub fn allocate(&mut self, width: u32, height: u32) -> Result<[u32; 2], AtlasError> {
+    pub fn allocate(&mut self, width: u32, height: u32) -> Result<[u32; 2]> {
         if width > self.size || height > self.size {
-            return Err(AtlasError::GlyphTooLarge);
+            return Err(AtlasError::GlyphTooLarge.into());
         }
         if width == 0 || height == 0 {
             return Ok([0, 0]);
@@ -85,7 +86,7 @@ impl AtlasAllocator {
         if self.row_extent + width > self.size || height > self.size - self.row_baseline {
             let next = self.row_baseline + self.row_tallest;
             if height > self.size - next {
-                return Err(AtlasError::Full);
+                return Err(AtlasError::Full.into());
             }
             self.row_baseline = next;
             self.row_extent = 0;
@@ -127,7 +128,7 @@ struct Atlas {
 }
 
 impl Atlas {
-    fn new(device: &wgpu::Device, size: u32, kind: AtlasKind) -> Result<Self, AtlasError> {
+    fn new(device: &wgpu::Device, size: u32, kind: AtlasKind) -> Result<Self> {
         let allocator = AtlasAllocator::new(size)?;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Alacritty glyph atlas (wgpu)"),
@@ -164,9 +165,9 @@ pub struct AtlasSet {
 }
 
 impl AtlasSet {
-    pub fn new(device: &wgpu::Device, size: u32) -> Result<Self, AtlasError> {
+    pub fn new(device: &wgpu::Device, size: u32) -> Result<Self> {
         if size == 0 || size > device.limits().max_texture_dimension_2d {
-            return Err(AtlasError::InvalidSize);
+            return Err(AtlasError::InvalidSize.into());
         }
         Ok(Self {
             pages: vec![Atlas::new(device, size, AtlasKind::Mask)?],
@@ -184,9 +185,9 @@ impl AtlasSet {
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         rasterized: &RasterizedGlyph<'_>,
-    ) -> Result<Glyph, AtlasError> {
+    ) -> Result<Glyph> {
         if rasterized.width > self.size || rasterized.height > self.size {
-            return Err(AtlasError::GlyphTooLarge);
+            return Err(AtlasError::GlyphTooLarge.into());
         }
         // Validate before allocating, so malformed input cannot consume space.
         let upload = prepare_upload(rasterized)?;
@@ -211,7 +212,7 @@ impl AtlasSet {
                 .allocate(rasterized.width, rasterized.height)
             {
                 Ok(origin) => break origin,
-                Err(AtlasError::Full) => {
+                Err(error) if error.downcast_ref::<AtlasError>() == Some(&AtlasError::Full) => {
                     // Reuse the next page of this format after clear, or grow.
                     page = self
                         .pages
@@ -286,31 +287,31 @@ impl AtlasSet {
         })
     }
 
-    pub fn view(&self, glyph: &Glyph) -> Result<&wgpu::TextureView, AtlasError> {
+    pub fn view(&self, glyph: &Glyph) -> Result<&wgpu::TextureView> {
         if glyph.generation != self.generation {
-            return Err(AtlasError::StaleGlyph);
+            return Err(AtlasError::StaleGlyph.into());
         }
         self.pages
             .get(glyph.page)
             .map(|p| &p.view)
-            .ok_or(AtlasError::StaleGlyph)
+            .ok_or_else(|| AtlasError::StaleGlyph.into())
     }
 
-    pub fn page_view(&self, page: usize) -> Result<&wgpu::TextureView, AtlasError> {
+    pub fn page_view(&self, page: usize) -> Result<&wgpu::TextureView> {
         self.pages
             .get(page)
             .map(|p| &p.view)
-            .ok_or(AtlasError::StaleGlyph)
+            .ok_or_else(|| AtlasError::StaleGlyph.into())
     }
 
-    pub fn texture(&self, glyph: &Glyph) -> Result<&wgpu::Texture, AtlasError> {
+    pub fn texture(&self, glyph: &Glyph) -> Result<&wgpu::Texture> {
         if glyph.generation != self.generation {
-            return Err(AtlasError::StaleGlyph);
+            return Err(AtlasError::StaleGlyph.into());
         }
         self.pages
             .get(glyph.page)
             .map(|p| &p.texture)
-            .ok_or(AtlasError::StaleGlyph)
+            .ok_or_else(|| AtlasError::StaleGlyph.into())
     }
 
     /// Reuse GPU textures; callers must discard their glyph cache and batches.
@@ -341,7 +342,7 @@ struct Upload {
     bytes_per_row: u32,
 }
 
-fn prepare_upload(glyph: &RasterizedGlyph<'_>) -> Result<Upload, AtlasError> {
+fn prepare_upload(glyph: &RasterizedGlyph<'_>) -> Result<Upload> {
     let (source, channels) = match glyph.buffer {
         BitmapBuffer::Gray(bytes) => (bytes, 1usize),
         BitmapBuffer::Rgb(bytes) => (bytes, 3usize),
@@ -355,7 +356,7 @@ fn prepare_upload(glyph: &RasterizedGlyph<'_>) -> Result<Upload, AtlasError> {
             .checked_mul(channels)
             .ok_or(AtlasError::InvalidBitmap)?
     {
-        return Err(AtlasError::InvalidBitmap);
+        return Err(AtlasError::InvalidBitmap.into());
     }
     if pixels == 0 {
         return Ok(Upload {

@@ -4,6 +4,7 @@ use crate::{
     terminal_core::grid::{GridSize, GridSnapshot},
     text::{GlyphRenderer, SharedGlyphs},
 };
+use anyhow::{Context, Result, anyhow};
 #[cfg(test)]
 use objc2::rc::Retained;
 use objc2_core_foundation::CFRetained;
@@ -17,7 +18,7 @@ use std::{
     sync::{LazyLock, Mutex, MutexGuard},
 };
 
-static GPU: LazyLock<Result<GpuContext, String>> = LazyLock::new(GpuContext::new);
+static GPU: LazyLock<Result<GpuContext>> = LazyLock::new(GpuContext::new);
 
 struct GpuContext {
     device: wgpu::Device,
@@ -27,22 +28,22 @@ struct GpuContext {
     glyphs: Mutex<SharedGlyphs>,
 }
 impl GpuContext {
-    fn new() -> Result<Self, String> {
+    fn new() -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::METAL,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
-            .map_err(|e| e.to_string())?;
+            .context("Request Metal adapter")?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("Catus shared terminal GPU"),
             ..Default::default()
         }))
-        .map_err(|e| e.to_string())?;
+        .context("Create shared terminal GPU device")?;
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let glyphs = SharedGlyphs::new(&device)?;
         if let Some(error) = pollster::block_on(validation.pop()) {
-            return Err(error.to_string());
+            return Err(error.into());
         }
         Ok(Self {
             device,
@@ -50,10 +51,10 @@ impl GpuContext {
             glyphs: Mutex::new(glyphs),
         })
     }
-    fn glyphs(&self) -> Result<MutexGuard<'_, SharedGlyphs>, String> {
+    fn glyphs(&self) -> Result<MutexGuard<'_, SharedGlyphs>> {
         self.glyphs
             .lock()
-            .map_err(|_| "Shared glyph cache lock poisoned".into())
+            .map_err(|_| anyhow!("Shared glyph cache lock poisoned"))
     }
 }
 
@@ -70,8 +71,13 @@ pub struct TerminalRenderer {
     rendered_grid: Option<RenderedGrid>,
 }
 
-pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>, String> {
-    let gpu = GPU.as_ref().map_err(Clone::clone)?;
+pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>> {
+    let gpu = GPU.as_ref().map_err(|error| {
+        // The cached initialization error lives for the entire process.
+        // Borrow its source so every caller keeps the complete cause chain.
+        let source: &'static (dyn std::error::Error + Send + Sync) = error.as_ref();
+        anyhow::Error::new(source)
+    })?;
     Ok(Box::new(TerminalRenderer {
         gpu,
         glyphs: GlyphRenderer::default(),
@@ -89,12 +95,12 @@ impl TerminalRenderer {
     pub(crate) fn invalidate_grid(&mut self) {
         self.rendered_grid = None;
     }
-    pub(crate) fn grid_size(&self, viewport: &Viewport) -> Result<GridSize, String> {
+    pub(crate) fn grid_size(&self, viewport: &Viewport) -> Result<GridSize> {
         let mut shared = self.gpu.glyphs()?;
         GlyphRenderer::grid_size(&mut shared, viewport)
     }
     #[cfg(test)]
-    pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool, String> {
+    pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool> {
         Ok(self.rendered_grid
             != Some(RenderedGrid {
                 revision,
@@ -107,7 +113,7 @@ impl TerminalRenderer {
         &self,
         revision: u64,
         viewport: &Viewport,
-    ) -> Result<Option<bool>, String> {
+    ) -> Result<Option<bool>> {
         match self.gpu.glyphs.try_lock() {
             Ok(shared) => Ok(Some(
                 self.rendered_grid
@@ -119,7 +125,7 @@ impl TerminalRenderer {
             )),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),
             Err(std::sync::TryLockError::Poisoned(_)) => {
-                Err("Shared glyph cache lock poisoned".into())
+                Err(anyhow!("Shared glyph cache lock poisoned"))
             }
         }
     }
@@ -133,7 +139,7 @@ impl TerminalRenderer {
         viewport: &Viewport,
         grid: &GridSnapshot,
         deadline: i64,
-    ) -> Result<bool, String> {
+    ) -> Result<bool> {
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }
@@ -143,22 +149,24 @@ impl TerminalRenderer {
             || width > self.gpu.device.limits().max_texture_dimension_2d
             || height > self.gpu.device.limits().max_texture_dimension_2d
         {
-            return Err("Invalid terminal texture dimensions".into());
+            return Err(anyhow!("Invalid terminal texture dimensions"));
         }
         viewport.font_pixels()?;
         let ptr = NonNull::new(frame.iosurface as *mut IOSurfaceRef)
-            .ok_or("Lynx back buffer is unavailable")?;
+            .context("Lynx back buffer is unavailable")?;
         // Retain only our own reference; never consume Lynx's borrowed ownership.
         let surface = unsafe { CFRetained::retain(ptr) };
         if surface.width() != width as usize
             || surface.height() != height as usize
             || surface.bytes_per_element() != 4
         {
-            return Err("Unexpected Lynx IOSurface dimensions or pixel layout".into());
+            return Err(anyhow!(
+                "Unexpected Lynx IOSurface dimensions or pixel layout"
+            ));
         }
         let raw = objc2::rc::autoreleasepool(|_| {
             let device = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }
-                .ok_or("Shared GPU is not a Metal device")?;
+                .context("Shared GPU is not a Metal device")?;
             // Dimensions and format were validated before constructing the descriptor.
             let descriptor = unsafe {
                 MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
@@ -173,7 +181,7 @@ impl TerminalRenderer {
             device
                 .raw_device()
                 .newTextureWithDescriptor_iosurface_plane(&descriptor, &surface, 0)
-                .ok_or_else(|| String::from("Metal could not import the Lynx IOSurface"))
+                .context("Metal could not import the Lynx IOSurface")
         })?;
         let size = wgpu::Extent3d {
             width,
@@ -229,7 +237,7 @@ impl TerminalRenderer {
         target: &wgpu::TextureView,
         viewport: &Viewport,
         grid: &GridSnapshot,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         self.render_into_before(target, viewport, grid, None)
             .map(|_| ())
     }
@@ -240,14 +248,14 @@ impl TerminalRenderer {
         viewport: &Viewport,
         grid: &GridSnapshot,
         deadline: Option<i64>,
-    ) -> Result<bool, String> {
+    ) -> Result<bool> {
         let gpu = self.gpu;
         let mut shared = if deadline.is_some() {
             match gpu.glyphs.try_lock() {
                 Ok(shared) => shared,
                 Err(std::sync::TryLockError::WouldBlock) => return Ok(false),
                 Err(std::sync::TryLockError::Poisoned(_)) => {
-                    return Err("Shared glyph cache lock poisoned".into());
+                    return Err(anyhow!("Shared glyph cache lock poisoned"));
                 }
             }
         } else {
@@ -279,10 +287,10 @@ impl TerminalRenderer {
                     timeout: None,
                 })
                 .map(|_| ())
-                .map_err(|e| e.to_string());
+                .context("Wait for terminal GPU submission");
         }
         if let Some(error) = pollster::block_on(validation.pop()) {
-            result = Err(error.to_string());
+            result = Err(error.into());
         }
         if let Err(error) = result {
             // Invalidate all views after dropping uploads that may not have completed.

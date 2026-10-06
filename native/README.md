@@ -5,6 +5,10 @@ Catus Terminal 专属的 Rust/napi-rs workspace，统一导出 Rust 能力和 Ly
 当前实现 `<native-input>`（macOS `NSTextField`）和 `<native-terminal>`
 （Lynx IOSurface + Rust wgpu / Metal + Alacritty 默认 shell 终端）。
 
+Rust 内部统一使用 `anyhow::Result`，通过 `?` 和 `Context` 保留底层错误。
+N-API 边界转换为 `napi::Error` 并输出完整原因链；cxx 实现直接返回 anyhow 错误。
+Atlas 的错误分类保留在 anyhow 中，翻页逻辑通过 downcast 判断页是否已满。
+
 ```text
 native/
   Cargo.toml / Cargo.lock       Rust crate 和依赖

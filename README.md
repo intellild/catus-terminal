@@ -276,7 +276,7 @@ JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返
   传给 native view，C++ 通过 cxx 修改同一 Rust 实例，再从原始 JS 对象读取结果。
 ## Native terminal / 共享 GPU
 
-所有 `<native-terminal>` 通过同一个全局 `LazyLock<Result<GpuContext, String>>`
+所有 `<native-terminal>` 通过同一个全局 `LazyLock<anyhow::Result<GpuContext>>`
 共享 wgpu device、queue、glyph pipeline、sampler、crossfont 字形缓存和 atlas。
 每个 session 拥有 `TerminalRenderer`，保留独立 instance buffer 与网格 revision/viewport/generation。
 销毁或重建 view 不清空缓存，相同字形无需重复栅格化和上传。

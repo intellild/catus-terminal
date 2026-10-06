@@ -1,6 +1,7 @@
 //! Shared glyph resources and per-view instance buffers.
 use super::{atlas::Glyph, font::GlyphCache};
 use crate::frame::Viewport;
+use anyhow::Result;
 
 pub struct SharedGlyphs {
     pub cache: GlyphCache,
@@ -16,7 +17,7 @@ pub struct GlyphRenderer {
 }
 
 impl SharedGlyphs {
-    pub fn new(device: &wgpu::Device) -> Result<Self, String> {
+    pub fn new(device: &wgpu::Device) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Glyph atlas sampling WGSL"),
             source: wgpu::ShaderSource::Wgsl(include_str!("atlas.wgsl").into()),
@@ -65,7 +66,7 @@ impl GlyphRenderer {
     pub fn grid_size(
         shared: &mut SharedGlyphs,
         viewport: &Viewport,
-    ) -> Result<crate::terminal_core::grid::GridSize, String> {
+    ) -> Result<crate::terminal_core::grid::GridSize> {
         let metrics = shared.cache.metrics(viewport.font_pixels()?)?;
         let padding = (8. * viewport.pixel_ratio).round();
         Ok(crate::terminal_core::grid::GridSize::new(
@@ -86,7 +87,7 @@ impl GlyphRenderer {
         shared: &mut SharedGlyphs,
         viewport: &Viewport,
         grid: &crate::terminal_core::grid::GridSnapshot,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         let pixels = viewport.font_pixels()?;
         let metrics = shared.cache.metrics(pixels)?;
         let ratio = viewport.pixel_ratio;
@@ -212,7 +213,7 @@ impl GlyphRenderer {
         shared: &mut SharedGlyphs,
         items: Vec<(Glyph, [f32; 16])>,
         background: [u8; 3],
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         let bytes: Vec<u8> = items
             .iter()
             .flat_map(|(_, data)| data.iter().flat_map(|n| n.to_ne_bytes()))
@@ -244,11 +245,7 @@ impl GlyphRenderer {
             // textures are reused. Create a binding only when a new page appears.
             while shared.bindings.len() < shared.cache.atlas.pages() {
                 let page = shared.bindings.len();
-                let view = shared
-                    .cache
-                    .atlas
-                    .page_view(page)
-                    .map_err(|e| e.to_string())?;
+                let view = shared.cache.atlas.page_view(page)?;
                 let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("Glyph atlas page binding"),
                     layout: &shared.pipeline.get_bind_group_layout(0),

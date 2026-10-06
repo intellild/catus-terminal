@@ -12,6 +12,7 @@ default = ["native-view"]
 native-view = ["dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:crossfont"]
 
 [dependencies]
+anyhow = "1.0"
 napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"] }
 napi-derive = "=3.6.10"
 cxx = "1.0"
@@ -28,6 +29,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 crossfont = { version = "=0.9.0", optional = true }
 
 [build-dependencies]
+anyhow = "1.0"
 napi-build = "=2.6.0"
 cxx-build = "1.0"
 

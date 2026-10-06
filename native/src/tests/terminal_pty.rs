@@ -1,5 +1,32 @@
 use super::*;
 use std::time::{Duration, Instant};
+
+#[test]
+fn stored_pty_errors_keep_their_causes_across_repeated_reads() {
+    let terminal =
+        TerminalSession::command("/bin/sh", &["-i".into()], GridSize::new(80, 24)).unwrap();
+    let source = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
+    let reason = source.to_string();
+    *terminal.error.lock().unwrap() = Some(
+        anyhow::Error::new(source)
+            .context("Write PTY input")
+            .into_boxed_dyn_error()
+            .into(),
+    );
+    for _ in 0..2 {
+        let error = terminal.error().unwrap();
+        assert_eq!(format!("{error:#}"), format!("Write PTY input: {reason}"));
+        assert_eq!(
+            error
+                .root_cause()
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+    }
+    terminal.close();
+}
 #[test]
 fn pty_shell_round_trip_resize_and_shutdown() {
     let mut command = CommandBuilder::new("/bin/sh");

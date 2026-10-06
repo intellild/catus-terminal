@@ -1,11 +1,15 @@
+use anyhow::{Context, Result, bail, ensure};
 use std::{env, path::PathBuf, process::Command};
 
-fn run(command: &mut Command) {
-    let status = command.status().expect("Failed to launch CMake");
-    assert!(status.success(), "CMake failed: {command:?}");
+fn run(command: &mut Command) -> Result<()> {
+    let status = command
+        .status()
+        .with_context(|| format!("Launch CMake: {command:?}"))?;
+    ensure!(status.success(), "CMake failed ({status}): {command:?}");
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<()> {
     napi_build::setup();
     let mut bridges = vec!["src/lib.rs"];
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_some() {
@@ -23,16 +27,23 @@ fn main() {
 
     // Pure Rust/N-API checks can run without a Lynx host process.
     if env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_none() {
-        return;
+        return Ok(());
     }
-    assert_eq!(env::var("CARGO_CFG_TARGET_OS").unwrap(), "macos");
-    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
+    ensure!(
+        env::var("CARGO_CFG_TARGET_OS").context("Read target OS")? == "macos",
+        "Native views currently require macOS"
+    );
+    let arch = match env::var("CARGO_CFG_TARGET_ARCH")
+        .context("Read target architecture")?
+        .as_str()
+    {
         "aarch64" => "arm64",
         "x86_64" => "x86_64",
-        other => panic!("Unsupported native view architecture: {other}"),
+        other => bail!("Unsupported native view architecture: {other}"),
     };
-    let package_root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let package_root =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").context("Read Cargo manifest directory")?);
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").context("Read Cargo output directory")?);
     let cpp_build = out_dir.join("cxx");
     run(Command::new("cmake")
         .arg("-S")
@@ -44,14 +55,14 @@ fn main() {
         .arg(format!(
             "-DCXXBRIDGE_INCLUDE_DIR={}",
             out_dir.join("cxxbridge/include").display()
-        )));
+        )))?;
     run(Command::new("cmake")
         .arg("--build")
         .arg(&cpp_build)
         .arg("--config")
         .arg("Release")
         .arg("--target")
-        .arg("catus_native"));
+        .arg("catus_native"))?;
 
     // Only the Node-API cdylib needs Lynx views. Keep their host-specific
     // symbols out of Rust unit-test executables and downstream rlib users.
@@ -78,4 +89,5 @@ fn main() {
             package_root.join(input).display()
         );
     }
+    Ok(())
 }
