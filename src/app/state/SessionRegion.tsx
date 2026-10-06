@@ -6,6 +6,7 @@ import { sessionRegistry } from './sessionRegistry';
 import type { WorkspaceHost } from '../../shared/workspaces';
 import { TabBar } from '../components/TabBar';
 import { WorkspaceList } from '../components/WorkspaceList';
+import { SftpBrowser } from '../components/SftpBrowser';
 import { TerminalView } from '../components/TerminalView';
 import { TerminalContent } from '../components/TerminalContent';
 import { StatusBar } from '../components/StatusBar';
@@ -63,6 +64,7 @@ function RegionContent({
           onSelect={session.focusTab}
           onClose={session.removeTab}
           onAdd={session.addTab}
+          onAddSftp={view.workspace?.type === 'ssh' ? session.addSftpTab : undefined}
           onLayout={revealActiveTab}
         />
       );
@@ -90,10 +92,24 @@ function RegionContent({
           onAdd={session.addTab}
         >
           <TerminalView
-            id={load.error ? undefined : view.activeTab?.id}
+            id={load.error || view.activeTab?.kind === 'sftp' ? undefined : view.activeTab?.id}
             sessionId={load.error ? 0 : view.terminalId}
             error={view.terminalError}
           />
+          {view.state.tabs
+            .filter((tab) => tab.kind === 'sftp')
+            .map((tab) => (
+              <view
+                key={tab.id}
+                className={
+                  !load.error && view.activeTab?.id === tab.id
+                    ? 'flex-1 min-h-0 flex flex-col'
+                    : 'hidden'
+                }
+              >
+                <SftpBrowser id={tab.id} host={tab.profile.host!} />
+              </view>
+            ))}
         </TerminalContent>
       );
     case 'status':
@@ -110,6 +126,7 @@ function RegionContent({
           editor={editor}
           workspaces={view.workspaces}
           configPath={view.state.payload?.path}
+          environment={view.state.payload?.environment}
           onClose={session.closeSettings}
           onSelect={session.selectProfile}
           onAdd={session.addWorkspace}

@@ -112,3 +112,39 @@ test('configuration validates IDs and commands and resolves the account shell an
     parseWorkspaceConfig({ version: 1, workspaces: [{ ...defaults.workspaces[0], command: ' ' }] }),
   ).toThrow('blank');
 });
+
+test('SSH launch uses argv and quotes preview without interpolating a host into a shell', async () => {
+  const { launchPreview } = await import('../../shared/launch');
+  const profile = {
+    ...payload.config.workspaces[0]!,
+    type: 'ssh' as const,
+    host: 'user@server',
+    remoteCommand: "printf 'hello world'",
+  };
+  expect(resolveLaunch(profile, payload.environment)).toEqual({
+    command: 'ssh',
+    args: ['-t', '--', 'user@server', "printf 'hello world'"],
+    cwd: '/Users/test',
+  });
+  expect(launchPreview(profile, payload.environment)).toBe(
+    "'ssh' '-t' '--' 'user@server' 'printf '\\''hello world'\\''' ".trim(),
+  );
+  expect(() =>
+    parseWorkspaceConfig({
+      ...payload.config,
+      workspaces: [{ ...profile, host: '-oProxyCommand=bad' }],
+    }),
+  ).toThrow();
+  const state = applyConfig(emptySession, {
+    ...payload,
+    config: { version: 1, workspaces: [profile] },
+  });
+  expect(newTab(state, profile.id, 'sftp').tabs[1]?.kind).toBe('sftp');
+  expect(newTab(applyConfig(emptySession, payload), 'shell', 'sftp').tabs).toHaveLength(1);
+  expect(
+    resolveLaunch(
+      { ...profile, type: 'local', command: 'printf hello', args: [] },
+      payload.environment,
+    ),
+  ).toEqual({ command: '/bin/zsh', args: ['-lc', 'printf hello'], cwd: '/Users/test' });
+});

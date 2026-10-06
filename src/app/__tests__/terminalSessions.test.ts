@@ -48,7 +48,7 @@ test('atom writes allocate and release sessions without React or UI subscription
   registry.update(sessionAtom, (state) => newTab(state));
   registry.update(sessionAtom, (state) => selectWorkspace(state, 'node'));
   expect([...live]).toEqual([1, 2, 3]);
-  expect(host.createTerminalSession.mock.calls).toEqual([[1], [2], [3]]);
+  expect(host.createTerminalSession.mock.calls.map(([id]) => [id])).toEqual([[1], [2], [3]]);
   // A background tab can close without rendering any terminal view.
   registry.update(sessionAtom, (state) => closeTab(state, 2));
   expect([...live]).toEqual([1, 3]);
@@ -99,4 +99,28 @@ test('creation errors stay in atom state, never bind a missing ID, and are not c
   registry.update(sessionAtom, (state) => newTab(state));
   expect(registry.get(sessionViewAtom).terminalId).toBe(2);
   expect(registry.get(sessionViewAtom).terminalError).toBe('');
+});
+
+test('SFTP tabs have no PTY; closing during connection still releases the late connection', async () => {
+  const close = rstest.fn(async () => {});
+  let finish!: (fs: import('../../shared/sftp').RemoteFs) => void;
+  const pending = new Promise<import('../../shared/sftp').RemoteFs>((resolve) => {
+    finish = resolve;
+  });
+  const connectSftp = rstest.fn(() => pending);
+  registry.set(terminalHostAtom, { ...host, connectSftp });
+  const profile = { ...payload.config.workspaces[0]!, type: 'ssh' as const, host: 'example' };
+  registry.update(sessionAtom, (state) =>
+    applyConfig(state, { ...payload, config: { version: 1, workspaces: [profile] } }),
+  );
+  registry.update(sessionAtom, (state) => newTab(state, profile.id, 'sftp'));
+  await Promise.resolve();
+  expect(host.createTerminalSession).toHaveBeenCalledOnce();
+  expect(connectSftp).toHaveBeenCalledWith({ destination: 'example' });
+  expect(registry.get(sessionViewAtom).terminalId).toBe(0);
+  registry.update(sessionAtom, (state) => closeTab(state, 2));
+  finish({ close, readdir: rstest.fn(), stat: rstest.fn(), realpath: rstest.fn() });
+  await rstest.waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(host.closeTerminalSession).not.toHaveBeenCalled();
+  expect([...live]).toEqual([1]);
 });

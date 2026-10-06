@@ -6,6 +6,9 @@ export const WorkspaceSchema = Schema.Struct({
   name: NonEmpty,
   icon: NonEmpty,
   color: Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/)),
+  type: Schema.optional(Schema.Literals(['local', 'ssh'])),
+  host: Schema.optional(Schema.String),
+  remoteCommand: Schema.optional(Schema.String),
   command: NonEmpty,
   args: Schema.Array(Schema.String),
   cwd: NonEmpty,
@@ -27,6 +30,12 @@ export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
     if (!workspace.name.trim() || !workspace.command.trim() || !workspace.cwd.trim()) {
       throw new Error('Workspace name, command and directory cannot be blank');
     }
+    if (
+      workspace.type === 'ssh' &&
+      (!workspace.host?.trim() || /^[\s-]|[\r\n\0]/.test(workspace.host))
+    ) {
+      throw new Error('SSH host must be a hostname, user@host or SSH config alias');
+    }
     ids.add(workspace.id);
   }
   return config;
@@ -46,15 +55,4 @@ export interface WorkspaceHost {
   saveWorkspaces(config: WorkspaceConfig): Promise<WorkspaceConfigPayload>;
 }
 
-export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnvironment) {
-  return {
-    command: workspace.command === '$SHELL' ? environment.shell : workspace.command,
-    args: workspace.args,
-    cwd:
-      workspace.cwd === '~'
-        ? environment.home
-        : workspace.cwd.startsWith('~/')
-          ? environment.home + workspace.cwd.slice(1)
-          : workspace.cwd,
-  };
-}
+export { resolveLaunch, launchPreview, quoteShell } from './launch';

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifySftp } from '../tests/native/sftp.mjs';
 import { buildNative } from '../native/build.mjs';
 
 // Build through napi-rs with the view disabled for this isolated Node process.
@@ -45,3 +46,5 @@ assert.ok(getTerminalSessionInfo(id).shell.startsWith('/'));
 closeTerminalSession(id);
 assert.throws(() => getTerminalSessionInfo(0), /Unknown/);
 console.log('N-API terminal: numeric session ID, default shell, PTY output and release passed');
+
+await verifySftp(addon.exports.connectSftp);

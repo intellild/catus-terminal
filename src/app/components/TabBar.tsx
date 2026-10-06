@@ -7,6 +7,7 @@ export function TabBar({
   onSelect,
   onClose,
   onAdd,
+  onAddSftp,
   onLayout,
 }: {
   tabs?: readonly TerminalTab[];
@@ -15,6 +16,7 @@ export function TabBar({
   onSelect?(id: number): void;
   onClose?(id: number): void;
   onAdd?(): void;
+  onAddSftp?(): void;
   onLayout?(): void;
 }) {
   const width = Math.max(tabs.length * 198 + 10, 198);
@@ -46,7 +48,7 @@ export function TabBar({
                 />
                 <text
                   className={`text-[12px] whitespace-nowrap overflow-hidden text-ellipsis ${activeTabId === tab.id ? 'text-[#e1e8e5]' : 'text-[#959eaa]'}`}
-                >{`${tab.profile.name} ${tab.number}`}</text>
+                >{`${tab.kind === 'sftp' ? 'SFTP · ' : ''}${tab.profile.name} ${tab.number}`}</text>
               </view>
               <view
                 id={`close-tab-${tab.number}`}
@@ -71,6 +73,15 @@ export function TabBar({
       >
         <text className="text-[24px] text-[#c1c7d0]">+</text>
       </view>
+      {onAddSftp ? (
+        <view
+          id="new-sftp-tab"
+          className="h-[36px] px-[9px] rounded-[9px] flex justify-center items-center shrink-0 [-x-app-region:no-drag]"
+          bindtap={onAddSftp}
+        >
+          <text className="text-[12px] text-[#a8e6cf]">+ SFTP</text>
+        </view>
+      ) : null}
     </>
   );
 }

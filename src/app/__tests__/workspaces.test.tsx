@@ -99,9 +99,7 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
-  expect(root.querySelector('#session-directory')?.textContent).toBe(
-    'Default shell · home directory',
-  );
+  expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
   const surface = root.querySelector('#terminal-surface')!;
   const firstId = surface.getAttribute('terminal-id');
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
@@ -123,7 +121,11 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(root.querySelector('#tab-2')).toBeNull();
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   expect(terminalHost.createTerminalSession).toHaveBeenCalledTimes(3);
-  expect(rstest.mocked(terminalHost.createTerminalSession).mock.calls).toEqual([[1], [2], [3]]);
+  expect(rstest.mocked(terminalHost.createTerminalSession).mock.calls.map(([id]) => [id])).toEqual([
+    [1],
+    [2],
+    [3],
+  ]);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#workspace-node')!);
   await findByText('Node.js 3');
@@ -144,35 +146,45 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(root.querySelector('#terminal-surface')).toBe(surface);
 });
 
-test('workspace editor persists JSON and rejects invalid arguments without saving', async () => {
+test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {
   const host = makeHost();
   render(<App host={host} />);
   const root = elementTree.root!;
-  const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
   fireEvent.tap(root.querySelector('#workspace-settings')!);
-  await findByText('Launch profile');
-  const input = root.querySelector('#profile-args')!;
-  expect(input.tagName.toLowerCase()).toBe('input');
-  act(() => {
-    input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: 'invalid' } }));
-  });
+  await rstest.waitFor(() => expect(root.querySelector('#profile-command')).not.toBeNull());
+  const change = (selector: string, value: string) =>
+    act(() => {
+      root
+        .querySelector(selector)!
+        .dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value } }));
+    });
+  change('#profile-command', 'printf hello');
+  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
+  expect(root.querySelector('#profile-command')).toBeNull();
   fireEvent.tap(root.querySelector('#save-workspace')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
   expect(root.querySelector('#editor-error')).not.toBeNull();
-  act(() => {
-    input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: '["-l", "-i"]' } }));
-  });
+  change('#profile-host', 'user@server');
+  change('#profile-remoteCommand', 'cd /srv && exec bash -l');
+  expect(root.querySelector('#ssh-command-preview')?.textContent).toBe(
+    "'ssh' '-t' '--' 'user@server' 'cd /srv && exec bash -l'",
+  );
+  fireEvent.tap(root.querySelector('#workspace-type-local')!);
+  expect(root.querySelector('#profile-command')?.getAttribute('value')).toBe('printf hello');
+  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
   fireEvent.tap(root.querySelector('#save-workspace')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
-  expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!.args).toEqual([
-    '-l',
-    '-i',
-  ]);
-  // Workspace edits do not change the minimal terminal's default shell.
-  expect(root.querySelector('#session-directory')?.textContent).toBe(
-    'Default shell · home directory',
-  );
+  const profile = rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!;
+  expect(profile).toMatchObject({
+    type: 'ssh',
+    host: 'user@server',
+    remoteCommand: 'cd /srv && exec bash -l',
+    command: 'printf hello',
+    args: [],
+  });
+  // Already running terminals keep their old profile.
+  expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
 });
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {
@@ -244,4 +256,69 @@ test('terminal forwards control keys to the native PTY and keeps macOS shortcuts
   });
   key(true);
   expect(invoke).toHaveBeenCalledOnce();
+});
+
+test('SSH has separate terminal and SFTP buttons; directory navigation preserves the native view', async () => {
+  const fs = {
+    realpath: rstest.fn(async (path: string) =>
+      path === '.' ? '/home/test' : path.endsWith('/..') ? '/home/test' : path,
+    ),
+    readdir: rstest.fn(async (path: string) =>
+      path.endsWith('/docs')
+        ? []
+        : [
+            {
+              name: 'readme.txt',
+              isDirectory: () => false,
+              isFile: () => true,
+              isSymbolicLink: () => false,
+            },
+            {
+              name: 'docs',
+              isDirectory: () => true,
+              isFile: () => false,
+              isSymbolicLink: () => false,
+            },
+          ],
+    ),
+    stat: rstest.fn(),
+    close: rstest.fn(async () => {}),
+  };
+  const terminal = NativeModules.nodejs.exposed as TerminalHost & {
+    connectSftp: ReturnType<typeof rstest.fn>;
+  };
+  terminal.connectSftp = rstest.fn(async () => fs);
+  const host = makeHost();
+  const payload = await host.loadWorkspaces();
+  rstest.mocked(host.loadWorkspaces).mockResolvedValue({
+    ...payload,
+    config: {
+      version: 1,
+      workspaces: [{ ...payload.config.workspaces[0]!, type: 'ssh', host: 'test-alias' }],
+    },
+  });
+  render(<App host={host} />);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  const surface = root.querySelector('#terminal-surface');
+  expect(root.querySelector('#new-sftp-tab')).not.toBeNull();
+  fireEvent.tap(root.querySelector('#new-sftp-tab')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#sftp-entry-0')?.textContent).toContain('docs'),
+  );
+  expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
+  expect(Number(surface!.getAttribute('terminal-id'))).toBe(0);
+  fireEvent.tap(root.querySelector('#sftp-entry-0')!);
+  await rstest.waitFor(() => expect(root.querySelector('#sftp-empty')).not.toBeNull());
+  expect(fs.readdir).toHaveBeenLastCalledWith('/home/test/docs', { withFileTypes: true });
+  fireEvent.tap(root.querySelector('#sftp-up')!);
+  await rstest.waitFor(() => expect(root.querySelector('#sftp-entry-0')).not.toBeNull());
+  fireEvent.tap(root.querySelector('#tab-1')!);
+  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(Number(surface!.getAttribute('terminal-id'))).toBe(1);
+  expect(fs.close).not.toHaveBeenCalled();
+  fireEvent.tap(root.querySelector('#tab-2')!);
+  fireEvent.tap(root.querySelector('#close-tab-2')!);
+  await rstest.waitFor(() => expect(fs.close).toHaveBeenCalledOnce());
+  expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
 });

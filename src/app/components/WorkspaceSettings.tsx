@@ -1,10 +1,23 @@
-import type { Workspace } from '../../shared/workspaces';
+import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
+import { launchPreview } from '../../shared/launch';
 import type { EditorState, WorkspaceDraft } from '../state/session';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormInput,
+  FormMessage,
+  FormDescription,
+  FormSubmit,
+} from './ui/Form';
 
 export function WorkspaceSettings({
   editor,
   workspaces,
   configPath,
+  environment,
   onClose,
   onSelect,
   onAdd,
@@ -15,6 +28,7 @@ export function WorkspaceSettings({
   editor: EditorState;
   workspaces: readonly Workspace[];
   configPath?: string;
+  environment?: WorkspaceEnvironment;
   onClose(): void;
   onSelect(workspace: Workspace): void;
   onAdd(): void;
@@ -22,159 +36,156 @@ export function WorkspaceSettings({
   onSave(): void;
   onDelete(): void;
 }) {
+  const draft = editor.draft;
+  if (!editor.open || !draft) return null;
+  const preview =
+    draft.type === 'ssh' && draft.host.trim() && environment
+      ? launchPreview({ ...draft, args: [] }, environment)
+      : '';
   return (
-    <>
-      {editor.open && editor.draft && (
-        <view className="absolute left-0 top-[54px] right-0 bottom-0 flex flex-row">
-          <view className="flex-1 bg-[#00000080]" bindtap={onClose} />
-          <view className="w-[370px] bg-[#20262d] border-l border-solid border-[#39444e] flex flex-col">
-            <view className="p-[24px] flex flex-row items-center justify-between">
-              <view>
-                <text className="text-[9px] text-[#8eb4a7] tracking-[1px] mb-[7px]">
-                  MAKE IT YOURS
-                </text>
-                <text className="text-[23px] text-[#e2e8ed]">Workspaces</text>
-              </view>
-              <view
-                id="close-settings"
-                className="w-[32px] h-[32px] flex items-center justify-center"
-                bindtap={onClose}
-              >
-                <text className="text-[19px] text-[#9ca6b2]">×</text>
-              </view>
-            </view>
-            <scroll-view scroll-y className="flex-1 min-h-0">
-              <view key={editor.draft.id} className="pt-0 px-[24px] pb-[28px] flex flex-col">
-                <view className="flex flex-row flex-wrap gap-[7px] mb-[26px]">
-                  {workspaces.map((item) => (
-                    <view
-                      key={item.id}
-                      id={`edit-profile-${item.id}`}
-                      className={`py-[7px] px-[10px] rounded-[6px] border border-solid ${editor.draft?.id === item.id ? 'bg-[#35483f] border-[#6d9988]' : 'bg-[#272f37] border-[#3b4650]'}`}
-                      bindtap={() => onSelect(item)}
-                    >
-                      <text className="text-[11px] text-[#c3cdd6]">{item.name}</text>
-                    </view>
-                  ))}
-                  <view
-                    id="add-workspace"
-                    className="py-[7px] px-[10px] rounded-[6px] border border-solid border-[#3b4650] bg-[#272f37]"
-                    bindtap={onAdd}
-                  >
-                    <text className="text-[11px] text-[#c3cdd6]">+ Add</text>
-                  </view>
-                </view>
-                <text className="text-[13px] text-[#dce4e9] font-bold mb-[18px]">
-                  {editor.draft.isNew ? 'New workspace' : 'Launch profile'}
-                </text>
-                <Field
-                  id="profile-name"
-                  label="Name"
-                  value={editor.draft.name}
-                  onInput={(value) => onChange('name', value)}
-                />
-                <Field
-                  id="profile-command"
-                  label="Command"
-                  value={editor.draft.command}
-                  onInput={(value) => onChange('command', value)}
-                />
-                <text className="text-[10px] text-[#7e8c99] leading-[17px] mb-[18px]">
-                  $SHELL uses your account’s default shell.
-                </text>
-                <Field
-                  id="profile-args"
-                  label="Arguments · JSON array"
-                  value={editor.draft.args}
-                  onInput={(value) => onChange('args', value)}
-                />
-                <Field
-                  id="profile-cwd"
-                  label="Working directory"
-                  value={editor.draft.cwd}
-                  onInput={(value) => onChange('cwd', value)}
-                />
-                <view className="flex flex-row gap-[14px]">
-                  <Field
-                    id="profile-icon"
-                    label="Icon text"
-                    value={editor.draft.icon}
-                    onInput={(value) => onChange('icon', value)}
-                  />
-                  <Field
-                    id="profile-color"
-                    label="Color · hex"
-                    value={editor.draft.color}
-                    onInput={(value) => onChange('color', value)}
-                  />
-                </view>
-                <text className="text-[10px] text-[#7e8c99] leading-[17px] mb-[18px]">
-                  Changes apply to new tabs. Existing tabs keep their launch profile.
-                </text>
-                {editor.error && (
-                  <text
-                    id="editor-error"
-                    className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
-                  >
-                    {editor.error}
-                  </text>
-                )}
-                <view className="flex flex-row items-center gap-[14px] mt-[6px]">
-                  <view
-                    id="save-workspace"
-                    className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
-                    bindtap={onSave}
-                  >
-                    <text className="text-[12px] font-bold text-[#20392f]">
-                      {editor.saving ? 'Saving…' : 'Save workspace'}
-                    </text>
-                  </view>
-                  {!editor.draft.isNew && workspaces.length > 1 && (
-                    <view id="delete-workspace" className="p-[10px] mt-[15px]" bindtap={onDelete}>
-                      <text className="text-[11px] text-[#d59e9e]">Remove</text>
-                    </view>
-                  )}
-                </view>
-                <view className="pt-[20px] mt-[24px] border-t border-solid border-[#36414c]">
-                  <text className="text-[8px] text-[#7d8e9c] tracking-[1px] mb-[9px]">
-                    CONFIGURATION FILE
-                  </text>
-                  <text
-                    id="config-path"
-                    className="text-[10px] text-[#a0aebc] leading-[16px] break-all"
-                  >
-                    {configPath}
-                  </text>
-                </view>
-              </view>
-            </scroll-view>
+    <view className="absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]">
+      <view className="absolute inset-0 bg-[#00000080]" bindtap={onClose} />
+      <view className="w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]">
+        <view className="flex flex-row justify-between items-center mb-[18px]">
+          <text className="text-[21px] text-[#e2e8ed]">Edit workspace</text>
+          <view id="close-settings" bindtap={onClose}>
+            <text className="text-[22px] text-[#9ca6b2]">×</text>
           </view>
         </view>
-      )}
-    </>
+        <scroll-view scroll-y className="shrink min-h-0">
+          <view className="flex flex-row flex-wrap gap-[7px] mb-[20px]">
+            {workspaces.map((item) => (
+              <view
+                key={item.id}
+                id={`edit-profile-${item.id}`}
+                className={`py-[7px] px-[10px] rounded-[6px] ${draft.id === item.id ? 'bg-[#35483f]' : 'bg-[#272f37]'}`}
+                bindtap={() => onSelect(item)}
+              >
+                <text className="text-[11px] text-[#c3cdd6]">{item.name}</text>
+              </view>
+            ))}
+            <view id="add-workspace" className="py-[7px] px-[10px]" bindtap={onAdd}>
+              <text className="text-[11px] text-[#c3cdd6]">+ Add</text>
+            </view>
+          </view>
+          <view key={draft.id} id="workspace-editor-form">
+            <Form
+              control={{
+                values: { ...draft },
+                disabled: editor.saving,
+                errors: editor.fieldErrors,
+                onChange: (name, value) => onChange(name as keyof WorkspaceDraft, value),
+                onSubmit: onSave,
+              }}
+            >
+              <Field name="name" label="Name" />
+              <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
+                {(['local', 'ssh'] as const).map((type) => (
+                  <view
+                    id={`workspace-type-${type}`}
+                    key={type}
+                    className={`flex-1 py-[9px] rounded-[6px] items-center ${draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]'}`}
+                    bindtap={() => {
+                      if (!editor.saving) onChange('type', type);
+                    }}
+                  >
+                    <text className="text-[12px] text-[#dce4e9]">
+                      {type === 'local' ? 'Local' : 'SSH'}
+                    </text>
+                  </view>
+                ))}
+              </view>
+              {draft.type === 'local' ? (
+                <Field
+                  name="command"
+                  label="Startup command"
+                  description="$SHELL uses your default shell. You can enter a shell command."
+                />
+              ) : (
+                <>
+                  <Field
+                    name="host"
+                    label="Host"
+                    description="Hostname, user@host or an alias in ~/.ssh/config."
+                  />
+                  <Field
+                    name="remoteCommand"
+                    label="Extra command (optional)"
+                    description="Executed by the remote shell. Leave blank for an interactive SSH terminal."
+                  />
+                  <FormItem>
+                    <FormLabel>Command preview</FormLabel>
+                    <text
+                      id="ssh-command-preview"
+                      className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
+                    >
+                      {preview || 'Enter an SSH host'}
+                    </text>
+                  </FormItem>
+                </>
+              )}
+              <Field name="cwd" label="Working directory" />
+              <view className="flex flex-row gap-[14px]">
+                <view className="flex-1">
+                  <Field name="icon" label="Icon text" />
+                </view>
+                <view className="flex-1">
+                  <Field name="color" label="Color · hex" />
+                </view>
+              </view>
+              <FormDescription>
+                Changes apply to new tabs. SFTP uses the host's SSH configuration.
+              </FormDescription>
+              {editor.error ? (
+                <text
+                  id="editor-error"
+                  className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
+                >
+                  {editor.error}
+                </text>
+              ) : null}
+              <view className="flex flex-row items-center gap-[14px] mt-[20px]">
+                <FormSubmit id="save-workspace">
+                  {editor.saving ? 'Saving…' : 'Save workspace'}
+                </FormSubmit>
+                {!draft.isNew && workspaces.length > 1 ? (
+                  <view id="delete-workspace" bindtap={onDelete}>
+                    <text className="text-[11px] text-[#d59e9e]">Remove</text>
+                  </view>
+                ) : null}
+              </view>
+            </Form>
+          </view>
+          <text id="config-path" className="text-[10px] text-[#7d8e9c] mt-[20px] break-all">
+            {configPath}
+          </text>
+        </scroll-view>
+      </view>
+    </view>
   );
 }
-
 function Field({
-  id,
+  name,
   label,
-  value,
-  onInput,
+  description,
 }: {
-  id: string;
+  name: string;
   label: string;
-  value: string;
-  onInput(value: string): void;
+  description?: string;
 }) {
   return (
-    <view className="flex flex-col mb-[15px] flex-1 min-w-0">
-      <text className="text-[11px] text-[#a4b0bb] mb-[7px]">{label}</text>
-      <input
-        id={id}
-        className="w-full h-[32px] shrink-0"
-        default-value={value}
-        bindinput={(event) => onInput(event.detail.value)}
-      />
-    </view>
+    <FormField
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>{label}</FormLabel>
+          <FormControl>
+            <FormInput id={`profile-${name}`} {...field} />
+          </FormControl>
+          {description ? <FormDescription>{description}</FormDescription> : null}
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   );
 }

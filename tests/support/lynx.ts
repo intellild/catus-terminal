@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -41,7 +41,7 @@ export class LynxApp {
   private session = 0;
   private operation = 0;
 
-  async start() {
+  async start(options: { ssh?: boolean } = {}) {
     if (process.platform !== 'darwin')
       throw new Error('Native terminal E2E requires macOS + Metal.');
     await mkdir('.tmp/e2e/artifacts', { recursive: true });
@@ -62,6 +62,9 @@ export class LynxApp {
             cwd: '~',
           },
           {
+            ...(options.ssh
+              ? { type: 'ssh', host: 'e2e-alias', remoteCommand: 'exec bash -l' }
+              : {}),
             id: 'other',
             name: 'Other',
             icon: 'O',
@@ -73,6 +76,21 @@ export class LynxApp {
         ],
       }),
     );
+    let fixturePath = process.env.PATH;
+    if (options.ssh) {
+      const bin = path.join(this.temporary, 'bin');
+      const remote = path.join(this.temporary, 'remote');
+      await mkdir(bin);
+      await mkdir(remote);
+      await mkdir(path.join(remote, 'docs'));
+      await writeFile(path.join(remote, 'readme.txt'), 'SFTP fixture');
+      await writeFile(
+        path.join(bin, 'ssh'),
+        '#!/bin/sh\nexec /usr/libexec/sftp-server -d "$CATUS_SFTP_DIRECTORY"\n',
+      );
+      await chmod(path.join(bin, 'ssh'), 0o755);
+      fixturePath = `${bin}${path.delimiter}${fixturePath}`;
+    }
     const existing = await this.connector.listClients();
     if (existing.some((client) => client.info?.App === 'catus-terminal')) {
       throw new Error(
@@ -90,6 +108,8 @@ export class LynxApp {
         env: {
           ...process.env,
           NODE_ENV: 'test',
+          PATH: fixturePath,
+          CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'remote'),
           CATUS_WORKSPACES_FILE: configuration,
           CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
           CATUS_E2E_NODE: process.execPath,

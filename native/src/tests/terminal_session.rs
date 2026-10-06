@@ -36,6 +36,7 @@ fn failed_pty_creation_does_not_occupy_the_supplied_id() {
     let error = create_session_with_command(
         id,
         Some(TerminalSessionCommand {
+            cwd: None,
             program: "/nonexistent/catus-test-shell".into(),
             args: vec![],
         }),
@@ -121,4 +122,35 @@ fn layout_resizes_grid_and_session_keeps_renderer_across_native_handles() {
     assert_eq!(rebound.viewport().unwrap(), larger);
     close_terminal_session(id);
     assert!(acquire_terminal(id).is_err());
+}
+
+#[test]
+fn configured_command_runs_in_the_requested_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let id = 3010;
+    create_session_with_command(
+        id,
+        Some(TerminalSessionCommand {
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), "printf 'CWD='; pwd".into()],
+            cwd: Some(directory.path().to_string_lossy().into_owned()),
+        }),
+    )
+    .unwrap();
+    let session = session(id).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let expected = directory
+        .path()
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    while !session.core.snapshot().text().contains(&expected) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Configured PTY command did not run in {expected}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    close_terminal_session(id);
 }

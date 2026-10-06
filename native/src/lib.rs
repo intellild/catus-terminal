@@ -8,6 +8,9 @@ mod frame_driver;
 #[cfg(feature = "native-view")]
 pub use frame_driver::dispatch_animation_frame;
 mod platform;
+mod sftp;
+mod sftp_api;
+pub use sftp_api::{SftpConnection, SftpEntry, SftpMetadata, SftpOptions, connect_sftp};
 #[cfg(feature = "native-view")]
 mod renderer;
 pub mod terminal_core;

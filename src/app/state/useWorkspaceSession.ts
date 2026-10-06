@@ -3,7 +3,7 @@ import '../runtime';
 import { useCallback, useEffect } from '@lynx-js/react';
 import { useAtom, useAtomSet, useAtomValue } from '@effect/atom-react';
 import * as Effect from 'effect/Effect';
-import { parseWorkspaceConfig, resolveLaunch } from '../../shared/workspaces';
+import { parseWorkspaceConfig, resolveLaunch, launchPreview } from '../../shared/workspaces';
 import type { WorkspaceConfig, WorkspaceHost } from '../../shared/workspaces';
 import {
   applyConfig,
@@ -82,6 +82,10 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
     'background only';
     setSession((current) => newTab(current));
   }, [setSession]);
+  const addSftpTab = useCallback(() => {
+    'background only';
+    setSession((current) => newTab(current, current.activeWorkspaceId, 'sftp'));
+  }, [setSession]);
   const focusTab = useCallback(
     (id: number) => {
       'background only';
@@ -109,7 +113,12 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
           ? {
               ...current,
               error: '',
-              draft: { ...current.draft, [field]: value },
+              fieldErrors: { ...current.fieldErrors, [field]: '' },
+              draft: {
+                ...current.draft,
+                [field]: value,
+                ...(field === 'command' ? { args: '[]' } : {}),
+              },
             }
           : current,
       );
@@ -139,6 +148,22 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
   const saveDraft = useCallback(() => {
     'background only';
     if (!editor.draft || !state.payload || editor.saving) return;
+    const fieldErrors: Record<string, string> = {};
+    for (const field of ['name', 'command', 'cwd', 'icon'] as const) {
+      if (!editor.draft[field].trim()) fieldErrors[field] = 'Required';
+    }
+    if (!/^#[0-9a-fA-F]{6}$/.test(editor.draft.color))
+      fieldErrors.color = 'Use a six-digit hex color';
+    if (
+      editor.draft.type === 'ssh' &&
+      (!editor.draft.host.trim() || /^[\s-]|[\r\n\0]/.test(editor.draft.host))
+    ) {
+      fieldErrors.host = 'Enter a hostname, user@host or SSH config alias';
+    }
+    if (Object.keys(fieldErrors).length) {
+      setEditor((current) => ({ ...current, fieldErrors, error: 'Check the highlighted fields.' }));
+      return;
+    }
     try {
       const { isNew, args: inputArgs, ...fields } = editor.draft;
       const args: unknown = JSON.parse(inputArgs);
@@ -148,6 +173,7 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
       const profile = {
         ...fields,
         name: fields.name.trim(),
+        host: fields.host.trim(),
         command: fields.command.trim(),
         cwd: fields.cwd.trim(),
         args,
@@ -171,7 +197,8 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
 
   const launch =
     activeTab && state.payload ? resolveLaunch(activeTab.profile, state.payload.environment) : null;
-  const command = launch ? [launch.command, ...launch.args].join(' ') : '';
+  const command =
+    activeTab && state.payload ? launchPreview(activeTab.profile, state.payload.environment) : '';
 
   const closeSettings = useCallback(() => {
     if (!editor.saving) setEditor((current) => ({ ...current, open: false }));
@@ -194,6 +221,7 @@ export function useWorkspaceSession(host?: WorkspaceHost) {
     loadConfig,
     openWorkspace,
     addTab,
+    addSftpTab,
     focusTab,
     removeTab,
     openSettings,

@@ -30,8 +30,20 @@ impl TerminalSession {
         command.env("COLORTERM", "truecolor");
         Self::spawn(command, size, shell)
     }
+    #[cfg(test)]
     pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
+        Self::command_in_directory(program, args, None, size)
+    }
+    pub(crate) fn command_in_directory(
+        program: &str,
+        args: &[String],
+        cwd: Option<&str>,
+        size: GridSize,
+    ) -> Result<Self> {
         let mut command = CommandBuilder::new(program);
+        if let Some(cwd) = cwd {
+            command.cwd(cwd);
+        }
         command.args(args);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");

@@ -106,6 +106,16 @@ Read the docs below in advance to help you understand the library or frameworks 
     Submitted GPU work must finish before returning the borrowed Lynx buffer, even
     when the frame expires; expired output is not swapped and remains dirty.
     No application frame queue, broadcast or frame IDs are maintained.
+  - `src/sftp/` owns russh-sftp binary protocol and the system SSH subprocess.
+    `src/sftp_api.rs` exposes only synchronous error-first TSFN callback APIs; preload uses Node util.promisify with bound receivers to expose Promise APIs. The BTS callback path still triggers a Node Environment assertion; normal Node tests pass.
+    Use ordinary pipes, never terminal PTYs. Native russh-sftp uses Tokio spawning/timers;
+    use the runtime supplied by napi's `async` feature, not a second executor.
+    Connections are JS-owned objects, with explicit idempotent async close and kill-on-drop.
+    SSH uses BatchMode and the normal host-key/config/agent handling; password prompts
+    are not supported. Operations serialize per connection; writeFile copies JS bytes
+    before scheduling and creates/truncates the target. Reads/writes buffer whole files.
+    macOS Rust tests and `tests/native/sftp.mjs` use local OpenSSH sftp-server without a
+    remote account. The latter verifies N-API Promises and pipes using an isolated SSH shim.
   - Rust fallible implementations use `anyhow::Result` and preserve source errors
     with `?` / `Context`. Only N-API exports return `napi::Result`; the shared
     `napi_error` conversion formats the full cause chain. cxx implementations

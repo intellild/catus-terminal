@@ -9,6 +9,9 @@
 
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
+import { connectSftp } from './sftp';
+import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
+import { resolveLaunch } from '../../shared/workspaces';
 import { createWorkspaceHost } from './workspaceConfig';
 import { TextEncoder, TextDecoder } from 'node:util';
 const workspaces = createWorkspaceHost();
@@ -16,9 +19,10 @@ contextBridge.exposeInLynxBTS({
   createTextEncoder: () => new TextEncoder(),
   createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) =>
     new TextDecoder(label, options),
+  connectSftp,
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
-  createTerminalSession: (id: number) =>
+  createTerminalSession: (id: number, profile?: Workspace, environment?: WorkspaceEnvironment) =>
     nativeBinding.createTerminalSession(
       id,
       process.env.CATUS_E2E_PTY
@@ -26,7 +30,12 @@ contextBridge.exposeInLynxBTS({
             program: process.env.CATUS_E2E_NODE ?? process.execPath,
             args: [process.env.CATUS_E2E_PTY],
           }
-        : undefined,
+        : profile && environment
+          ? (() => {
+              const launch = resolveLaunch(profile, environment);
+              return { program: launch.command, args: [...launch.args], cwd: launch.cwd };
+            })()
+          : undefined,
     ),
   dispatchAnimationFrame: () => nativeBinding.dispatchAnimationFrame(),
   closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),

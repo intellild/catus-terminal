@@ -85,7 +85,13 @@ export function TerminalContent({
                 id="session-directory"
                 className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
               >
-                {activeTab ? 'Default shell · home directory' : 'Choose a workspace'}
+                {activeTab
+                  ? activeTab.kind === 'sftp'
+                    ? 'SFTP file browser'
+                    : activeTab.profile.type === 'ssh'
+                      ? `SSH · ${activeTab.profile.host}`
+                      : activeTab.profile.command
+                  : 'Choose a workspace'}
               </text>
             </view>
             <text id="session-label" className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]">
@@ -118,7 +124,9 @@ export function TerminalContent({
               {workspace?.name ?? 'Catus'} ·{' '}
               {activeTab ? `Tab ${activeTab.number}` : 'No open tabs'}
             </text>
-            <text className="text-[9px] text-[#596574]">Default shell</text>
+            <text className="text-[9px] text-[#596574]">
+              {activeTab?.kind === 'sftp' ? 'SFTP' : workspace?.type === 'ssh' ? 'SSH' : 'Local'}
+            </text>
           </view>
         </>
       </view>

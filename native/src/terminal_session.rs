@@ -29,6 +29,7 @@ pub(crate) struct SessionRenderer {
 pub struct TerminalSessionCommand {
     pub program: String,
     pub args: Vec<String>,
+    pub cwd: Option<String>,
 }
 
 fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
@@ -44,7 +45,12 @@ fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>)
     };
     let size = GridSize::new(80, 24);
     let core = match command {
-        Some(command) => TerminalSession::command(&command.program, &command.args, size)?,
+        Some(command) => TerminalSession::command_in_directory(
+            &command.program,
+            &command.args,
+            command.cwd.as_deref(),
+            size,
+        )?,
         None => TerminalSession::default_shell(size)?,
     };
     let session = Arc::new(Session {

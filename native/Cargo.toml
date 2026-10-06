@@ -13,7 +13,7 @@ native-view = ["dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:
 
 [dependencies]
 anyhow = "1.0"
-napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"] }
+napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols", "async"] }
 napi-derive = "=3.6.10"
 cxx = "1.0"
 alacritty_terminal = { version = "=0.26.0", default-features = false }
@@ -21,6 +21,8 @@ portable-pty = "=0.9.0"
 wgpu = { version = "=30.0.1", default-features = false, features = ["std", "wgsl"], optional = true }
 pollster = { version = "0.4", optional = true }
 crossfont = { version = "=0.9.0", optional = true }
+russh-sftp = "=3.0.1"
+tokio = { version = "1.53.2", default-features = false, features = ["process", "io-util", "sync", "time", "rt-multi-thread", "macros"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["metal"], optional = true }
@@ -39,3 +41,6 @@ cxx-build = "1.0"
 # Rust/LLVM's debuginfo stripping can produce misaligned LINKEDIT on macOS 27.
 # Keep the linker output intact; see rust-lang/rust#157750.
 strip = "none"
+
+[dev-dependencies]
+tempfile = "3.27.0"

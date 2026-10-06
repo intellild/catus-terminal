@@ -41,7 +41,7 @@
     "@lynx-js/tailwind-preset": "^0.6.0",
     "@lynx-js/type-config": "latest",
     "@lynx-js/types": "latest",
-    "@rsbuild/core": "2.1.5",
+    "@rsbuild/core": "2.2.9",
     "@rsbuild/plugin-type-check": "latest",
     "@rstest/core": "^0.11.1",
     "@testing-library/jest-dom": "^6.9.0",

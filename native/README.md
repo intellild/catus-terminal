@@ -13,6 +13,8 @@ native/
   Cargo.toml / Cargo.lock       Rust crate 和依赖
   build.rs                     cxx 桥、C++ 静态库构建及链接
   src/lib.rs                   napi-rs 导出和共享 Rust 状态
+  src/sftp/                    russh-sftp 协议、SSH 管道和连接生命周期
+  src/sftp_api.rs              N-API Promise / Uint8Array 文件 API
   src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
   src/terminal_session.rs      u32 session 注册表、PTY 和 session renderer 生命周期
   src/terminal_view.rs         layout resize、revision 和网格快照编排
@@ -193,3 +195,19 @@ release profile 显式使用 `strip = "none"`，避免当前 Rust 1.95 / LLVM �
 
 详见项目根目录 [README](../README.md) 和
 [官方 Desktop custom element 文档](https://lynxjs.org/next/guide/custom-native-component.html?platform=desktops)。
+
+## SFTP
+
+`connectSftp({ destination, port?, identityFile?, configFile? }, callback)` 同步返回 void。
+Rust 在 Tokio 中连接，通过 TSFN 调用 `callback(error, connection)`；preload
+使用 `util.promisify` 将 callback 包装为 `Promise<SftpConnection>` 后暴露给 Lynx BTS。
+连接提供 `readDir`、`metadata`、`readFile`、`writeFile`、`createDir`、`rename`、
+`removeFile`、`removeDir` 和 `close`；所有操作同步返回 void，最后一个参数是
+error-first callback。JS 对实例方法使用 `promisify(method.bind(connection))`。
+目录项包含 `name`、POSIX `path` 和 metadata；size 是可选 bigint，modified 是
+可选 Unix 秒时间，fileType 是 file/directory/symlink/other。
+
+调用链、运行时选择及限制见 [SFTP 异步实现](../docs/sftp-async.md)。
+
+当前普通 Node 的 callback/文件操作测试通过；Lynxtron 0.0.28 BTS 中仍会在
+TSFN 排队后、进入 JS callback 前触发 Node Environment 断言。此改动尚未绕过该问题。

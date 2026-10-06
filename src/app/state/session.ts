@@ -5,6 +5,7 @@ import type { Workspace, WorkspaceConfigPayload } from '../../shared/workspaces'
 export interface TerminalTab {
   readonly id: number;
   readonly workspaceId: string;
+  readonly kind: 'terminal' | 'sftp';
   readonly number: number;
   // Snapshot launch options: edits affect new tabs, not existing sessions.
   readonly profile: Workspace;
@@ -32,20 +33,26 @@ export const sessionAtom = Atom.writable<SessionState, SessionState>(
     return emptySession;
   },
   (get, state) => {
-    const terminalErrors = get.get(terminalSessionsAtom).reconcile(state.tabs.map((tab) => tab.id));
+    const terminalErrors = get
+      .get(terminalSessionsAtom)
+      .reconcile(state.tabs, state.payload?.environment);
     get.setSelf({ ...state, terminalErrors });
   },
 ).pipe(Atom.keepAlive);
 export const loadAtom = Atom.make({ loading: true, error: '' }).pipe(Atom.keepAlive);
 
-export function newTab(state: SessionState, workspaceId = state.activeWorkspaceId): SessionState {
+export function newTab(
+  state: SessionState,
+  workspaceId = state.activeWorkspaceId,
+  kind: TerminalTab['kind'] = 'terminal',
+): SessionState {
   const profile = state.payload?.config.workspaces.find(
     (workspace) => workspace.id === workspaceId,
   );
-  if (!profile) return state;
+  if (!profile || (kind === 'sftp' && profile.type !== 'ssh')) return state;
   const number = state.nextTab;
   if (number > 0xffffffff) throw new Error('Terminal session IDs exhausted');
-  const tab: TerminalTab = { id: number, workspaceId: profile.id, number, profile };
+  const tab: TerminalTab = { id: number, workspaceId: profile.id, number, profile, kind };
   return {
     ...state,
     activeWorkspaceId: profile.id,
@@ -107,7 +114,7 @@ export const sessionViewAtom = Atom.make((get) => {
   const activeTab = tabs.find((tab) => tab.id === state.activeTabs[workspace?.id ?? '']);
   const runningIds = new Set(state.tabs.map((tab) => tab.workspaceId));
   const terminalError = activeTab ? (state.terminalErrors[activeTab.id] ?? '') : '';
-  const terminalId = activeTab && !terminalError ? activeTab.id : 0;
+  const terminalId = activeTab?.kind === 'terminal' && !terminalError ? activeTab.id : 0;
   return { state, workspaces, workspace, tabs, activeTab, runningIds, terminalId, terminalError };
 });
 
@@ -115,6 +122,9 @@ export interface WorkspaceDraft {
   readonly id: string;
   readonly name: string;
   readonly command: string;
+  readonly type: 'local' | 'ssh';
+  readonly host: string;
+  readonly remoteCommand: string;
   readonly args: string;
   readonly cwd: string;
   readonly icon: string;
@@ -124,6 +134,7 @@ export interface WorkspaceDraft {
 export interface EditorState {
   readonly open: boolean;
   readonly draft: WorkspaceDraft | null;
+  readonly fieldErrors?: Readonly<Record<string, string>>;
   readonly saving: boolean;
   readonly error: string;
 }
@@ -136,7 +147,14 @@ export const editorAtom = Atom.make<EditorState>({
 export function editWorkspace(workspace: Workspace): EditorState {
   return {
     open: true,
-    draft: { ...workspace, args: JSON.stringify(workspace.args), isNew: false },
+    draft: {
+      ...workspace,
+      type: workspace.type ?? 'local',
+      host: workspace.host ?? '',
+      remoteCommand: workspace.remoteCommand ?? '',
+      args: JSON.stringify(workspace.args),
+      isNew: false,
+    },
     saving: false,
     error: '',
   };
@@ -151,6 +169,9 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
     draft: {
       id: `workspace-${number}`,
       name: 'New workspace',
+      type: 'local',
+      host: '',
+      remoteCommand: '',
       command: '$SHELL',
       args: '["-l"]',
       cwd: '~',

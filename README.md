@@ -489,6 +489,13 @@ import `@catus/native/lynxtron`。示例只使用该包的 TypeScript 类型。
 
 native terminal 当前只实现 macOS 后端。
 
+## SFTP 异步接口
+
+已实现本地/SSH workspace 编辑弹窗，以及使用系统 SSH 管道 + russh-sftp 的文件浏览面板。
+Native 接口使用 error-first callback，preload 通过 `util.promisify` 向 Lynx BTS 提供 Promise API。
+Lynx BTS 异步回调仍存在崩溃复现记录，当前尚未确认已解决。
+运行时选择、调用示例和测试说明见 [SFTP 异步实现](docs/sftp-async.md)。
+
 ## 官方文档
 
 - [Lynxtron 入门](https://lynxjs.org/next/lynxtron/introduction.html)
