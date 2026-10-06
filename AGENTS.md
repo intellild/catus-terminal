@@ -72,7 +72,7 @@ Read the docs below in advance to help you understand the library or frameworks 
   - `src/lib.rs`: Rust exports and cxx bridge; `build.rs` builds and links native code.
   - `src/terminal_core/`: GPU-independent computation: portable-pty I/O threads,
     Alacritty streaming parser, owned display grid and basic key encoding.
-    `src/terminal_view.rs` orchestrates resizing/snapshots and exposes the cxx bridge.
+    `src/terminal_view.rs` orchestrates resizing/snapshots without native buffer types.
     `src/terminal_session.rs` owns the u32 registry and each session's renderer.
     `components/TerminalView.tsx` and its `NativeTerminalView` mount once for the
     content region. `state/session.ts` allocates numeric tab IDs (1..u32::MAX),
@@ -116,11 +116,12 @@ Read the docs below in advance to help you understand the library or frameworks 
     through atlas uploads, queue submission and GPU completion; rollback clears
     the atlas and changes its generation, invalidating every view. Closing or
     rebinding a view must never clear the global atlas.
-    `src/frame.rs` defines the cxx `Viewport` and Rust-only IOSurface `FrameBuffer`.
+    `src/frame.rs` defines the shared cxx `Viewport`. Platform adapters provide
+    wgpu textures through a target-preparation callback; no OS handles reach renderer.rs.
     `cxx/NativeTerminalMacOS.mm` acquires the buffer using its cached layout, then
-    calls Rust `render_surface(iosurface, deadline)`. Rust checks contention, idle
-    revisions, dimensions and pixel layout, creates the Metal texture with the
-    shared device, imports into wgpu and waits for GPU completion. C++ only swaps
+    calls Rust `render_surface(iosurface, deadline)`. Shared Rust code checks contention, idle revisions and dimensions;
+    `platform/macos/surface.rs` validates pixel layout and imports the IOSurface
+    using the shared Metal device. The renderer waits for GPU completion. C++ only swaps
     and marks dirty if rendering succeeded before the deadline. No FrameInfo,
     device pointer or per-frame viewport is returned to C++.
     Native terminal accepts only required numeric `terminal-id` and standard Lynx props.
@@ -129,13 +130,22 @@ Read the docs below in advance to help you understand the library or frameworks 
     calculates columns/rows from font advance, line height/leading and padding.
     renderFrame only checks revision and draws; it does not resize the PTY;
     methods are focus/write/key/renderFrame. No prototype modes or render statistics.
+  - `src/platform/`: Target-selected OS policies and native adapters. `unix.rs` owns login-shell
+    arguments, home-directory selection and PTY EIO handling; `windows.rs` uses
+    portable-pty default-process launch. Native views currently implement `macos/` only.
+    `macos/terminal.rs` owns the terminal cxx bridge and IOSurface entry point;
+    `macos/frame.rs` owns native callback targets, monotonic clock and UI posting.
+    `macos/font.rs` selects Menlo and CoreText physical-pixel sizing.
+    `macos/build.rs` is compiled only by build.rs for CMake and framework linking.
+    Keep grid/session state, glyph caching, atlas, wgpu draws and deadline handling
+    in shared modules. macOS-only tests and buffer fixtures live in `src/tests/macos/`.
   - `src/text/`: Font rasterization, glyph caching, atlas uploads and text drawing.
     `mod.rs` exposes the glyph renderer to the GPU orchestration layer.
     `atlas.rs` is the Alacritty shelf atlas port; staging-buffer rows must be aligned
     to 256 bytes. Clearing the atlas invalidates glyph handles via generation.
     `src/text/glyph_renderer.rs` / `src/text/atlas.wgsl` exercise uploads and instanced sampling
     with real crossfont glyphs. `src/text/font.rs` caches by font/character/size, uses
-    Menlo regular/bold with CoreText fallback, and retains multiple physical pixel
+    the selected platform font policy, and retains multiple physical pixel
     sizes simultaneously across views and DPI changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
     Keep crossfont platform defaults; custom grayscale AA is deferred.
   - `src/tests/`: External unit-test modules for counter, atlas, fonts, terminal grids, PTYs and Metal rendering;
@@ -189,7 +199,7 @@ Use NodeJS ≥ 22 and TypeScript.
   checkout must run `pnpm run test:e2e:update` and inspect the generated images.
   Artifacts/logs are under `.tmp/e2e/artifacts/`. Runtime fixtures use
   `CATUS_E2E_PTY` / `CATUS_E2E_NODE` in preload, not workspace launch overrides.
-  Rust `tests/terminal_rendering.rs` uses the same fake PTY and real Metal
+  Rust `tests/macos/terminal_rendering.rs` uses the same fake PTY and real Metal
   framebuffer import/readback to verify session rendering and idle revisions.
 - TypeScript: `pnpm run tsc` (also `pnpm run typecheck`) runs `tsc --build`.
   Root `tsconfig.json` has `files: []` and references the UI, desktop and tools

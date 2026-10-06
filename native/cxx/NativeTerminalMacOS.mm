@@ -1,7 +1,7 @@
 #include "NativeFrameCallbacks.h"
-#include "catus-native/src/frame_callbacks.rs.h"
+#include "catus-native/src/platform/macos/frame.rs.h"
 #include <lynx_native_view.h>
-#include "catus-native/src/terminal_view.rs.h"
+#include "catus-native/src/platform/macos/terminal.rs.h"
 #include "rust/cxx.h"
 
 #include <cmath>

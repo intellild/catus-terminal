@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 use crate::{frame::Viewport, renderer::TerminalRenderer};
 
 static SESSIONS: LazyLock<Mutex<HashMap<u32, Arc<Session>>>> =
@@ -15,11 +15,11 @@ static SESSIONS: LazyLock<Mutex<HashMap<u32, Arc<Session>>>> =
 
 pub(crate) struct Session {
     pub core: TerminalSession,
-    #[cfg(all(feature = "native-view", target_os = "macos"))]
+    #[cfg(feature = "native-view")]
     pub rendering: Mutex<Option<SessionRenderer>>,
 }
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 pub(crate) struct SessionRenderer {
     pub renderer: Box<TerminalRenderer>,
     pub viewport: Viewport,
@@ -49,7 +49,7 @@ fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>)
     };
     let session = Arc::new(Session {
         core,
-        #[cfg(all(feature = "native-view", target_os = "macos"))]
+        #[cfg(feature = "native-view")]
         rendering: Mutex::new(None),
     });
     entry.insert(session);
@@ -106,19 +106,19 @@ pub fn get_terminal_session_info(id: u32) -> napi::Result<TerminalSessionInfo> {
     })
 }
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 pub struct TerminalHandle {
     pub(crate) session: Arc<Session>,
 }
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>> {
     Ok(Box::new(TerminalHandle {
         session: session(id)?,
     }))
 }
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 impl TerminalHandle {
     pub fn write(&self, text: &str) -> Result<()> {
         self.session.core.write(text.as_bytes().to_vec())

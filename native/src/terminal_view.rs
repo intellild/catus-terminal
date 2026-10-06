@@ -1,33 +1,8 @@
-//! Lynx adapter; session owns its renderer, layout drives PTY/grid resizing.
-use crate::frame::{FrameBuffer, Viewport};
+//! Shared view orchestration; layout drives PTY/grid resizing and session rendering.
+use crate::frame::Viewport;
 use crate::renderer::create_terminal_renderer;
-use crate::terminal_session::{SessionRenderer, TerminalHandle, acquire_terminal};
+use crate::terminal_session::{SessionRenderer, TerminalHandle};
 use anyhow::{Context, Result, anyhow};
-
-#[cxx::bridge(namespace = "catus")]
-mod ffi {
-    unsafe extern "C++" {
-        include!("catus-native/src/frame.rs.h");
-        type Viewport = crate::frame::Viewport;
-    }
-    extern "Rust" {
-        type TerminalHandle;
-        fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>>;
-        fn write(self: &TerminalHandle, text: &str) -> Result<()>;
-        fn key(self: &TerminalHandle, key: &str, control: bool, alt: bool) -> Result<()>;
-        fn resize_viewport(self: &TerminalHandle, viewport: &Viewport) -> Result<()>;
-        fn invalidate_frame(self: &TerminalHandle);
-        unsafe fn render_surface(
-            self: &TerminalHandle,
-            iosurface: usize,
-            deadline: i64,
-        ) -> Result<bool>;
-    }
-}
-
-#[cfg(test)]
-#[path = "tests/terminal_rendering.rs"]
-mod tests;
 
 impl TerminalHandle {
     // Called by OnLayoutChanged, or when binding a session to an already-laid-out view.
@@ -44,7 +19,7 @@ impl TerminalHandle {
             });
         }
         let state = rendering.as_mut().unwrap();
-        // Font advance and line height (including CoreText leading) determine cell size.
+        // Font advance and line height (including font leading) determine cell size.
         self.session
             .core
             .resize(state.renderer.grid_size(viewport)?)?;
@@ -63,14 +38,14 @@ impl TerminalHandle {
             .context("Waiting for terminal layout")
     }
 
-    fn invalidate_frame(&self) {
+    pub(crate) fn invalidate_frame(&self) {
         if let Some(state) = self.session.rendering.lock().unwrap().as_mut() {
             state.renderer.invalidate_grid();
         }
     }
 
     #[cfg(test)]
-    fn needs_frame(&self) -> Result<bool> {
+    pub(crate) fn needs_frame(&self) -> Result<bool> {
         if let Some(error) = self.session.core.error() {
             return Err(error);
         }
@@ -81,10 +56,12 @@ impl TerminalHandle {
             .needs_grid(self.session.core.revision(), &state.viewport)
     }
 
-    // SAFETY: C++ lends a live IOSurfaceRef exclusively until this returns.
-    // Submitted GPU writes must finish even if the frame expires. Busy/idle/
-    // expired ticks return false without retaining pending frame work.
-    unsafe fn render_surface(&self, iosurface: usize, deadline: i64) -> Result<bool> {
+    // Busy, idle and expired ticks never prepare a native render target.
+    pub(crate) fn render_frame(
+        &self,
+        deadline: i64,
+        prepare_target: impl FnOnce(&wgpu::Device, &Viewport) -> Result<wgpu::Texture>,
+    ) -> Result<bool> {
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }
@@ -101,14 +78,11 @@ impl TerminalHandle {
         let Some(snapshot) = self.session.core.try_snapshot()? else {
             return Ok(false);
         };
-        unsafe {
-            state.renderer.render_grid(
-                &FrameBuffer { iosurface },
-                &state.viewport,
-                &snapshot,
-                deadline,
-            )
-        }
+        state
+            .renderer
+            .render_grid(&state.viewport, &snapshot, deadline, |device| {
+                prepare_target(device, &state.viewport)
+            })
     }
 }
 

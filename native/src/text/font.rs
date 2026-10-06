@@ -1,10 +1,8 @@
-//! CoreText/crossfont rasterization and atlas handles keyed by font, size and character.
-use anyhow::{Context, Result, anyhow};
+//! Crossfont rasterization and atlas handles keyed by font, size and character.
+use anyhow::{Context, Result, ensure};
 use std::collections::HashMap;
 
-use crossfont::{
-    FontDesc, FontKey, GlyphKey, Metrics, Rasterize, Rasterizer, Size, Slant, Style, Weight,
-};
+use crossfont::{FontKey, GlyphKey, Metrics, Rasterize, Rasterizer, Size};
 
 use super::atlas::{ATLAS_SIZE, AtlasSet, BitmapBuffer, Glyph, RasterizedGlyph};
 
@@ -30,8 +28,15 @@ impl GlyphCache {
     }
 
     fn font_size(&mut self, pixels: u32) -> Result<&FontSize> {
+        ensure!(
+            (1..=512).contains(&pixels),
+            "Font pixel size must be in 1..=512"
+        );
         if let std::collections::hash_map::Entry::Vacant(entry) = self.sizes.entry(pixels) {
-            entry.insert(load_size(&mut self.rasterizer, pixels)?);
+            entry.insert(crate::platform::load_font_size(
+                &mut self.rasterizer,
+                pixels,
+            )?);
         }
         Ok(&self.sizes[&pixels])
     }
@@ -120,43 +125,10 @@ impl GlyphCache {
     }
 }
 
-struct FontSize {
-    fonts: [FontKey; 2],
-    size: Size,
-    metrics: Metrics,
-}
-
-fn load_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result<FontSize> {
-    if !(1..=512).contains(&pixels) {
-        return Err(anyhow!("Font pixel size must be in 1..=512"));
-    }
-    // CoreText backend uses Size::as_pt() directly as bitmap pixel size. The
-    // caller has already applied the Lynx view's backing scale; do not apply
-    // the FreeType 96/72 conversion here.
-    let size = Size::new(pixels as f32);
-    let mut load = |weight| {
-        rasterizer
-            .load_font(
-                &FontDesc::new(
-                    "Menlo",
-                    Style::Description {
-                        slant: Slant::Normal,
-                        weight,
-                    },
-                ),
-                size,
-            )
-            .with_context(|| format!("Load Menlo {weight:?} at {pixels}px"))
-    };
-    let fonts = [load(Weight::Normal)?, load(Weight::Bold)?];
-    let metrics = rasterizer
-        .metrics(fonts[0], size)
-        .context("Read font metrics")?;
-    Ok(FontSize {
-        fonts,
-        size,
-        metrics,
-    })
+pub(crate) struct FontSize {
+    pub(crate) fonts: [FontKey; 2],
+    pub(crate) size: Size,
+    pub(crate) metrics: Metrics,
 }
 
 #[cfg(test)]

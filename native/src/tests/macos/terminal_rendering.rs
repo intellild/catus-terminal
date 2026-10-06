@@ -1,8 +1,8 @@
 use super::*;
-use crate::renderer::test_support::{TEST_LOCK, Target};
 use crate::terminal_session::{
     TerminalSessionCommand, close_terminal_session, create_terminal_session,
 };
+use crate::{frame::Viewport, platform::test_support::Target, renderer::test_support::TEST_LOCK};
 use std::time::{Duration, Instant};
 
 struct FakeSession(u32);

@@ -5,35 +5,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-#[cxx::bridge(namespace = "catus")]
-mod ffi {
-    unsafe extern "C++" {
-        include!("NativeFrameCallbacks.h");
-        type NativeFrameTarget;
-        fn render_target(target: &NativeFrameTarget, deadline: i64);
-        fn monotonic_now_ns() -> i64;
-        fn post_frame_to_ui(deadline: i64);
-    }
-    extern "Rust" {
-        type FrameCallbacks;
-        type FrameRegistration;
-        fn create_frame_callbacks() -> Box<FrameCallbacks>;
-        fn register_frame_callback(
-            self: &FrameCallbacks,
-            target: SharedPtr<NativeFrameTarget>,
-        ) -> Box<FrameRegistration>;
-        fn set_active(self: &FrameRegistration, active: bool);
-        fn set_foreground(self: &FrameCallbacks, foreground: bool);
-        fn destroy(self: &FrameCallbacks);
-        fn dispatch_frame_callbacks(deadline: i64);
-    }
-}
-
-// SAFETY: NativeFrameTarget protects its callback with a mutex. Rendering is
-// restricted to UI by render_target; moving/dropping a shared pointer is safe.
-unsafe impl Send for ffi::NativeFrameTarget {}
-unsafe impl Sync for ffi::NativeFrameTarget {}
-
 static FRAME_CALLBACKS: LazyLock<Mutex<Vec<Weak<CallbackRegistry>>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
@@ -47,7 +18,7 @@ pub struct FrameRegistration {
 }
 
 impl FrameRegistration {
-    fn set_active(&self, active: bool) {
+    pub(crate) fn set_active(&self, active: bool) {
         self.callback.active.store(active, Ordering::Relaxed);
     }
 }
@@ -74,7 +45,7 @@ pub struct FrameCallbacks {
     registry: Arc<CallbackRegistry>,
 }
 
-fn create_frame_callbacks() -> Box<FrameCallbacks> {
+pub(crate) fn create_frame_callbacks() -> Box<FrameCallbacks> {
     let registry = Arc::new(CallbackRegistry::default());
     FRAME_CALLBACKS
         .lock()
@@ -84,7 +55,10 @@ fn create_frame_callbacks() -> Box<FrameCallbacks> {
 }
 
 impl FrameCallbacks {
-    fn register(&self, render: impl Fn(i64) + Send + Sync + 'static) -> Box<FrameRegistration> {
+    pub(crate) fn register(
+        &self,
+        render: impl Fn(i64) + Send + Sync + 'static,
+    ) -> Box<FrameRegistration> {
         let callback = Arc::new(Callback {
             active: AtomicBool::new(false),
             render: Box::new(render),
@@ -97,24 +71,13 @@ impl FrameCallbacks {
         Box::new(FrameRegistration { callback })
     }
 
-    fn register_frame_callback(
-        &self,
-        target: cxx::SharedPtr<ffi::NativeFrameTarget>,
-    ) -> Box<FrameRegistration> {
-        self.register(move |deadline| {
-            if let Some(target) = target.as_ref() {
-                ffi::render_target(target, deadline);
-            }
-        })
-    }
-
-    fn set_foreground(&self, foreground: bool) {
+    pub(crate) fn set_foreground(&self, foreground: bool) {
         self.registry
             .foreground
             .store(foreground, Ordering::Relaxed);
     }
 
-    fn destroy(&self) {
+    pub(crate) fn destroy(&self) {
         self.registry.destroyed.store(true, Ordering::Relaxed);
     }
 
@@ -151,8 +114,12 @@ impl CallbackRegistry {
 }
 
 // Runs on UI. Future native frame sources can call the same function directly.
-fn dispatch_frame_callbacks(deadline: i64) {
-    dispatch_registries(&FRAME_CALLBACKS, deadline, ffi::monotonic_now_ns);
+pub(crate) fn dispatch_frame_callbacks(deadline: i64) {
+    dispatch_registries(
+        &FRAME_CALLBACKS,
+        deadline,
+        crate::platform::monotonic_now_ns,
+    );
 }
 
 fn dispatch_registries(
@@ -173,12 +140,10 @@ fn dispatch_registries(
     }
 }
 
-pub(crate) use ffi::{monotonic_now_ns, post_frame_to_ui};
-
 #[cfg(test)]
 #[path = "tests/frame_callbacks.rs"]
 mod tests;
 
 pub(crate) fn expired(deadline: i64) -> bool {
-    deadline <= ffi::monotonic_now_ns()
+    deadline <= crate::platform::monotonic_now_ns()
 }

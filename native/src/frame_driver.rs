@@ -1,5 +1,5 @@
 //! Replaceable JS RAF signal adapter; callback ownership lives in frame_callbacks.
-use crate::frame_callbacks::{monotonic_now_ns, post_frame_to_ui};
+use crate::platform::{monotonic_now_ns, post_frame_to_ui};
 use napi_derive::napi;
 
 /// Temporary JS RAF adapter. The JS timestamp has a different clock origin;

@@ -1,4 +1,4 @@
-//! Borrowed native framebuffer and layout description; no terminal state.
+//! Shared native layout description; no terminal or platform buffer state.
 use anyhow::{Result, anyhow};
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
@@ -10,11 +10,6 @@ mod ffi {
     }
 }
 pub(crate) use ffi::Viewport;
-
-// macOS IOSurfaceRef, borrowed exclusively for the synchronous render call.
-pub(crate) struct FrameBuffer {
-    pub iosurface: usize,
-}
 
 impl Viewport {
     pub(crate) fn font_pixels(&self) -> Result<u32> {

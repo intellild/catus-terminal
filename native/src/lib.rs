@@ -1,14 +1,15 @@
 use anyhow::{Context, Result, anyhow};
 use napi_derive::napi;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 mod frame;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 mod frame_callbacks;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 mod frame_driver;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 pub use frame_driver::dispatch_animation_frame;
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+mod platform;
+#[cfg(feature = "native-view")]
 mod renderer;
 pub mod terminal_core;
 mod terminal_session;
@@ -18,7 +19,7 @@ pub use terminal_session::{
     TerminalSessionCommand, TerminalSessionInfo, close_terminal_session, create_terminal_session,
     get_terminal_session_info, write_terminal_session,
 };
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 mod terminal_view;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};

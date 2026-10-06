@@ -72,7 +72,7 @@ fn numeric_sessions_are_retained_until_explicit_release() {
     close_terminal_session(second);
 }
 
-#[cfg(all(feature = "native-view", target_os = "macos"))]
+#[cfg(feature = "native-view")]
 #[test]
 fn layout_resizes_grid_and_session_keeps_renderer_across_native_handles() {
     use crate::frame::Viewport;

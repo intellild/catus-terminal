@@ -25,17 +25,9 @@ pub struct TerminalSession {
 }
 impl TerminalSession {
     pub fn default_shell(size: GridSize) -> Result<Self> {
-        // Resolve the account's shell through portable-pty rather than workspace profiles.
-        let mut defaults = CommandBuilder::new_default_prog();
-        defaults.env_remove("SHELL");
-        let shell = defaults.get_shell();
-        let mut command = CommandBuilder::new(&shell);
-        command.args(["-l", "-i"]);
+        let (mut command, shell) = crate::platform::default_shell_command();
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        if let Some(home) = std::env::var_os("HOME") {
-            command.cwd(home);
-        }
         Self::spawn(command, size, shell)
     }
     pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
@@ -104,8 +96,7 @@ impl TerminalSession {
                         Ok(0) => break,
                         Ok(count) => grid.lock().unwrap().advance(&buffer[..count]),
                         Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
-                        // A closed slave reports EIO on some Unix implementations.
-                        Err(err) if err.raw_os_error() == Some(5) => break,
+                        Err(err) if crate::platform::pty_reader_closed(&err) => break,
                         Err(err) => {
                             *error.lock().unwrap() = Some(
                                 anyhow::Error::new(err)

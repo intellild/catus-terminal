@@ -55,7 +55,7 @@ fn mask_rows_are_normalized_and_padded_without_mixing_pixels() {
 #[cfg(target_os = "macos")]
 fn gpu_upload_page_rollover_clear_and_stale_handles() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::METAL,
+        backends: crate::platform::GPU_BACKENDS,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();

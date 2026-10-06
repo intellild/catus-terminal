@@ -124,7 +124,6 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     first.gpu.glyphs().unwrap().clear();
     let mut second = create_terminal_renderer().unwrap();
     assert!(std::ptr::eq(first.gpu, second.gpu));
-    assert_eq!(first.metal_device(), second.metal_device());
     let small = viewport(1.);
     let large = viewport(2.);
     let grid = grid(&first, &small, "\x1b[?25lSAME 中 😀");
@@ -141,11 +140,11 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     assert!(!first.needs_grid(grid.revision, &small).unwrap());
     draw(&mut first, &a, &small, &grid);
     assert_eq!(uploads(&first), both_sizes);
-    let device = first.metal_device();
+    let gpu = first.gpu as *const GpuContext;
     drop(first);
     drop(second);
     let mut recreated = create_terminal_renderer().unwrap();
-    assert_eq!(recreated.metal_device(), device);
+    assert_eq!(recreated.gpu as *const GpuContext, gpu);
     draw(&mut recreated, &a, &small, &grid);
     assert_eq!(uploads(&recreated), both_sizes);
 }
@@ -230,4 +229,61 @@ fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
             .unwrap()
     );
     assert!(!renderer.needs_grid(grid.revision, &viewport).unwrap());
+}
+
+#[test]
+fn shared_renderer_prepares_wgpu_targets_only_for_valid_live_frames() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let mut renderer = create_terminal_renderer().unwrap();
+    let viewport = viewport(1.);
+    let grid = grid(&renderer, &viewport, "\x1b[?25l SHARED TARGET");
+    let target = target(&renderer);
+    assert!(
+        !renderer
+            .render_grid(&viewport, &grid, 0, |_| {
+                panic!("Expired frames must not prepare a render target");
+            })
+            .unwrap()
+    );
+    assert!(
+        renderer
+            .render_grid(
+                &Viewport {
+                    width: 0,
+                    ..viewport
+                },
+                &grid,
+                i64::MAX,
+                |_| {
+                    panic!("Invalid layouts must not prepare a render target");
+                }
+            )
+            .is_err()
+    );
+    let error = renderer
+        .render_grid(&viewport, &grid, i64::MAX, |_| {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                .context("Prepare render target")
+        })
+        .unwrap_err();
+    assert_eq!(
+        error
+            .root_cause()
+            .downcast_ref::<std::io::Error>()
+            .unwrap()
+            .kind(),
+        std::io::ErrorKind::BrokenPipe
+    );
+    assert!(renderer.needs_grid(grid.revision, &viewport).unwrap());
+    assert!(
+        renderer
+            .render_grid(&viewport, &grid, i64::MAX, |_| Ok(target.clone()))
+            .unwrap()
+    );
+    assert!(!renderer.needs_grid(grid.revision, &viewport).unwrap());
+    assert!(
+        pixels(&renderer, &target)
+            .chunks_exact(4)
+            .any(|pixel| pixel[1] > 32)
+    );
 }

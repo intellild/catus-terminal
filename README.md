@@ -108,8 +108,9 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 计算与渲染分别位于 `native/src/terminal_core/` 和 `native/src/renderer.rs`。
 前者无需 Lynx、字体或 GPU：读线程接收 PTY 字节流，持续使用 Alacritty 的
 VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
-owned `GridSnapshot`。`TerminalRenderer` 接收借用的 IOSurface FrameBuffer 对象和网格，
-通过 crossfont/atlas、背景矩形及 instance buffer 绘制。
+owned `GridSnapshot`。`TerminalRenderer` 接收网格和平台提供的 wgpu texture，
+通过 crossfont/atlas、背景矩形及 instance buffer 绘制。macOS 的 IOSurface / Metal
+导入、字体策略和 UI 桥接集中在 `native/src/platform/macos/`。
 
 ```text
 state/session.ts / terminalSessions.ts / preload.ts（BTS）
@@ -133,8 +134,11 @@ NativeTerminalMacOS.mm（同一 UI 线程）
 terminal_view.rs
   检查锁忙、过期和 revision → session viewport / GridSnapshot
        ↓
-renderer.rs / glyph_renderer.rs
-  校验 IOSurface → 全局 MTLDevice 创建纹理 → wgpu 导入 → atlas 绘制
+platform/macos/surface.rs
+  校验 IOSurface → 共享 MTLDevice 创建纹理 → 返回 wgpu::Texture
+       ↓
+renderer.rs / text/glyph_renderer.rs
+  编码 atlas 上传与绘制 → 提交并等待 GPU
        ↓
 GPU 完成 → Lynx SwapBack / MarkDirty
 ```
@@ -257,7 +261,7 @@ tests/support/screenshots.ts
 失败产物、最后的 Lynx DOM/截图与日志保存在 `.tmp/e2e/artifacts/`。
 当前自动化验收结果和基准尺寸/hash 见 [E2E 验证报告](docs/terminal-e2e-verification.json)。
 
-Rust `native/src/tests/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
+Rust `native/src/tests/macos/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
 `TerminalHandle::render_surface` 导入真实 IOSurface 并回读，验证 PTY 更新、空闲跳帧、
 无效 framebuffer、尺寸/像素布局不匹配、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
 调用 `createTerminalSession(id)` 启动账户默认 shell；第二个可选参数 `{ program, args }` 供测试启动
@@ -295,9 +299,11 @@ text/glyph_renderer.rs
 NativeTerminalMacOS.mm / terminal_view.rs
   Lynx layout → Rust resize；C++ 直接传 IOSurface + deadline
        ↓
-renderer.rs / frame.rs
-  FrameBuffer { iosurface } + session viewport → Rust 校验和 Metal texture 导入
-  TerminalRenderer::render_grid → wgpu 绘制
+platform/macos/terminal.rs / surface.rs
+  IOSurface + session viewport → 校验并导入 wgpu::Texture
+       ↓
+renderer.rs
+  TerminalRenderer::render_grid → 平台无关的 wgpu 绘制
        ↓
 共享锁下编码上传、绘制、提交并等待 GPU → Lynx SwapBack / MarkDirty
 ```
@@ -456,18 +462,29 @@ native/
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
   src/terminal_core/                   portable-pty 传输与 Alacritty 网格计算
   src/terminal_session.rs              u32 注册表、session renderer 及生命周期
-  src/terminal_view.rs                 cxx 桥、layout resize 与帧调度适配
+  src/terminal_view.rs                 layout resize、网格快照与渲染目标准备
   src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
-  src/frame.rs                        Rust IOSurface FrameBuffer 与 cxx Viewport
+  src/frame.rs                        平台无关的 cxx Viewport
   src/frame_driver.rs                 napi-rs JS RAF 适配器
   src/frame_callbacks.rs              全局回调注册与 UI 同步分发 / deadline 丢帧
+  src/platform/
+    mod.rs                            按目标平台选择适配器
+    unix.rs                           Unix 默认 shell 和 PTY EOF 策略
+    windows.rs                        portable-pty 默认进程和 EOF 策略
+    macos/
+      mod.rs                          Metal 后端选择
+      surface.rs                      IOSurface 校验与 wgpu texture 导入
+      terminal.rs                     macOS terminal cxx 桥
+      frame.rs                        UI 调度、时钟和 native 回调桥
+      font.rs                         Menlo / CoreText 字体策略
+      build.rs                        macOS CMake 与 framework 链接
   src/text/
     mod.rs                            文字渲染模块入口
     atlas.rs                          Alacritty atlas 分配与 wgpu staging buffer 上传
     font.rs                           crossfont 字体与字形缓存
     glyph_renderer.rs                 instance buffer 与文字绘制
     atlas.wgsl                        字形采样 shader
-  src/tests/                           counter、atlas、font 独立测试模块
+  src/tests/                           平台无关测试；macos/ 保存平台测试和夹具
   package.json                        @catus/native 本地 workspace
   lynx.lib.json                        声明 macOS arm64/x64 原生产物
   elements.d.ts                       自定义标签及事件的 TypeScript 类型

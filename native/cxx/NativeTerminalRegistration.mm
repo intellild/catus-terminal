@@ -1,5 +1,5 @@
 #include "NativeFrameCallbacks.h"
-#include "catus-native/src/frame_callbacks.rs.h"
+#include "catus-native/src/platform/macos/frame.rs.h"
 
 #include <lynx/registration.h>
 

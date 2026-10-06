@@ -1,22 +1,11 @@
 //! One lazily initialized GPU/atlas context, with independent per-session drawing state.
 use crate::{
-    frame::{FrameBuffer, Viewport},
+    frame::Viewport,
     terminal_core::grid::{GridSize, GridSnapshot},
     text::{GlyphRenderer, SharedGlyphs},
 };
 use anyhow::{Context, Result, anyhow};
-#[cfg(test)]
-use objc2::rc::Retained;
-use objc2_core_foundation::CFRetained;
-use objc2_io_surface::IOSurfaceRef;
-use objc2_metal::{
-    MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage,
-};
-use std::{
-    ptr::NonNull,
-    sync::{LazyLock, Mutex, MutexGuard},
-};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
 static GPU: LazyLock<Result<GpuContext>> = LazyLock::new(GpuContext::new);
 
@@ -30,11 +19,11 @@ struct GpuContext {
 impl GpuContext {
     fn new() -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::METAL,
+            backends: crate::platform::GPU_BACKENDS,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
-            .context("Request Metal adapter")?;
+            .context("Request terminal GPU adapter")?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("Catus shared terminal GPU"),
             ..Default::default()
@@ -86,12 +75,6 @@ pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>> {
 }
 
 impl TerminalRenderer {
-    #[cfg(test)]
-    pub(crate) fn metal_device(&self) -> usize {
-        // The global context outlives every view and every imported framebuffer.
-        let hal = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }.unwrap();
-        Retained::as_ptr(hal.raw_device()) as usize
-    }
     pub(crate) fn invalidate_grid(&mut self) {
         self.rendered_grid = None;
     }
@@ -130,15 +113,14 @@ impl TerminalRenderer {
         }
     }
 
-    /// # Safety
-    /// The framebuffer must contain a live, exclusively borrowed IOSurfaceRef
-    /// which remains valid until this synchronous call completes.
-    pub(crate) unsafe fn render_grid(
+    // The platform adapter supplies the texture only after idle/busy checks.
+    // Submitted GPU work completes before returning a borrowed native target.
+    pub(crate) fn render_grid(
         &mut self,
-        frame: &FrameBuffer,
         viewport: &Viewport,
         grid: &GridSnapshot,
         deadline: i64,
+        prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
     ) -> Result<bool> {
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
@@ -152,77 +134,7 @@ impl TerminalRenderer {
             return Err(anyhow!("Invalid terminal texture dimensions"));
         }
         viewport.font_pixels()?;
-        let ptr = NonNull::new(frame.iosurface as *mut IOSurfaceRef)
-            .context("Lynx back buffer is unavailable")?;
-        // Retain only our own reference; never consume Lynx's borrowed ownership.
-        let surface = unsafe { CFRetained::retain(ptr) };
-        if surface.width() != width as usize
-            || surface.height() != height as usize
-            || surface.bytes_per_element() != 4
-        {
-            return Err(anyhow!(
-                "Unexpected Lynx IOSurface dimensions or pixel layout"
-            ));
-        }
-        let raw = objc2::rc::autoreleasepool(|_| {
-            let device = unsafe { self.gpu.device.as_hal::<wgpu::hal::api::Metal>() }
-                .context("Shared GPU is not a Metal device")?;
-            // Dimensions and format were validated before constructing the descriptor.
-            let descriptor = unsafe {
-                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                    MTLPixelFormat::BGRA8Unorm,
-                    width as usize,
-                    height as usize,
-                    false,
-                )
-            };
-            descriptor.setUsage(MTLTextureUsage::RenderTarget);
-            descriptor.setStorageMode(MTLStorageMode::Shared);
-            device
-                .raw_device()
-                .newTextureWithDescriptor_iosurface_plane(&descriptor, &surface, 0)
-                .context("Metal could not import the Lynx IOSurface")
-        })?;
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-        // SAFETY: The imported texture was created above using this wgpu device
-        // and a BGRA8 render-target descriptor. Every grid pass clears it.
-        let hal_texture = unsafe {
-            wgpu::hal::metal::Device::texture_from_raw(
-                raw,
-                wgpu::TextureFormat::Bgra8Unorm,
-                MTLTextureType::Type2D,
-                1,
-                1,
-                wgpu::hal::CopyExtent {
-                    width,
-                    height,
-                    depth: 1,
-                },
-                None,
-            )
-        };
-        let texture = unsafe {
-            self.gpu
-                .device
-                .create_texture_from_hal::<wgpu::hal::api::Metal>(
-                    hal_texture,
-                    &wgpu::TextureDescriptor {
-                        label: Some("Lynx IOSurface terminal back buffer"),
-                        size,
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Bgra8Unorm,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        view_formats: &[],
-                    },
-                    wgpu::TextureUses::UNINITIALIZED,
-                )
-        };
+        let texture = prepare_target(&self.gpu.device)?;
         self.render_into_before(
             &texture.create_view(&Default::default()),
             viewport,

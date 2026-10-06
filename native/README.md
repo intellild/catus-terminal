@@ -16,18 +16,29 @@ native/
   src/lib.rs                   napi-rs 导出和共享 Rust 状态
   src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
   src/terminal_session.rs      u32 session 注册表、PTY 和 session renderer 生命周期
-  src/terminal_view.rs         cxx 桥、layout resize / revision 与 view 适配
-  src/renderer.rs              独立 wgpu renderer 和 Metal texture 导入
-  src/frame.rs                 Rust IOSurface FrameBuffer / cxx Viewport
+  src/terminal_view.rs         layout resize、revision 和网格快照编排
+  src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
+  src/frame.rs                 平台无关的 cxx Viewport
   src/frame_driver.rs          napi-rs JS RAF 适配器
   src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
+  src/platform/
+    mod.rs                     按目标平台选择适配器
+    unix.rs                    Unix 默认 shell 和 PTY EOF 策略
+    windows.rs                 portable-pty 默认进程和 EOF 策略
+    macos/
+      mod.rs                   Metal 后端选择
+      surface.rs               IOSurface 校验与 wgpu texture 导入
+      terminal.rs              macOS terminal cxx 桥
+      frame.rs                 native 回调、时钟和 UI 调度桥
+      font.rs                  Menlo / CoreText 字体策略
+      build.rs                 macOS CMake 和 framework 链接
   src/text/
     mod.rs                     文字渲染模块入口
     atlas.rs                   Alacritty atlas 分配、分页和 staging buffer 上传
     font.rs                    crossfont 字体、metrics 和 GlyphKey 缓存
     glyph_renderer.rs          instance buffer 和文字绘制
     atlas.wgsl                 字形采样 shader
-  src/tests/                   counter / atlas / font 独立单元测试模块
+  src/tests/                   共享测试；macos/ 保存平台测试和 IOSurface 夹具
   licenses/ALACRITTY-MIT.txt     atlas 来源的 MIT 文本
   cxx/
     CMakeLists.txt             项目 C++ 静态库的源文件清单
@@ -89,13 +100,15 @@ C++ 的 `OnPropertiesChanged` 校验数字 ID，并取得共享 `TerminalHandle`
 诊断/主机 API 为 `writeTerminalSession(id, text)` 和 `getTerminalSessionInfo(id)`。
 
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/pty.rs` 管理阻塞
-PTY 读写线程。`terminal_session.rs` 管理生命周期，`terminal_view.rs` 提供 cxx 适配。
+PTY 读写线程。`terminal_session.rs` 管理生命周期，`terminal_view.rs` 编排共享渲染流程，
+`platform/macos/terminal.rs` 提供 macOS cxx 适配。
 `OnLayoutChanged` 接收逻辑尺寸及 backing scale，更新 viewport，再用 crossfont
 字体 advance、line height（含 CoreText leading）和 padding 计算行列，resize PTY。
 属性晚于 layout 到达时，绑定 session 后应用缓存的 layout；UI 不传宽高或行列参数。
 `renderFrame()` 只读取 session 的 renderer/viewport、检查 revision、生成快照并绘制。
-`renderer.rs` 接收计算后的网格、`FrameBuffer { iosurface }` 和 session 的
-viewport，完全不访问 PTY。C++ 不再独立持有或创建 renderer。
+`renderer.rs` 接收计算后的网格、session 的 viewport 和准备 wgpu texture 的回调，
+不访问 PTY 或 OS 指针。macOS 回调在 `platform/macos/surface.rs` 导入 IOSurface。
+C++ 不再独立持有或创建 renderer。
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
@@ -125,10 +138,11 @@ PTY 读线程只更新自己的网格；attach/layout/props 只更新状态，�
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
 Rust 测试在 `src/tests/frame_callbacks.rs`，覆盖同步执行、同线程、过期帧、注销和生命周期。
-`src/tests/terminal_rendering.rs` 使用真实 portable-pty 启动
+`src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
 `../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
-`src/tests/renderer_support.rs` 仅在测试中编译，保留 GPU 实现的私有可见性。
+`src/tests/renderer_support.rs` 只提供共享测试锁；
+`src/tests/macos/surface_support.rs` 提供 IOSurface 创建与像素回读夹具。
 桌面自动化与截图对比通过根目录 `pnpm run test:e2e` 运行。
 逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
 尚不支持 IME、选择、滚动历史 UI、完整键盘协议和复杂文本 shaping。
@@ -144,13 +158,14 @@ Rust 等待已提交 GPU 工作完成；C++ 仅在返回已绘制且未过期时
 `MarkDirty`。FrameInfo 已删除，device 和 viewport 不再每帧回传 C++。
 没有独立的 NSView 或 CAMetalLayer。
 
-`renderer.rs` 使用全局 `LazyLock<Result<GpuContext, String>>` 惰性创建一次 device、
+`renderer.rs` 使用全局 `LazyLock<anyhow::Result<GpuContext>>` 惰性创建一次 device、
 queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。
 每个 renderer 独立保存 instance buffer 与网格 revision/viewport/generation。
 销毁或重新绑定 view 只释放其 session 句柄；renderer 保留至 session 释放，重挂载时使帧状态失效，不清空共享缓存。原有三角形/atlas 演示、
 渲染统计和 IOSurface 像素扫描接口已移除；错误通过实际方法的失败回调返回。
 
-`font.rs` 使用 crossfont 0.9.0 / macOS CoreText，按字体、字符和物理字号缓存字形，
+`text/font.rs` 使用 crossfont 0.9.0，按字体、字符和物理字号缓存字形。
+`platform/macos/font.rs` 负责 Menlo 选择和 CoreText 像素字号策略；
 同一 rasterizer 保留多个字号及其 metrics；14 logical px × backing scale 决定字号。
 DPI 改变会查找/补充另一个字号，既有字号和 atlas 区域仍保留。Menlo 普通体/粗体
 与系统 fallback 支持 ASCII、中文和彩色 emoji。空格保留 metrics，不上传位图。
