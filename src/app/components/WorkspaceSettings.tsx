@@ -1,4 +1,3 @@
-import type { NativeInputEvent } from '@catus/native';
 import type { Workspace } from '../../shared/workspaces';
 import type { EditorState, WorkspaceDraft } from '../state/session';
 
@@ -45,7 +44,7 @@ export function WorkspaceSettings({
               </view>
             </view>
             <scroll-view scroll-y className="flex-1 min-h-0">
-              <view className="pt-0 px-[24px] pb-[28px] flex flex-col">
+              <view key={editor.draft.id} className="pt-0 px-[24px] pb-[28px] flex flex-col">
                 <view className="flex flex-row flex-wrap gap-[7px] mb-[26px]">
                   {workspaces.map((item) => (
                     <view
@@ -170,11 +169,11 @@ function Field({
   return (
     <view className="flex flex-col mb-[15px] flex-1 min-w-0">
       <text className="text-[11px] text-[#a4b0bb] mb-[7px]">{label}</text>
-      <native-input
+      <input
         id={id}
         className="w-full h-[32px] shrink-0"
-        value={value}
-        bindinput={(event: NativeInputEvent) => onInput(event.detail.value)}
+        default-value={value}
+        bindinput={(event) => onInput(event.detail.value)}
       />
     </view>
   );

@@ -18,7 +18,6 @@ contextBridge.exposeInLynxBTS({
     new TextDecoder(label, options),
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
-  createRustCounter: (initial: number) => new nativeBinding.RustCounter(initial),
   createTerminalSession: (id: number) =>
     nativeBinding.createTerminalSession(
       id,

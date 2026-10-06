@@ -153,6 +153,7 @@ test('workspace editor persists JSON and rejects invalid arguments without savin
   fireEvent.tap(root.querySelector('#workspace-settings')!);
   await findByText('Launch profile');
   const input = root.querySelector('#profile-args')!;
+  expect(input.tagName.toLowerCase()).toBe('input');
   act(() => {
     input.dispatchEvent(new CustomEvent('bindEvent:input', { detail: { value: 'invalid' } }));
   });

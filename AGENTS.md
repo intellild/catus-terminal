@@ -54,7 +54,6 @@ Read the docs below in advance to help you understand the library or frameworks 
   - Workspaces own tabs; first activation creates a tab, closing the last tab
     removes the dock indicator. Each tab owns a portable-pty default-shell session; switching tabs preserves it,
     closing tabs releases it. Workspace launch overrides are deferred.
-  - `NativeDemo.tsx` preserves the native input / Rust object interoperability demonstration.
 - `config/workspaces.json`: Bundled default profiles; `$SHELL` resolves the
   account's default shell. User settings live in `~/.config/catus-terminal/`.
 - `src/shared/workspaces.ts`: Effect Schema validation and launch resolution.
@@ -148,7 +147,7 @@ Read the docs below in advance to help you understand the library or frameworks 
     the selected platform font policy, and retains multiple physical pixel
     sizes simultaneously across views and DPI changes. Mask pages are R8Unorm; color pages are premultiplied RGBA8Unorm.
     Keep crossfont platform defaults; custom grayscale AA is deferred.
-  - `src/tests/`: External unit-test modules for counter, atlas, fonts, terminal grids, PTYs and Metal rendering;
+  - `src/tests/`: External unit-test modules for errors, atlas, fonts, terminal grids, PTYs and Metal rendering;
     attached as child modules so private implementation stays private.
   - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.

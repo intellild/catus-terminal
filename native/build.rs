@@ -7,23 +7,19 @@ mod macos;
 fn main() -> Result<()> {
     napi_build::setup();
     let native_view = env::var_os("CARGO_FEATURE_NATIVE_VIEW").is_some();
-    let mut bridges = vec!["src/lib.rs"];
-    if native_view {
-        ensure!(
-            env::var("CARGO_CFG_TARGET_OS").context("Read target OS")? == "macos",
-            "Native views currently require macOS"
-        );
-        bridges.extend_from_slice(macos::BRIDGES);
-    }
-    // cxx-build tracks the bridge sources; rustc tracks modules and include_str! shaders.
-    cxx_build::bridges(bridges)
-        .include("cxx")
-        .std("c++17")
-        .compile("catus-cxx-bridge");
-    // Pure Rust/N-API checks can run without a Lynx host process.
+    // Pure Rust/N-API checks do not need a C++ bridge or Lynx host process.
     if !native_view {
         return Ok(());
     }
+    ensure!(
+        env::var("CARGO_CFG_TARGET_OS").context("Read target OS")? == "macos",
+        "Native views currently require macOS"
+    );
+    // cxx-build tracks bridge sources; rustc tracks modules and include_str! shaders.
+    cxx_build::bridges(macos::BRIDGES)
+        .include("cxx")
+        .std("c++17")
+        .compile("catus-cxx-bridge");
     let package_root =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").context("Read Cargo manifest directory")?);
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").context("Read Cargo output directory")?);

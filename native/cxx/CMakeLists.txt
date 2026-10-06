@@ -25,15 +25,11 @@ endif()
 
 # All project components are compiled into one archive and one Node-API addon.
 add_library(catus_native STATIC
-  NativeInputElement.cc
-  NativeInputElementRegistration.cc
-  NativeInputRust.cc
-  NativeInputMacOS.mm
   NativeTerminalMacOS.mm
   NativeTerminalRegistration.mm
   NativeFrameCallbacks.mm
 )
-set_source_files_properties(NativeInputMacOS.mm NativeTerminalMacOS.mm NativeTerminalRegistration.mm NativeFrameCallbacks.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+set_source_files_properties(NativeTerminalMacOS.mm NativeTerminalRegistration.mm NativeFrameCallbacks.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 target_compile_features(catus_native PRIVATE cxx_std_17)
 target_include_directories(catus_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"

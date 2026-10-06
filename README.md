@@ -46,8 +46,8 @@ JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
 生成的 `index.d.ts` 会自动格式化。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
-workspace 使用 Rust/napi-rs 导出原生能力，通过 AutoLink 加载 `<native-input>`
-和 `<native-terminal>`。macOS 输入框使用 AppKit `NSTextField`；`src/app/NativeDemo.tsx` 保留输入框和 Rust 对象互操作演示。
+workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
+workspace 设置表单使用 Lynx 内置 `<input>`。
 
 macOS 窗口使用 `frame: false` / `titleBarStyle: 'hidden'`，系统标题栏由顶部
 tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动窗口，tab 与 `+`
@@ -269,15 +269,6 @@ fake PTY，桌面 preload 仅在设置 `CATUS_E2E_PTY` 时注入它。
 JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返回 void，重复 ID 和保留值 0 被拒绝。
 关闭 tab 的 E2E 测试直接查询 Rust 注册表，确认对应 ID 已删除且其他 session 仍可查询。
 
-## Native 演示交互（NativeDemo.tsx）
-
-- 在原生输入框键入文字，`bindinput` 将 `event.detail.value` 回传到 ReactLynx。
-- **Update property**：通过 React 状态更新 `value` 属性。
-- **Call setValue**：使用 SelectorQuery 调用 C++ `setValue` 方法。
-- **Focus**：调用原生方法，将焦点移到 `NSTextField`。
-- **Read value**：调用 `getValue`，显示原生组件内部的值。
-- **Verify shared Rust object**：创建 napi-rs `RustCounter`，作为 `invoke.params.rustObject`
-  传给 native view，C++ 通过 cxx 修改同一 Rust 实例，再从原始 JS 对象读取结果。
 ## Native terminal / 共享 GPU
 
 所有 `<native-terminal>` 通过同一个全局 `LazyLock<anyhow::Result<GpuContext>>`
@@ -369,11 +360,10 @@ premultiplied RGBA；自定义 grayscale、复杂 shaping、ligature 尚未实�
 [实际 Lynx 截图](docs/terminal-shared-gpu.jpeg)。
 之前的字体/atlas 截图报告记录的是原型阶段的调试接口。
 
-## Rust 对象与 native view
+## Native 构建与链接
 
-`native` 使用 napi-rs 导出 `RustCounter` 类，使用 cxx 导出
-opaque Rust `CounterHandle` 及其方法。napi-rs 驱动 Cargo 构建 Rust `cdylib`，
-将 C++ view 静态库链接进同一个 `catus-native.node`，保证进程内只有一个实例注册表。
+napi-rs 驱动 Cargo 构建 Rust `cdylib`，将 terminal C++ 静态库链接进同一个
+`catus-native.node`。C++ 通过 cxx 访问 Rust terminal session 和 renderer。
 
 ```text
 pnpm run build:native → native/build.mjs
@@ -400,39 +390,6 @@ CMake 只负责 C++ 静态库，不负责最终 `.node` 链接；C++ 调用 Rust
 `--no-default-features` 构建不含 Lynx view 的扩展，在 Node 中检查 napi-rs 导出；
 组合扩展的组件注册和跨语言调用则在实际 Lynxtron 应用中验证。
 
-```text
-preload.ts
-  new nativeBinding.RustCounter(10)，通过 contextBridge 导出工厂
-       ↓
-NativeDemo.tsx / rustInterop.ts（Lynx 后台线程）
-  counter.add(2) → 12；invoke.params = { rustObject: counter }
-       ↓
-NativeInputRust.cc / OnMethodInvoked
-  参数转成 LynxValue map，读取 nativeId
-       ↓
-cxx → acquire_counter(nativeId)
-  从注册表取得同一 Rust 状态的 Box<CounterHandle>
-       ↓
-CounterHandle::add_from_cpp(5)
-  Rust 原子计数器 → 17
-       ↓
-原始 N-API counter.value
-  读到 17，cppCalls = 1
-```
-
-**已在 macOS arm64 / Lynxtron 0.0.28 的实际桌面应用中验证通过。**
-原始 N-API 实例的 `nativeId` 可以随方法参数到达 C++；其参数类型是
-`lynx_value_map`（11）。本例用 ID 查找实例后通过 cxx 调用 Rust，未在
-native view 中对 JS wrapper 执行 `napi_unwrap`，也未通过数字传递内存地址。
-`add` 属性虽然存在，其值被转换成 `lynx_value_null`（0），不能从该参数直接
-调用 JS 方法。完整实测数据保存在 [验证报告](docs/rust-interop-verification.json)。
-另有 `counter.toNativeHandle()` 返回普通 `{ nativeId }` 对象，这条传参路径
-也会在按钮验证中检查。
-
-Rust 状态用 `Arc` 管理，注册表只存 `Weak`，native view 用 `rust::Box` 持有
-共享状态。JS wrapper 回收会删除 ID；已绑定的 view 仍可安全调用，销毁 view
-会释放其引用。未知或已释放的 ID 返回参数错误，不替换原有绑定。
-
 Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 `scripts/rust-target.mjs` 统一计算；CMake 输出在 Cargo 的 `OUT_DIR/cxx` 中。
 可用 `CATUS_RUST_TARGET_DIR` 环境变量覆盖为
@@ -452,7 +409,6 @@ src/app/state/SessionRegion.tsx        各区域 BTS 边界共享同一个 Effec
 src/app/state/useWorkspaceSession.ts   配置加载与 workspace/tab/设置操作
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
-src/app/NativeDemo.tsx                  原有 native input / Rust / wgpu 字体演示
 src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                创建 LynxWindow
 rsbuild.config.ts                      pluginLynxtron 启用 AutoLink
@@ -493,14 +449,9 @@ native/
   build.mjs                           napi-rs 构建入口，输出扩展和 TypeScript 声明
   cxx/
     CMakeLists.txt                    仅生成项目 C++ 静态库
-    NativeInputElementRegistration.cc  LYNX_REGISTER_ELEMENT 注册 native-input
-    NativeInputElement.h               属性、事件、setValue/getValue/focus 方法
-    NativeInputRust.cc                 检查参数、绑定实例、通过 cxx 调用 Rust
-    NativeInputMacOS.mm                创建 NSTextField，布局与输入回调
     NativeTerminalMacOS.mm             获取 Lynx IOSurface，交给 Rust 渲染并呈现
     NativeTerminalRegistration.mm      extension 生命周期和 terminal view 注册
     NativeFrameCallbacks.h/mm          Rust 回调注册对象和 C++ 渲染目标
-src/app/rustInterop.ts                 在实际 native view 上执行跨语言验证
 ```
 
 `@catus/native` 是整个项目的 native 包。新增组件只需将 C++ 源码加入
@@ -515,24 +466,22 @@ pluginLynxtron（rsbuild.config.ts）
   扫描 lynx.lib.json，复制原生库并注入加载代码
        ↓
 native/index.cjs
-  require(.node)，激活 LYNX_REGISTER_ELEMENT 静态注册
+  require(.node)，激活 terminal extension 静态注册
        ↓
-App.tsx / NativeDemo.tsx 渲染 <native-input>
-  C++ 创建 NSTextField 并挂到当前 LynxView 的 renderer host
+TerminalView.tsx 渲染 <native-terminal>
+  C++ 创建 terminal view 并绑定 Rust session
        ↓
 OnPropertiesChanged / OnLayoutChanged
   更新原生属性与布局
        ↓
-NSTextField 输入 → TriggerEvent("input") → bindinput → React 状态
+终端键盘输入 → Rust PTY → 网格更新 → RAF 绘制
 ```
 
 原生库输出：`native/dist/darwin/<arch>/catus-native.node`。
 AutoLink 将它加载到桌面主进程并使标签可用于 Lynx runtime；UI 不应直接
 import `@catus/native/lynxtron`。示例只使用该包的 TypeScript 类型。
 
-Native UI 后端保留系统输入和 IME 行为。需要覆盖原生控件的 Lynx 内容时，
-按官方文档使用 `<cover-view>`；普通 CSS `z-index` 无法可靠交错原生控件。
-本例未实现 Windows、Linux 或 Web 后端。
+native terminal 当前只实现 macOS 后端。
 
 ## 官方文档
 
