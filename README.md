@@ -64,10 +64,11 @@ Popover 的 Anchor / Positioner 负责定位，点击外部区域关闭浮层。
 回调不推进的问题。此适配不改变终端的帧调度，不增加 RAF 循环。
 Shell 候选项和菜单操作由业务层传入，通用组件不读取 workspace 状态。
 
-所有组件通过 `src/app/lib/utils.ts` 的 `cn(...inputs)` 合并 className：
+需要组合多个样式来源时，通过 `src/app/lib/utils.ts` 的 `cn(...inputs)` 合并 className：
 `clsx` 处理条件和数组，`tailwind-merge` 消除冲突，后传入的样式覆盖默认样式。
 Input、Select 和菜单项的状态样式通过 `class-variance-authority`（cva）定义 variants，
-再由 `cn(variants(...), className)` 合并调用方样式。
+再由 `cn(variants(...), className)` 合并调用方样式。固定样式、单个条件表达式和
+单独的 variants 结果直接作为 className，不额外包装 `cn`。
 
 ```tsx
 <Select value={value} onValueChange={setValue}>

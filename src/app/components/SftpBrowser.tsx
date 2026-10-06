@@ -85,18 +85,18 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
   return (
     <view
       id="sftp-browser"
-      className={cn('flex-1 min-h-0 flex flex-col p-[16px] [-x-app-region:no-drag]')}
+      className="flex-1 min-h-0 flex flex-col p-[16px] [-x-app-region:no-drag]"
     >
-      <view className={cn('flex flex-row items-center gap-[14px] mb-[14px]')}>
+      <view className="flex flex-row items-center gap-[14px] mb-[14px]">
         <view
           id="sftp-up"
           bindtap={() => {
             if (!listing.loading && listing.path) setPath(joinPath(listing.path, '..'));
           }}
         >
-          <text className={cn('text-[12px] text-[#a8e6cf]')}>↑ Up</text>
+          <text className="text-[12px] text-[#a8e6cf]">↑ Up</text>
         </view>
-        <text id="sftp-path" className={cn('flex-1 text-[12px] text-[#c3cdd6] break-all')}>
+        <text id="sftp-path" className="flex-1 text-[12px] text-[#c3cdd6] break-all">
           {host}: {listing.path || '.'}
         </text>
         <view
@@ -105,25 +105,25 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             if (!listing.loading) setRefresh((value) => value + 1);
           }}
         >
-          <text className={cn('text-[12px] text-[#a8e6cf]')}>Refresh</text>
+          <text className="text-[12px] text-[#a8e6cf]">Refresh</text>
         </view>
       </view>
       {listing.error ? (
         <text
           id="sftp-error"
-          className={cn('text-[12px] text-[#e4a4a4] leading-[18px] mb-[12px] break-all')}
+          className="text-[12px] text-[#e4a4a4] leading-[18px] mb-[12px] break-all"
         >
           {listing.error}
         </text>
       ) : null}
       {listing.loading ? (
-        <text id="sftp-loading" className={cn('text-[12px] text-[#8c99a7]')}>
+        <text id="sftp-loading" className="text-[12px] text-[#8c99a7]">
           Loading directory…
         </text>
       ) : null}
-      <scroll-view id="sftp-list" scroll-y className={cn('flex-1 min-h-0')}>
+      <scroll-view id="sftp-list" scroll-y className="flex-1 min-h-0">
         {!listing.loading && !listing.error && !listing.entries.length ? (
-          <text id="sftp-empty" className={cn('text-[12px] text-[#8c99a7]')}>
+          <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
             Empty directory
           </text>
         ) : null}
@@ -139,11 +139,11 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
               void open(entry);
             }}
           >
-            <text className={cn('w-[28px] text-[12px] text-[#a8e6cf]')}>
+            <text className="w-[28px] text-[12px] text-[#a8e6cf]">
               {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
             </text>
-            <text className={cn('flex-1 text-[12px] text-[#dce4e9]')}>{entry.name}</text>
-            <text className={cn('text-[10px] text-[#8c99a7]')}>
+            <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
+            <text className="text-[10px] text-[#8c99a7]">
               {entry.directory ? 'Directory' : entry.symlink ? 'Link' : 'File'}
             </text>
           </view>

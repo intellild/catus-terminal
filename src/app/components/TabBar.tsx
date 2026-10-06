@@ -25,13 +25,11 @@ export function TabBar({
     <>
       <scroll-view
         scroll-x
-        className={cn('shrink min-w-0 h-[54px] w-[var(--tab-width)]')}
+        className="shrink min-w-0 h-[54px] w-[var(--tab-width)]"
         style={`--tab-width: ${width}px`}
       >
         <view
-          className={cn(
-            'h-[54px] flex flex-row items-end pl-[10px] gap-[6px] w-[var(--tab-width)]',
-          )}
+          className="h-[54px] flex flex-row items-end pl-[10px] gap-[6px] w-[var(--tab-width)]"
           bindlayoutchange={onLayout}
         >
           {tabs.map((tab) => (
@@ -47,15 +45,11 @@ export function TabBar({
             >
               <view
                 id={`tab-${tab.number}`}
-                className={cn(
-                  'flex-1 min-w-0 h-[43px] flex flex-row items-center pl-[15px] gap-[9px]',
-                )}
+                className="flex-1 min-w-0 h-[43px] flex flex-row items-center pl-[15px] gap-[9px]"
                 bindtap={() => onSelect?.(tab.id)}
               >
                 <view
-                  className={cn(
-                    'w-[6px] h-[6px] rounded-[3px] shrink-0 bg-[var(--workspace-color)]',
-                  )}
+                  className="w-[6px] h-[6px] rounded-[3px] shrink-0 bg-[var(--workspace-color)]"
                   style={`--workspace-color: ${tab.profile.color}`}
                 />
                 <text
@@ -67,15 +61,15 @@ export function TabBar({
               </view>
               <view
                 id={`close-tab-${tab.number}`}
-                className={cn('w-[31px] h-[38px] flex justify-center items-center shrink-0')}
+                className="w-[31px] h-[38px] flex justify-center items-center shrink-0"
                 bindtap={() => onClose?.(tab.id)}
               >
-                <text className={cn('text-[19px] text-[#9ca6b2]')}>×</text>
+                <text className="text-[19px] text-[#9ca6b2]">×</text>
               </view>
             </view>
           ))}
           {!tabs.length && (
-            <text className={cn('py-[16px] px-[12px] text-[12px] text-[#7f8996]')}>
+            <text className="py-[16px] px-[12px] text-[12px] text-[#7f8996]">
               {loading ? 'Opening workspace…' : 'No open tabs'}
             </text>
           )}
@@ -83,22 +77,18 @@ export function TabBar({
       </scroll-view>
       <view
         id="new-tab"
-        className={cn(
-          'w-[36px] h-[36px] rounded-[9px] flex justify-center items-center ml-[8px] shrink-0 [-x-app-region:no-drag]',
-        )}
+        className="w-[36px] h-[36px] rounded-[9px] flex justify-center items-center ml-[8px] shrink-0 [-x-app-region:no-drag]"
         bindtap={onAdd}
       >
-        <text className={cn('text-[24px] text-[#c1c7d0]')}>+</text>
+        <text className="text-[24px] text-[#c1c7d0]">+</text>
       </view>
       {onAddSftp ? (
         <view
           id="new-sftp-tab"
-          className={cn(
-            'h-[36px] px-[9px] rounded-[9px] flex justify-center items-center shrink-0 [-x-app-region:no-drag]',
-          )}
+          className="h-[36px] px-[9px] rounded-[9px] flex justify-center items-center shrink-0 [-x-app-region:no-drag]"
           bindtap={onAddSftp}
         >
-          <text className={cn('text-[12px] text-[#a8e6cf]')}>+ SFTP</text>
+          <text className="text-[12px] text-[#a8e6cf]">+ SFTP</text>
         </view>
       ) : null}
     </>

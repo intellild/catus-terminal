@@ -2,7 +2,6 @@ import 'background-only';
 import '../runtime';
 import { RegistryContext, useAtomSet, useAtomValue } from '@effect/atom-react';
 import { useCallback, useEffect } from '@lynx-js/react';
-import { cn } from '../lib/utils';
 import { sessionRegistry } from './sessionRegistry';
 import { sessionActionsAtom } from './sessionActions';
 import { shellOptionsAtom } from './shells';
@@ -137,11 +136,9 @@ function SessionContent() {
       {view.sftpTabs.map((tab) => (
         <view
           key={tab.id}
-          className={cn(
-            !view.error && view.activeTab?.id === tab.id
-              ? 'flex-1 min-h-0 flex flex-col'
-              : 'hidden',
-          )}
+          className={
+            !view.error && view.activeTab?.id === tab.id ? 'flex-1 min-h-0 flex flex-col' : 'hidden'
+          }
         >
           <SftpBrowser id={tab.id} host={tab.profile.host!} />
         </view>

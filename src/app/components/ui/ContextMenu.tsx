@@ -64,7 +64,6 @@ export function ContextMenuTrigger({
   return (
     <view
       {...props}
-      className={cn(props.className)}
       bindmousedown={(event) => {
         // Clay supplies the pressed-button bit mask; button can remain 0.
         if (event.button === 2 || (event.buttons & 2) !== 0) {
@@ -83,7 +82,7 @@ export function ContextMenuTrigger({
 export function ContextMenuAnchor({ point }: { point: { x: number; y: number } }) {
   return (
     <PopoverAnchor
-      className={cn('fixed w-[1px] h-[1px]')}
+      className="fixed w-[1px] h-[1px]"
       style={{ left: `${point.x}px`, top: `${point.y}px` }}
     />
   );
@@ -131,11 +130,9 @@ export function ContextMenuItem({
       }}
     >
       <text
-        className={cn(
-          contextMenuLabelVariants({
-            tone: disabled ? 'disabled' : destructive ? 'destructive' : 'default',
-          }),
-        )}
+        className={contextMenuLabelVariants({
+          tone: disabled ? 'disabled' : destructive ? 'destructive' : 'default',
+        })}
       >
         {children}
       </text>
@@ -144,5 +141,5 @@ export function ContextMenuItem({
 }
 
 export function ContextMenuSeparator() {
-  return <view className={cn('h-[1px] bg-[#39444e] my-[4px]')} />;
+  return <view className="h-[1px] bg-[#39444e] my-[4px]" />;
 }

@@ -37,11 +37,11 @@ export function PopoverProvider({ children }: { children: ReactNode }) {
         ref={ref}
         flatten={false}
         id="popover-host"
-        className={cn(
+        className={
           active
             ? 'absolute inset-0 overflow-visible'
-            : 'absolute left-0 top-0 w-0 h-0 overflow-visible',
-        )}
+            : 'absolute left-0 top-0 w-0 h-0 overflow-visible'
+        }
       />
     </PortalContext.Provider>
   );
@@ -111,7 +111,6 @@ export function PopoverTrigger({
     <view
       {...props}
       ref={ref}
-      className={cn(props.className)}
       bindlayoutchange={(event) => {
         props.bindlayoutchange?.(event);
         if (open) measure();
@@ -161,16 +160,16 @@ export function PopoverContent({
   if (!portal?.host) return null;
   return createPortal(
     <view
-      className={cn('absolute inset-0 [-x-app-region:no-drag]')}
+      className="absolute inset-0 [-x-app-region:no-drag]"
       style={{ display: open ? 'flex' : 'none' }}
     >
       {open ? (
-        <view id={dismissId} className={cn('absolute inset-0')} bindtap={() => setOpen(false)} />
+        <view id={dismissId} className="absolute inset-0" bindtap={() => setOpen(false)} />
       ) : null}
       {/* Lynx UI positions relative to its anchor. Translate that origin into
           page coordinates when rendering in the page-level portal. */}
       <view
-        className={cn('absolute w-0 h-0 overflow-visible')}
+        className="absolute w-0 h-0 overflow-visible"
         style={{ left: `${anchor.x}px`, top: `${anchor.y}px` }}
       >
         <PopoverPositioner

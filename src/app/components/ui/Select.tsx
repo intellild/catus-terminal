@@ -76,7 +76,7 @@ export function SelectTrigger({
       bindlayoutchange={(event) => setWidth(event.detail.width)}
     >
       {children}
-      <text className={cn('text-[12px] text-[#9ca6b2]')}>{open ? '▴' : '▾'}</text>
+      <text className="text-[12px] text-[#9ca6b2]">{open ? '▴' : '▾'}</text>
     </PopoverTrigger>
   );
 }
@@ -90,11 +90,7 @@ export function SelectValue({
 }) {
   const { value } = useSelect();
   return (
-    <text
-      className={cn(
-        'text-[13px] text-[#e2e8ed] flex-1 overflow-hidden text-ellipsis whitespace-nowrap',
-      )}
-    >
+    <text className="text-[13px] text-[#e2e8ed] flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
       {children ?? (value || placeholder)}
     </text>
   );
@@ -105,7 +101,7 @@ export function SelectContent({ children, ...props }: PopoverContentProps) {
   return (
     <PopoverContent {...props} style={{ width: `${width}px`, ...props.style }}>
       <scroll-view scroll-y style={{ height: `${Math.min(220, Children.count(children) * 36)}px` }}>
-        <view className={cn('flex flex-col')}>{children}</view>
+        <view className="flex flex-col">{children}</view>
       </scroll-view>
     </PopoverContent>
   );
@@ -135,12 +131,8 @@ export function SelectItem({
         setOpen(false);
       }}
     >
-      <text className={cn('w-[18px] text-[12px] text-[#a8e6cf]')}>{selected ? '✓' : ''}</text>
-      <text
-        className={cn(
-          'text-[13px] text-[#e2e8ed] flex-1 whitespace-nowrap overflow-hidden text-ellipsis',
-        )}
-      >
+      <text className="w-[18px] text-[12px] text-[#a8e6cf]">{selected ? '✓' : ''}</text>
+      <text className="text-[13px] text-[#e2e8ed] flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
         {children}
       </text>
     </view>

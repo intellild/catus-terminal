@@ -1,4 +1,3 @@
-import { cn } from '../lib/utils';
 import 'background-only';
 import type { KeyEvent } from '@lynx-js/types';
 
@@ -21,7 +20,7 @@ export function NativeTerminalView({ sessionId }: { sessionId: number }) {
       id="terminal-surface"
       terminal-id={sessionId}
       focusable
-      className={cn(sessionId === 0 ? 'hidden' : 'flex-1 w-full min-h-0')}
+      className={sessionId === 0 ? 'hidden' : 'flex-1 w-full min-h-0'}
       bindtap={focus}
       catchkeydown={key}
     />

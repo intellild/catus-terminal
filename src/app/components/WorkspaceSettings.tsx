@@ -52,24 +52,18 @@ export function WorkspaceSettings({
       ? launchPreview({ ...draft, args: [] }, environment)
       : '';
   return (
-    <view
-      className={cn('absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]')}
-    >
-      <view className={cn('absolute inset-0 bg-[#00000080]')} bindtap={onClose} />
-      <view
-        className={cn(
-          'w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]',
-        )}
-      >
-        <view className={cn('flex flex-row justify-between items-center mb-[18px]')}>
-          <text className={cn('text-[21px] text-[#e2e8ed]')}>
+    <view className="absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]">
+      <view className="absolute inset-0 bg-[#00000080]" bindtap={onClose} />
+      <view className="w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]">
+        <view className="flex flex-row justify-between items-center mb-[18px]">
+          <text className="text-[21px] text-[#e2e8ed]">
             {draft.isNew ? 'Add workspace' : 'Edit workspace'}
           </text>
           <view id="close-settings" bindtap={onClose}>
-            <text className={cn('text-[22px] text-[#9ca6b2]')}>×</text>
+            <text className="text-[22px] text-[#9ca6b2]">×</text>
           </view>
         </view>
-        <scroll-view scroll-y className={cn('shrink min-h-0')}>
+        <scroll-view scroll-y className="shrink min-h-0">
           <view key={draft.id} id="workspace-editor-form">
             <Form
               control={{
@@ -81,11 +75,7 @@ export function WorkspaceSettings({
               }}
             >
               <Field name="name" label="Name" />
-              <view
-                className={cn(
-                  'flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]',
-                )}
-              >
+              <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
                 {(['local', 'ssh'] as const).map((type) => (
                   <view
                     id={`workspace-type-${type}`}
@@ -98,7 +88,7 @@ export function WorkspaceSettings({
                       if (!editor.saving) onChange('type', type);
                     }}
                   >
-                    <text className={cn('text-[12px] text-[#dce4e9]')}>
+                    <text className="text-[12px] text-[#dce4e9]">
                       {type === 'local' ? 'Local' : 'SSH'}
                     </text>
                   </view>
@@ -151,12 +141,12 @@ export function WorkspaceSettings({
                       <view>
                         <text
                           id="shell-load-error"
-                          className={cn('text-[11px] text-[#e4a4a4] break-all')}
+                          className="text-[11px] text-[#e4a4a4] break-all"
                         >
                           {shells.error}
                         </text>
                         <view id="retry-shells" bindtap={onRetryShells}>
-                          <text className={cn('text-[12px] text-[#a8e6cf]')}>Retry</text>
+                          <text className="text-[12px] text-[#a8e6cf]">Retry</text>
                         </view>
                       </view>
                     ) : null}
@@ -182,7 +172,7 @@ export function WorkspaceSettings({
                     <FormLabel>Command preview</FormLabel>
                     <text
                       id="ssh-command-preview"
-                      className={cn('text-[12px] text-[#a8e6cf] break-all leading-[19px]')}
+                      className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
                     >
                       {preview || 'Enter an SSH host'}
                     </text>
@@ -190,11 +180,11 @@ export function WorkspaceSettings({
                 </>
               ) : null}
               <Field name="cwd" label="Working directory" />
-              <view className={cn('flex flex-row gap-[14px]')}>
-                <view className={cn('flex-1')}>
+              <view className="flex flex-row gap-[14px]">
+                <view className="flex-1">
                   <Field name="icon" label="Icon text" />
                 </view>
-                <view className={cn('flex-1')}>
+                <view className="flex-1">
                   <Field name="color" label="Color · hex" />
                 </view>
               </view>
@@ -204,19 +194,19 @@ export function WorkspaceSettings({
               {editor.error ? (
                 <text
                   id="editor-error"
-                  className={cn('text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all')}
+                  className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
                 >
                   {editor.error}
                 </text>
               ) : null}
-              <view className={cn('flex flex-row items-center gap-[14px] mt-[20px]')}>
+              <view className="flex flex-row items-center gap-[14px] mt-[20px]">
                 <FormSubmit id="save-workspace">
                   {editor.saving ? 'Saving…' : draft.isNew ? 'Add workspace' : 'Save workspace'}
                 </FormSubmit>
               </view>
             </Form>
           </view>
-          <text id="config-path" className={cn('text-[10px] text-[#7d8e9c] mt-[20px] break-all')}>
+          <text id="config-path" className="text-[10px] text-[#7d8e9c] mt-[20px] break-all">
             {configPath}
           </text>
         </scroll-view>

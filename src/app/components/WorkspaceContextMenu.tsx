@@ -1,4 +1,3 @@
-import { cn } from '../lib/utils';
 import {
   ContextMenu,
   ContextMenuAnchor,
@@ -48,7 +47,7 @@ export function WorkspaceContextMenu({
         {error ? (
           <text
             id="workspace-menu-error"
-            className={cn('text-[11px] text-[#e4a4a4] break-all px-[12px]')}
+            className="text-[11px] text-[#e4a4a4] break-all px-[12px]"
           >
             {error}
           </text>

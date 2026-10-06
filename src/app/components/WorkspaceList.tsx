@@ -21,18 +21,14 @@ export function WorkspaceList({
 }) {
   return (
     <>
-      <scroll-view scroll-y className={cn('w-[64px] flex-1 min-h-0')}>
-        <view className={cn('flex flex-col items-center')}>
+      <scroll-view scroll-y className="w-[64px] flex-1 min-h-0">
+        <view className="flex flex-col items-center">
           {loading &&
             !workspaces.length &&
             [0, 1, 2].map((index) => (
-              <view key={index} className={cn('w-[64px] flex flex-col items-center mb-[26px]')}>
-                <view
-                  className={cn(
-                    'w-[43px] h-[43px] rounded-[12px] flex items-center justify-center bg-[#25292f]',
-                  )}
-                />
-                <view className={cn('w-[36px] h-[6px] bg-[#30353b] rounded-[3px] mt-[10px]')} />
+              <view key={index} className="w-[64px] flex flex-col items-center mb-[26px]">
+                <view className="w-[43px] h-[43px] rounded-[12px] flex items-center justify-center bg-[#25292f]" />
+                <view className="w-[36px] h-[6px] bg-[#30353b] rounded-[3px] mt-[10px]" />
               </view>
             ))}
           {workspaces.map((item) => (
@@ -47,9 +43,7 @@ export function WorkspaceList({
               onContextMenu={({ x, y }) => onContextMenu?.(item.id, x, y)}
             >
               <view
-                className={cn(
-                  'w-[43px] h-[43px] rounded-[12px] flex items-center justify-center bg-[var(--workspace-color)]',
-                )}
+                className="w-[43px] h-[43px] rounded-[12px] flex items-center justify-center bg-[var(--workspace-color)]"
                 style={`--workspace-color: ${activeWorkspaceId === item.id ? item.color : '#25292f'}`}
               >
                 <text
@@ -61,18 +55,14 @@ export function WorkspaceList({
                   {item.icon}
                 </text>
               </view>
-              <text
-                className={cn(
-                  'text-[10px] text-[#a0a8b5] mt-[7px] w-[60px] text-center overflow-hidden text-ellipsis whitespace-nowrap',
-                )}
-              >
+              <text className="text-[10px] text-[#a0a8b5] mt-[7px] w-[60px] text-center overflow-hidden text-ellipsis whitespace-nowrap">
                 {item.name}
               </text>
-              <view className={cn('h-[13px] flex justify-center items-center')}>
+              <view className="h-[13px] flex justify-center items-center">
                 {runningIds.has(item.id) && (
                   <view
                     id={`running-${item.id}`}
-                    className={cn('w-[4px] h-[4px] rounded-[2px] bg-[var(--workspace-color)]')}
+                    className="w-[4px] h-[4px] rounded-[2px] bg-[var(--workspace-color)]"
                     style={`--workspace-color: ${item.color}`}
                   />
                 )}
@@ -83,12 +73,10 @@ export function WorkspaceList({
       </scroll-view>
       <view
         id="add-workspace"
-        className={cn(
-          'w-[44px] h-[44px] flex items-center justify-center rounded-[12px] bg-[#22262c] mt-[10px]',
-        )}
+        className="w-[44px] h-[44px] flex items-center justify-center rounded-[12px] bg-[#22262c] mt-[10px]"
         bindtap={onAdd}
       >
-        <text className={cn('text-[22px] text-[#969fab]')}>+</text>
+        <text className="text-[22px] text-[#969fab]">+</text>
       </view>
     </>
   );

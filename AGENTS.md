@@ -38,7 +38,8 @@
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
-- Use Tailwind utilities, `cn` for class merging and cva for variants. Keep
+- Use Tailwind utilities, `cn` when merging class lists and cva for variants.
+  Use plain className strings or expressions when no merging is needed. Keep
   conditional classes as complete literals and runtime values in CSS variables.
   The stylesheet contains only Tailwind directives, without handwritten selectors.
 - Keep native window-control spacing consistent with the tab bar. Interactive
