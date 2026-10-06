@@ -6,7 +6,9 @@ import '@lynx-js/preact-devtools';
 import { root } from '@lynx-js/react';
 
 import { App } from './App';
+import { startSessionRuntime } from './state/sessionRuntime';
 
+if (__BACKGROUND__) startSessionRuntime();
 root.render(<App />);
 
 if (import.meta.webpackHot) {

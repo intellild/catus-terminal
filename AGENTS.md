@@ -44,8 +44,14 @@ Read the docs below in advance to help you understand the library or frameworks 
     region slot props. These primitives render the static layout on the main
     thread; `App.tsx` puts separate `<background-only>` boundaries around tabs,
     workspace list, content, status and settings, each with a pure UI fallback.
-    `state/SessionRegion.tsx` connects every region to the global `state/sessionRegistry.ts`;
-    only its bootstrap region loads configuration. Presentation components
+    `state/SessionRegion.tsx` connects every region to the global `state/sessionRegistry.ts`.
+    `index.tsx` starts `state/sessionRuntime.ts` only in BTS, before rendering.
+    Configuration loading/saving and workspace/tab/editor operations belong to
+    `state/sessionActions.ts` action atoms; they run without React or UI subscriptions.
+    Each region subscribes only to its `state/sessionViews.ts` view atom and sends
+    commands to `sessionActionsAtom`. React mounting does not start/stop the runtime;
+    registry reset/dispose cancels asynchronous work and releases native resources.
+    Presentation components
     must use type-only state imports to keep Effect out of the main-thread bundle.
     `runtime.ts` runs before Effect
     imports and installs Node codecs from preload factories in the isolated BTS

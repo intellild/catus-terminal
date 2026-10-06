@@ -1,12 +1,18 @@
-import { cn } from '../lib/utils';
 import 'background-only';
 import '../runtime';
-import { useAtomSet, useAtomValue, useAtomRefresh } from '@effect/atom-react';
-import { shellHostAtom, shellOptionsAtom, shellsAtom } from './shells';
+import { RegistryContext, useAtomSet, useAtomValue } from '@effect/atom-react';
 import { useCallback, useEffect } from '@lynx-js/react';
-import { RegistryContext } from '@effect/atom-react';
+import { cn } from '../lib/utils';
 import { sessionRegistry } from './sessionRegistry';
-import type { WorkspaceHost } from '../../shared/workspaces';
+import { sessionActionsAtom } from './sessionActions';
+import { shellOptionsAtom } from './shells';
+import {
+  tabsViewAtom,
+  workspacesViewAtom,
+  contentViewAtom,
+  statusViewAtom,
+  settingsViewAtom,
+} from './sessionViews';
 import { TabBar } from '../components/TabBar';
 import { WorkspaceList } from '../components/WorkspaceList';
 import { SftpBrowser } from '../components/SftpBrowser';
@@ -15,154 +21,185 @@ import { TerminalContent } from '../components/TerminalContent';
 import { StatusBar } from '../components/StatusBar';
 import { WorkspaceSettings } from '../components/WorkspaceSettings';
 import { WorkspaceContextMenu } from '../components/WorkspaceContextMenu';
-import { useLoadWorkspaces, useWorkspaceSession } from './useWorkspaceSession';
 
-type Region = 'bootstrap' | 'workspaces' | 'tabs' | 'content' | 'status' | 'settings';
+type Region = 'workspaces' | 'tabs' | 'content' | 'status' | 'settings';
 
-export function SessionRegion({ region, host }: { region: Region; host?: WorkspaceHost }) {
+const regions = {
+  tabs: SessionTabs,
+  workspaces: SessionWorkspaces,
+  content: SessionContent,
+  status: SessionStatus,
+  settings: SessionSettings,
+};
+
+// This boundary only connects UI subscriptions to the application registry.
+export function SessionRegion({ region }: { region: Region }) {
+  const Content = regions[region];
   return (
     <RegistryContext.Provider value={sessionRegistry}>
-      {region === 'bootstrap' ? (
-        <SessionLoader host={host} />
-      ) : (
-        <RegionContent region={region} host={host} />
-      )}
+      <Content />
     </RegistryContext.Provider>
   );
 }
 
-function SessionLoader({ host }: { host?: WorkspaceHost }) {
-  useLoadWorkspaces(host);
-  return null;
-}
-
-function RegionContent({
-  region,
-  host,
-}: {
-  region: Exclude<Region, 'bootstrap'>;
-  host?: WorkspaceHost;
-}) {
-  const session = useWorkspaceSession(host);
-  const { view, load } = session;
-  const activeNumber = view.activeTab?.number;
+function SessionTabs() {
+  const view = useAtomValue(tabsViewAtom);
+  const dispatch = useAtomSet(sessionActionsAtom);
   const revealActiveTab = useCallback(() => {
-    if (region !== 'tabs' || activeNumber === undefined) return;
+    'background only';
+    if (view.activeNumber === undefined) return;
     lynx
       .createSelectorQuery()
-      .select(`#tab-item-${activeNumber}`)
+      .select(`#tab-item-${view.activeNumber}`)
       .invoke({
         method: 'scrollIntoView',
         params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
       })
       .exec();
-  }, [region, activeNumber]);
+  }, [view.activeNumber]);
   useEffect(revealActiveTab, [revealActiveTab]);
-  switch (region) {
-    case 'tabs':
-      return (
-        <TabBar
-          tabs={view.tabs}
-          activeTabId={view.activeTab?.id}
-          loading={load.loading}
-          onSelect={session.focusTab}
-          onClose={session.removeTab}
-          onAdd={session.addTab}
-          onAddSftp={view.workspace?.type === 'ssh' ? session.addSftpTab : undefined}
-          onLayout={revealActiveTab}
-        />
-      );
-    case 'workspaces':
-      return (
-        <WorkspaceList
-          workspaces={view.workspaces}
-          onAdd={session.addWorkspace}
-          activeWorkspaceId={view.workspace?.id}
-          runningIds={view.runningIds}
-          loading={load.loading}
-          onSelect={session.openWorkspace}
-          onContextMenu={session.openWorkspaceMenu}
-        />
-      );
-    case 'content':
-      return (
-        <TerminalContent
-          workspace={view.workspace}
-          activeTab={view.activeTab}
-          tabCount={view.tabs.length}
-          loading={load.loading}
-          error={load.error}
-          onRetry={session.loadConfig}
-          onAdd={session.addTab}
-        >
-          <TerminalView
-            id={load.error || view.activeTab?.kind === 'sftp' ? undefined : view.activeTab?.id}
-            sessionId={load.error ? 0 : view.terminalId}
-            error={view.terminalError}
-          />
-          {view.state.tabs
-            .filter((tab) => tab.kind === 'sftp')
-            .map((tab) => (
-              <view
-                key={tab.id}
-                className={cn(
-                  !load.error && view.activeTab?.id === tab.id
-                    ? 'flex-1 min-h-0 flex flex-col'
-                    : 'hidden',
-                )}
-              >
-                <SftpBrowser id={tab.id} host={tab.profile.host!} />
-              </view>
-            ))}
-        </TerminalContent>
-      );
-    case 'status':
-      return (
-        <StatusBar
-          workspaceCount={view.runningIds.size}
-          tabCount={view.state.tabs.length}
-          hasSession={!!view.activeTab}
-        />
-      );
-    case 'settings':
-      return <WorkspaceSettingsRegion session={session} host={host} />;
-  }
+  return (
+    <TabBar
+      tabs={view.tabs}
+      activeTabId={view.activeTabId}
+      loading={view.loading}
+      onSelect={(id) => {
+        'background only';
+        dispatch({ type: 'focusTab', id });
+      }}
+      onClose={(id) => {
+        'background only';
+        dispatch({ type: 'closeTab', id });
+      }}
+      onAdd={() => {
+        'background only';
+        dispatch({ type: 'addTab' });
+      }}
+      onAddSftp={
+        view.ssh
+          ? () => {
+              'background only';
+              dispatch({ type: 'addSftpTab' });
+            }
+          : undefined
+      }
+      onLayout={revealActiveTab}
+    />
+  );
 }
 
-function WorkspaceSettingsRegion({
-  session,
-  host,
-}: {
-  session: ReturnType<typeof useWorkspaceSession>;
-  host?: WorkspaceHost;
-}) {
-  const setHost = useAtomSet(shellHostAtom);
-  useEffect(() => {
-    setHost(host?.listShells ? { listShells: host.listShells.bind(host) } : undefined);
-  }, [host, setHost]);
+function SessionWorkspaces() {
+  const view = useAtomValue(workspacesViewAtom);
+  const dispatch = useAtomSet(sessionActionsAtom);
+  return (
+    <WorkspaceList
+      {...view}
+      onAdd={() => {
+        'background only';
+        dispatch({ type: 'addWorkspace' });
+      }}
+      onSelect={(id) => {
+        'background only';
+        dispatch({ type: 'openWorkspace', id });
+      }}
+      onContextMenu={(id, x, y) => {
+        'background only';
+        dispatch({ type: 'openMenu', id, x, y });
+      }}
+    />
+  );
+}
+
+function SessionContent() {
+  const view = useAtomValue(contentViewAtom);
+  const dispatch = useAtomSet(sessionActionsAtom);
+  return (
+    <TerminalContent
+      workspace={view.workspace}
+      activeTab={view.activeTab}
+      tabCount={view.tabCount}
+      loading={view.loading}
+      error={view.error}
+      onRetry={() => {
+        'background only';
+        dispatch({ type: 'reload' });
+      }}
+      onAdd={() => {
+        'background only';
+        dispatch({ type: 'addTab' });
+      }}
+    >
+      <TerminalView
+        id={view.error || view.activeTab?.kind === 'sftp' ? undefined : view.activeTab?.id}
+        sessionId={view.error ? 0 : view.terminalId}
+        error={view.terminalError}
+      />
+      {view.sftpTabs.map((tab) => (
+        <view
+          key={tab.id}
+          className={cn(
+            !view.error && view.activeTab?.id === tab.id
+              ? 'flex-1 min-h-0 flex flex-col'
+              : 'hidden',
+          )}
+        >
+          <SftpBrowser id={tab.id} host={tab.profile.host!} />
+        </view>
+      ))}
+    </TerminalContent>
+  );
+}
+
+function SessionStatus() {
+  const view = useAtomValue(statusViewAtom);
+  return <StatusBar {...view} />;
+}
+
+function SessionSettings() {
+  const view = useAtomValue(settingsViewAtom);
   const shells = useAtomValue(shellOptionsAtom);
-  const retry = useAtomRefresh(shellsAtom);
-  const { editor, view } = session;
+  const dispatch = useAtomSet(sessionActionsAtom);
   return (
     <>
       <WorkspaceContextMenu
-        menu={session.workspaceMenu}
-        canDelete={view.workspaces.length > 1}
-        busy={editor.saving}
-        error={editor.error}
-        onClose={session.closeWorkspaceMenu}
-        onEdit={session.openSettings}
-        onDelete={session.deleteWorkspace}
+        menu={view.menu}
+        canDelete={view.canDelete}
+        busy={view.editor.saving}
+        error={view.editor.error}
+        onClose={() => {
+          'background only';
+          dispatch({ type: 'closeMenu' });
+        }}
+        onEdit={(id) => {
+          'background only';
+          dispatch({ type: 'editWorkspace', id });
+        }}
+        onDelete={(id) => {
+          'background only';
+          dispatch({ type: 'deleteWorkspace', id });
+        }}
       />
       <WorkspaceSettings
-        editor={editor}
+        editor={view.editor}
         shells={shells}
-        onRetryShells={retry}
-        configPath={view.state.payload?.path}
-        environment={view.state.payload?.environment}
-        onClose={session.closeSettings}
-        onChange={session.updateDraft}
-        onSave={session.saveDraft}
+        configPath={view.configPath}
+        environment={view.environment}
+        onRetryShells={() => {
+          'background only';
+          dispatch({ type: 'retryShells' });
+        }}
+        onClose={() => {
+          'background only';
+          dispatch({ type: 'closeSettings' });
+        }}
+        onChange={(field, value) => {
+          'background only';
+          dispatch({ type: 'updateDraft', field, value });
+        }}
+        onSave={() => {
+          'background only';
+          dispatch({ type: 'saveDraft' });
+        }}
       />
     </>
   );

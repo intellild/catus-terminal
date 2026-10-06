@@ -1,5 +1,4 @@
 import { cn } from './lib/utils';
-import type { WorkspaceHost } from '../shared/workspaces';
 import {
   AppLayout,
   AppLayoutBody,
@@ -19,7 +18,7 @@ import { useFrameDriver } from './frameDriver';
 import { PopoverProvider } from './components/ui/Popover';
 import './tailwind.css';
 
-export function App({ host }: { host?: WorkspaceHost }) {
+export function App() {
   useFrameDriver();
   return (
     <AppLayout>
@@ -31,7 +30,7 @@ export function App({ host }: { host?: WorkspaceHost }) {
           />
           <AppLayoutHeaderContent>
             <background-only fallback={<TabBar loading />}>
-              <SessionRegion region="tabs" host={host} />
+              <SessionRegion region="tabs" />
             </background-only>
             <view className={cn('flex-1 min-w-[32px] h-[54px] [-x-app-region:drag]')} />
             <view className={cn('w-[1px] h-[18px] ml-[12px] mr-[16px] bg-[#363b42]')} />
@@ -49,28 +48,25 @@ export function App({ host }: { host?: WorkspaceHost }) {
             </view>
             <view className={cn('h-[1px] w-[32px] bg-[#30353b] mt-[20px] mb-[18px]')} />
             <background-only fallback={<WorkspaceList loading />}>
-              <SessionRegion region="workspaces" host={host} />
+              <SessionRegion region="workspaces" />
             </background-only>
             <text className={cn('text-[8px] text-[#6e7784] tracking-[1px] mt-[13px]')}>CATUS</text>
           </AppLayoutSidebar>
           <AppLayoutMain>
             <AppLayoutContent>
               <background-only fallback={<TerminalContent loading />}>
-                <SessionRegion region="content" host={host} />
+                <SessionRegion region="content" />
               </background-only>
             </AppLayoutContent>
             <AppLayoutFooter>
               <background-only fallback={<StatusBar />}>
-                <SessionRegion region="status" host={host} />
+                <SessionRegion region="status" />
               </background-only>
             </AppLayoutFooter>
           </AppLayoutMain>
         </AppLayoutBody>
         <background-only>
-          <SessionRegion region="settings" host={host} />
-        </background-only>
-        <background-only>
-          <SessionRegion region="bootstrap" host={host} />
+          <SessionRegion region="settings" />
         </background-only>
       </PopoverProvider>
     </AppLayout>

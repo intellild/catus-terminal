@@ -11,6 +11,10 @@
 首帧渲染窗口骨架。tab、workspace 列表、内容、状态栏和设置各有独立的
 `<background-only>` 边界及首帧 fallback。`state/SessionRegion.tsx` 为这些区域
 提供同一个应用级 Effect registry；Effect 和配置加载只在 BTS 运行。
+`index.tsx` 在 BTS 入口启动 `state/sessionRuntime.ts`，不依赖 React 挂载。
+配置加载、保存、workspace/tab/编辑操作由 `sessionActions.ts` 的 action atoms 执行；
+各区域只订阅 `sessionViews.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
+Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会停止它们。
 `runtime.ts` 在 Effect 加载前通过 preload 工厂安装 Node.js 原生
 `TextEncoder` / `TextDecoder`，不需要第三方编码 polyfill。
 
@@ -84,8 +88,14 @@ tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动�
 App.tsx / components/AppLayout.tsx
   主线程首帧：窗口骨架 + 各区域 fallback
        ↓
-state/SessionRegion.tsx
-  BTS 初始化共享 registry，bootstrap 只加载一次配置
+index.tsx → state/sessionRuntime.ts
+  BTS 启动独立 registry，每个 registry 只初始化一次
+       ↓
+state/sessionActions.ts
+  action atom 加载/保存配置，执行 workspace/tab/编辑操作
+       ↓
+state/sessionViews.ts → state/SessionRegion.tsx
+  各区域订阅自己的视图 atom，发送操作指令
        ↓
 TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
   各自接收状态及事件，更新对应区域
@@ -437,7 +447,9 @@ src/app/App.tsx                         组合静态 layout 和各区域的后�
 src/app/components/AppLayout.tsx       主线程首帧布局骨架与窗口 tab 栏
 src/app/components/                    tab、workspace、内容、状态栏、设置的展示组件
 src/app/state/SessionRegion.tsx        各区域 BTS 边界共享同一个 Effect registry
-src/app/state/useWorkspaceSession.ts   配置加载与 workspace/tab/设置操作
+src/app/state/sessionRuntime.ts        BTS 入口启动的独立 atom runtime
+src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/设置操作
+src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
 src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell

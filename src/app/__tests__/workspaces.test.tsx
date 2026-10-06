@@ -5,6 +5,7 @@ import defaults from '../../../tests/fixtures/workspaces.json';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
+import { startSessionRuntime } from '../state/sessionRuntime';
 import { closeTab, sessionAtom } from '../state/session';
 import type { TerminalHost } from '../state/terminalSessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
@@ -119,9 +120,14 @@ function makeHost() {
   return host;
 }
 
+function renderApp(host = makeHost()) {
+  act(() => startSessionRuntime(sessionRegistry, host));
+  return render(<App />, { enableMainThread: true });
+}
+
 test('main-thread first frame renders the layout and region fallbacks without loading the host', () => {
   const host = makeHost();
-  render(<App host={host} />, { enableMainThread: true, enableBackgroundThread: false });
+  render(<App />, { enableMainThread: true, enableBackgroundThread: false });
   const root = elementTree.root!;
   for (const id of [
     'application-layout',
@@ -145,7 +151,7 @@ test('the native view stays mounted through empty/loading/error states with one 
   Object.assign(main, { requestAnimationFrame: raf, __InvokeUIMethod: invoke });
   const host = makeHost();
   rstest.mocked(host.loadWorkspaces).mockRejectedValueOnce(new Error('Temporary config error'));
-  const { unmount } = render(<App host={host} />, { enableMainThread: true });
+  const { unmount } = renderApp(host);
   const root = elementTree.root!;
   await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
   const surface = root.querySelector('#terminal-surface')!;
@@ -164,7 +170,7 @@ test('the native view stays mounted through empty/loading/error states with one 
 });
 
 test('Lynx tabs and dock indicators follow workspace startup, switching, creation and closing', async () => {
-  render(<App host={makeHost()} />, { enableMainThread: true });
+  renderApp();
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
@@ -217,7 +223,7 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
 
 test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {
   const host = makeHost();
-  render(<App host={host} />, { enableMainThread: true });
+  renderApp(host);
   const root = elementTree.root!;
   await waitForTerminal();
   openEditor(root);
@@ -255,7 +261,7 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {
   const host = makeHost();
-  render(<App host={host} />, { enableMainThread: true });
+  renderApp(host);
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
@@ -277,14 +283,14 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
 });
 
 test('React unmount and remount preserve global sessions; atom writes release them', async () => {
-  const { unmount } = render(<App host={makeHost()} />, { enableMainThread: true });
+  const { unmount } = renderApp();
   await waitForTerminal();
   const host = NativeModules.nodejs.exposed as TerminalHost;
   const id = rstest.mocked(host.createTerminalSession).mock.calls[0]![0];
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
   unmount();
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
-  render(<App host={makeHost()} />, { enableMainThread: true });
+  renderApp();
   await waitForTerminal();
   expect(host.createTerminalSession).toHaveBeenCalledOnce();
   expect(
@@ -296,7 +302,7 @@ test('React unmount and remount preserve global sessions; atom writes release th
 });
 
 test('terminal forwards control keys to the native PTY and keeps macOS shortcuts with the host', async () => {
-  render(<App host={makeHost()} />, { enableMainThread: true });
+  renderApp();
   await waitForTerminal();
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const invoke = rstest.spyOn(Object.getPrototypeOf(query.selectUniqueID(0)), 'invoke');
@@ -364,7 +370,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
       workspaces: [{ ...payload.config.workspaces[0]!, type: 'ssh', host: 'test-alias' }],
     },
   });
-  render(<App host={host} />, { enableMainThread: true });
+  renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
   const surface = root.querySelector('#terminal-surface');
@@ -392,7 +398,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
 
 test('shell Select loads candidates, saves a selected shell and allows a custom remote command', async () => {
   const host = makeHost();
-  render(<App host={host} />, { enableMainThread: true });
+  renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
   openEditor(root);
@@ -430,7 +436,7 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
 
 test('right-click edits an inactive workspace without starting it; failed deletion can retry', async () => {
   const host = makeHost();
-  render(<App host={host} />, { enableMainThread: true });
+  renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
   const terminal = NativeModules.nodejs.exposed as TerminalHost;
