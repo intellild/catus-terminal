@@ -1,7 +1,8 @@
-#include "NativeFrameCallbacks.h"
-#include "catus-native/src/platform/macos/frame.rs.h"
+#pragma once
+
+#include "common/NativeFrameCallbacks.h"
+#include "platform/RustBridge.h"
 #include <lynx_native_view.h>
-#include "catus-native/src/platform/macos/terminal.rs.h"
 #include "rust/cxx.h"
 
 #include <cmath>
@@ -11,7 +12,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace {
+namespace catus {
 using lynx::pub::LynxValue;
 
 class NativeTerminalView : public lynx::pub::LynxNativeView {
@@ -144,6 +145,11 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     callback(kMethodNotFound, LynxValue(LynxValue::kCreateAsNullTag));
   }
 
+ protected:
+  // The platform lends a native buffer to Rust and waits for GPU completion.
+  virtual bool RenderSurface(TerminalHandle& terminal, const Viewport& viewport,
+                             int64_t deadline) = 0;
+
  private:
   void UpdateFrameLoop() {
     frame_registration_->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
@@ -165,13 +171,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       return false;
     }
     try {
-      // Lynx owns the IOSurface. Rust imports it and finishes GPU writes before return.
-      auto* surface = AcquireSurface(viewport_.width, viewport_.height);
-      if (surface == nullptr) {
-        error_ = "Lynx back buffer is unavailable";
-        return false;
-      }
-      if (!(*terminal_)->render_surface(reinterpret_cast<uintptr_t>(surface), deadline)) return true;
+      if (!RenderSurface(**terminal_, viewport_, deadline)) return true;
       if (catus::monotonic_now_ns() >= deadline) {
         (*terminal_)->invalidate_frame();
         return true;
@@ -185,7 +185,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       MarkDirty();
       FocusAfterFirstFrame();
       return true;
-    } catch (const rust::Error& error) {
+    } catch (const std::exception& error) {
       error_ = error.what();
       return false;
     }
@@ -203,9 +203,4 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   std::string error_;
 };
 
-}  // namespace
-
-lynx_native_view_t* catus::CreateNativeTerminalView(void* opaque) {
-  auto host = static_cast<NativeFrameCallbacks*>(opaque)->shared_from_this();
-  return (new NativeTerminalView(std::move(host)))->native_view();
-}
+}  // namespace catus

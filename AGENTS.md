@@ -99,7 +99,8 @@ Read the docs below in advance to help you understand the library or frameworks 
     The budget starts at N-API receipt, not the JS timestamp or display target.
     Future native frame sources call dispatch_frame_callbacks(deadline) directly.
     The native RAF probe, project-owned CADisplayLink and timer were removed.
-    `NativeFrameCallbacks.h/mm` owns the per-window Rust registry and UI adapter.
+    `cxx/common/NativeFrameCallbacks.h/cc` owns the per-window Rust registry and callback target;
+    `cxx/platform/macos/UiThread.h` supplies main-queue posting and UI-thread checks.
     Check the monotonic target deadline before each callback, GPU submission and
     presentation. Busy view/session/grid/atlas locks drop the tick without waiting.
     Submitted GPU work must finish before returning the borrowed Lynx buffer, even
@@ -117,7 +118,7 @@ Read the docs below in advance to help you understand the library or frameworks 
     rebinding a view must never clear the global atlas.
     `src/frame.rs` defines the shared cxx `Viewport`. Platform adapters provide
     wgpu textures through a target-preparation callback; no OS handles reach renderer.rs.
-    `cxx/NativeTerminalMacOS.mm` acquires the buffer using its cached layout, then
+    `cxx/platform/macos/NativeTerminalView.mm` acquires the buffer using its cached layout, then
     calls Rust `render_surface(iosurface, deadline)`. Shared Rust code checks contention, idle revisions and dimensions;
     `platform/macos/surface.rs` validates pixel layout and imports the IOSurface
     using the shared Metal device. The renderer waits for GPU completion. C++ only swaps
@@ -149,7 +150,10 @@ Read the docs below in advance to help you understand the library or frameworks 
     Keep crossfont platform defaults; custom grayscale AA is deferred.
   - `src/tests/`: External unit-test modules for errors, atlas, fonts, terminal grids, PTYs and Metal rendering;
     attached as child modules so private implementation stays private.
-  - `cxx/`: All C++ / Objective-C++ components and the single CMake target.
+  - `cxx/`: Single CMake target. `common/` owns terminal lifecycle, layout, props,
+    input methods, frame targets and Lynx extension registration. `platform/` selects
+    UI/bridge adapters; `platform/macos/` owns IOSurface rendering and main-queue dispatch.
+    Only platform adapters may use OS headers.
   - `build.mjs`: napi-rs CLI build entry; `index.cjs` and `lynx.lib.json` support AutoLink.
   - Register ordinary additional elements with unique module/tag names via `LYNX_REGISTER_ELEMENT`;
     terminal uses a custom extension module for view registration.

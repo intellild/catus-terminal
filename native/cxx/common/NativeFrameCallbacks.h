@@ -6,8 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <cassert>
-#include <pthread.h>
-#include <dispatch/dispatch.h>
+#include "platform/UiThread.h"
 
 typedef struct lynx_native_view_ lynx_native_view_t;
 
@@ -22,7 +21,7 @@ struct NativeFrameTarget {
     render_ = std::move(render);
   }
   void Render(int64_t deadline) const {
-    assert(pthread_main_np());
+    assert(IsUiThread());
     std::lock_guard lock(mutex_);
     if (render_) render_(deadline);
   }
@@ -37,15 +36,6 @@ inline int64_t monotonic_now_ns() {
 }
 inline void render_target(const NativeFrameTarget& target, int64_t deadline) {
   target.Render(deadline);
-}
-
-// The only platform adapter: deliver a signal to UI, then let Rust dispatch.
-void dispatch_frame_callbacks(int64_t deadline) noexcept;
-inline void post_frame_to_ui(int64_t deadline) {
-  dispatch_async_f(dispatch_get_main_queue(), new int64_t(deadline), [](void* context) {
-    std::unique_ptr<int64_t> deadline(static_cast<int64_t*>(context));
-    dispatch_frame_callbacks(*deadline);
-  });
 }
 
 class NativeFrameCallbacks : public std::enable_shared_from_this<NativeFrameCallbacks> {

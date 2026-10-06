@@ -41,9 +41,15 @@ native/
   licenses/ALACRITTY-MIT.txt     atlas 来源的 MIT 文本
   cxx/
     CMakeLists.txt             项目 C++ 静态库的源文件清单
-    NativeTerminalMacOS.mm     IOSurface/Metal 桥接和 terminal view
-    NativeTerminalRegistration.mm  extension 生命周期和 terminal view 注册
-    NativeFrameCallbacks.h/mm  Rust 注册对象与 native render callback
+    common/
+      NativeFrameCallbacks.h/cc  Rust 回调对象与平台无关 callback target
+      NativeTerminalView.h       session、layout、props、输入和帧生命周期
+      NativeTerminalRegistration.cc  Lynx extension 注册与窗口生命周期
+    platform/
+      UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
+      macos/
+        NativeTerminalView.mm   借用 IOSurface 并交给 Rust 渲染
+        UiThread.h              主队列调度与 UI 线程检查
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型

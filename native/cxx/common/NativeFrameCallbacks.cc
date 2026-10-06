@@ -1,5 +1,5 @@
-#include "NativeFrameCallbacks.h"
-#include "catus-native/src/platform/macos/frame.rs.h"
+#include "common/NativeFrameCallbacks.h"
+#include "platform/RustBridge.h"
 
 namespace catus {
 NativeFrameCallbacks::NativeFrameCallbacks() : callbacks_(create_frame_callbacks()) {}

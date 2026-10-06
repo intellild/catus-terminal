@@ -119,7 +119,7 @@ state/session.ts / terminalSessions.ts / preload.ts（BTS）
 NativeTerminalView.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
        ↓
-NativeTerminalMacOS.mm / OnLayoutChanged
+cxx/common/NativeTerminalView.h / OnLayoutChanged
   逻辑尺寸 × backing scale → 字体 advance、line height / leading → 行列 / PTY resize
        ↓
 terminal_core/pty.rs（独立读线程）
@@ -128,7 +128,7 @@ terminal_core/pty.rs（独立读线程）
 frameDriver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs
   dispatchAnimationFrame() → UI → Rust 全局回调注册对象
        ↓
-NativeTerminalMacOS.mm（同一 UI 线程）
+cxx/platform/macos/NativeTerminalView.mm（同一 UI 线程）
   按缓存 layout 获取 Lynx IOSurface → render_surface(iosurface, deadline)
        ↓
 terminal_view.rs
@@ -287,7 +287,7 @@ text/glyph_renderer.rs
   共享 pipeline / sampler / 页 bind group
   每个 session 独立 instance buffer
        ↓
-NativeTerminalMacOS.mm / terminal_view.rs
+cxx/common/NativeTerminalView.h / terminal_view.rs
   Lynx layout → Rust resize；C++ 直接传 IOSurface + deadline
        ↓
 platform/macos/terminal.rs / surface.rs
@@ -449,9 +449,15 @@ native/
   build.mjs                           napi-rs 构建入口，输出扩展和 TypeScript 声明
   cxx/
     CMakeLists.txt                    仅生成项目 C++ 静态库
-    NativeTerminalMacOS.mm             获取 Lynx IOSurface，交给 Rust 渲染并呈现
-    NativeTerminalRegistration.mm      extension 生命周期和 terminal view 注册
-    NativeFrameCallbacks.h/mm          Rust 回调注册对象和 C++ 渲染目标
+    common/
+      NativeTerminalView.h             session、props、layout、输入和帧生命周期
+      NativeTerminalRegistration.cc    Lynx extension 注册与窗口生命周期
+      NativeFrameCallbacks.h/cc        Rust 回调对象和通用 render target
+    platform/
+      UiThread.h / RustBridge.h        按平台选择适配器
+      macos/
+        NativeTerminalView.mm          获取 Lynx IOSurface，交给 Rust 渲染
+        UiThread.h                     主队列调度和 UI 线程检查
 ```
 
 `@catus/native` 是整个项目的 native 包。新增组件只需将 C++ 源码加入

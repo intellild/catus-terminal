@@ -6,7 +6,7 @@ use crate::frame_callbacks::{
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
     unsafe extern "C++" {
-        include!("NativeFrameCallbacks.h");
+        include!("common/NativeFrameCallbacks.h");
         type NativeFrameTarget;
         fn render_target(target: &NativeFrameTarget, deadline: i64);
         fn monotonic_now_ns() -> i64;
