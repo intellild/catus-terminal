@@ -3,7 +3,7 @@ import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import type { WorkspaceConfig, WorkspaceConfigPayload } from '../../shared/workspaces';
-import { editorAtom, loadAtom, sessionAtom } from '../state/session';
+import { editorAtom, loadAtom, sessionAtom, allTabsAtom, tabAtom } from '../state/session';
 import { sessionActionsAtom } from '../state/sessionActions';
 import type { SessionAction } from '../state/sessionActions';
 import { startSessionRuntime } from '../state/sessionRuntime';
@@ -54,7 +54,7 @@ test('startup, shell detection and workspace actions run without React or UI sub
   );
   dispatch({ type: 'openWorkspace', id: 'local' });
   dispatch({ type: 'addTab' });
-  expect(registry.get(sessionAtom).tabs.map((tab) => tab.id)).toEqual([1, 2, 3]);
+  expect(registry.get(allTabsAtom).map((tab) => tab.id)).toEqual([1, 2, 3]);
   dispatch({ type: 'closeTab', id: 2 });
   expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2);
   dispatch({ type: 'editWorkspace', id: 'local' });
@@ -76,17 +76,11 @@ test('startup, shell detection and workspace actions run without React or UI sub
       ?.name,
   ).toBe('Renamed local');
   dispatch({ type: 'addTab' });
-  expect(registry.get(sessionAtom).tabs.at(-1)?.profile.name).toBe('Renamed local');
+  expect(registry.get(allTabsAtom).at(-1)?.profile.name).toBe('Renamed local');
   dispatch({ type: 'deleteWorkspace', id: 'local' });
-  await rstest.waitFor(() =>
-    expect(
-      registry
-        .get(sessionAtom)
-        .payload?.config.workspaces.some((workspace) => workspace.id === 'local'),
-    ).toBe(false),
-  );
+  await rstest.waitFor(() => expect(registry.get(sessionAtom).workspaceIds).not.toContain('local'));
   expect(terminal.closeTerminalSession.mock.calls).toEqual([[2], [3], [4]]);
-  expect(registry.get(sessionAtom).tabs.map((tab) => tab.id)).toEqual([1]);
+  expect(registry.get(allTabsAtom).map((tab) => tab.id)).toEqual([1]);
 });
 
 test('configuration retry cancels stale responses; disposed runtimes never create sessions', async () => {
@@ -172,16 +166,9 @@ test('tab families notify only changed items; selection leaves the tab list unch
   expect(items[2]!.changed).toHaveBeenCalledOnce();
   expect(listChanged).not.toHaveBeenCalled();
   items.forEach(({ changed }) => changed.mockClear());
-  registry.update(sessionAtom, (state) => ({
-    ...state,
-    tabs: state.tabs.map((tab) =>
-      tab.id === 2
-        ? {
-            ...tab,
-            profile: { ...tab.profile, name: 'Updated tab' },
-          }
-        : tab,
-    ),
+  registry.update(tabAtom(2), (tab) => ({
+    ...tab!,
+    profile: { ...tab!.profile, name: 'Updated tab' },
   }));
   expect(registry.get(tabViewAtom(2)).tab?.profile.name).toBe('Updated tab');
   expect(items[0]!.changed).not.toHaveBeenCalled();

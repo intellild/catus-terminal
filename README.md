@@ -15,7 +15,10 @@ Provider 精确导入 `@effect/atom-react/RegistryContext`，各区域继承应�
 主线程只创建空 registry，业务 atom、配置加载及 Node 编码器适配只在 BTS 运行。
 `index.tsx` 在 BTS 入口启动 `state/sessionRuntime.ts`，不依赖 React 挂载。
 配置加载、保存、workspace/tab/编辑操作由 `sessionActions.ts` 的 action atoms 执行；
-各区域只订阅 `sessionViews.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
+全局状态仅保存 workspace ID 顺序和当前 workspace ID；`workspaceAtom(id)` family
+保存每个 workspace 的配置、`tabIds` 和 `activeTabId`，不通过筛选全局 tabs 推导归属。
+`tabAtom(id)` family 保存 tab 数据，TabItem 只接收 ID 并独立订阅 `tabViewAtom(id)`。
+各区域订阅 `sessionViews.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
 Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会停止它们。
 `runtime.ts` 在 Effect 加载前通过 preload 工厂安装 Node.js 原生
 `TextEncoder` / `TextDecoder`，不需要第三方编码 polyfill。
@@ -49,8 +52,7 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 纯上下文组件（如 Form、FormField、Select、Popover）由可视子组件承接样式。
 
 按钮统一使用 `components/ui/Button.tsx`，提供 shadcn 风格的 `variant` / `size`，
-通过 `cva` 和 `cn` 合并 Tailwind 样式。Hover 使用 Lynx `mouseenter` / `mouseleave`
-事件；`disabled` 同时阻止点击和 hover。普通文字 children 自动包进 `<text>`，
+通过 `cva` 和 `cn` 合并 Tailwind 样式。Hover 使用 CSS `:hover`（Tailwind `hover:`）；`disabled` 同时阻止点击和 hover。普通文字 children 自动包进 `<text>`，
 原生 ref 会转发到 `<view>`，供 Select / Popover 定位。
 
 ```tsx

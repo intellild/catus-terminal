@@ -1,22 +1,30 @@
 import 'background-only';
 import * as Atom from 'effect/reactivity/Atom';
 import type { TerminalTab } from './session';
-import { editorAtom, loadAtom, sessionAtom, sessionViewAtom, workspaceMenuAtom } from './session';
+import {
+  editorAtom,
+  loadAtom,
+  sessionAtom,
+  sessionViewAtom,
+  workspaceMenuAtom,
+  activeWorkspaceAtom,
+  activeWorkspaceIdAtom,
+  workspaceAtom,
+  tabAtom,
+  allTabsAtom,
+} from './session';
 
 const payloadAtom = Atom.make((get) => get(sessionAtom).payload);
 
 export const tabsViewAtom = Atom.make((get) => {
-  const state = get(sessionAtom);
-  const workspace = state.payload?.config.workspaces.find(
-    (workspace) => workspace.id === state.activeWorkspaceId,
-  );
+  const workspace = get(activeWorkspaceAtom);
   return {
-    tabIds: state.tabs.filter((tab) => tab.workspaceId === workspace?.id).map((tab) => tab.id),
-    ssh: workspace?.type === 'ssh',
+    tabIds: workspace?.tabIds ?? [],
+    ssh: workspace?.profile.type === 'ssh',
     loading: get(loadAtom).loading,
   };
 }).pipe(
-  Atom.withEquality<{ tabIds: number[]; ssh: boolean; loading: boolean }>(
+  Atom.withEquality<{ tabIds: readonly number[]; ssh: boolean; loading: boolean }>(
     (a, b) =>
       a.ssh === b.ssh &&
       a.loading === b.loading &&
@@ -27,14 +35,12 @@ export const tabsViewAtom = Atom.make((get) => {
 
 export const tabViewAtom = Atom.family((id: number) =>
   Atom.make((get) => {
-    const state = get(sessionAtom);
-    const tab = state.tabs.find((tab) => tab.id === id);
+    const tab = get(tabAtom(id));
+    const workspace = tab ? get(workspaceAtom(tab.workspaceId)) : undefined;
     return {
       tab,
       active:
-        !!tab &&
-        state.activeWorkspaceId === tab.workspaceId &&
-        state.activeTabs[tab.workspaceId] === id,
+        !!tab && get(activeWorkspaceIdAtom) === tab.workspaceId && workspace?.activeTabId === id,
     };
   }).pipe(
     Atom.withEquality<{ tab: TerminalTab | undefined; active: boolean }>(
@@ -53,28 +59,32 @@ export const workspacesViewAtom = Atom.make((get) => {
   };
 });
 export const contentViewAtom = Atom.make((get) => {
-  const { workspace, activeTab, tabs, state, terminalId, terminalError } = get(sessionViewAtom);
+  const { workspace, activeTab, tabs, terminalId, terminalError } = get(sessionViewAtom);
   const load = get(loadAtom);
   return {
     workspace,
     activeTab,
     tabCount: tabs.length,
-    sftpTabs: state.tabs.filter((tab) => tab.kind === 'sftp'),
+    sftpTabs: get(allTabsAtom).filter((tab) => tab.kind === 'sftp'),
     terminalId,
     terminalError,
     ...load,
   };
 });
 export const statusViewAtom = Atom.make((get) => {
-  const { runningIds, state, activeTab } = get(sessionViewAtom);
-  return { workspaceCount: runningIds.size, tabCount: state.tabs.length, hasSession: !!activeTab };
+  const { runningIds, activeTab } = get(sessionViewAtom);
+  return {
+    workspaceCount: runningIds.size,
+    tabCount: get(allTabsAtom).length,
+    hasSession: !!activeTab,
+  };
 });
 export const settingsViewAtom = Atom.make((get) => {
   const payload = get(payloadAtom);
   return {
     editor: get(editorAtom),
     menu: get(workspaceMenuAtom),
-    canDelete: (payload?.config.workspaces.length ?? 0) > 1,
+    canDelete: get(sessionAtom).workspaceIds.length > 1,
     configPath: payload?.path,
     environment: payload?.environment,
   };

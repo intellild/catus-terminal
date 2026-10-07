@@ -6,7 +6,7 @@ import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
 import { startSessionRuntime } from '../state/sessionRuntime';
-import { closeTab, sessionAtom } from '../state/session';
+import { closeTab } from '../state/session';
 import type { TerminalHost } from '../state/terminalSessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
@@ -332,7 +332,7 @@ test('React unmount and remount preserve global sessions; atom writes release th
   expect(
     Number(elementTree.root!.querySelector('#terminal-surface')!.getAttribute('terminal-id')),
   ).toBe(id);
-  act(() => sessionRegistry.update(sessionAtom, (state) => closeTab(state, id)));
+  act(() => closeTab(sessionRegistry, id));
   expect(host.closeTerminalSession).toHaveBeenCalledOnce();
   expect(host.closeTerminalSession).toHaveBeenCalledWith(id);
 });

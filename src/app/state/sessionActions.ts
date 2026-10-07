@@ -17,6 +17,7 @@ import {
   selectWorkspace,
   sessionAtom,
   workspaceMenuAtom,
+  workspaceProfilesAtom,
 } from './session';
 import type { WorkspaceDraft } from './session';
 import { nativeWorkspaceHost, workspaceHostAtom } from './workspaceHost';
@@ -34,7 +35,7 @@ export const loadWorkspacesAtom = Atom.fn<void>()((_, get) =>
       catch: (error) => error,
     });
     yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
-    get.set(sessionAtom, applyConfig(get(sessionAtom), payload));
+    applyConfig(get.registry, payload);
     get.set(loadAtom, { loading: false, error: '' });
   }).pipe(
     Effect.catch((error) =>
@@ -60,7 +61,7 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
       catch: (error) => error,
     });
     yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
-    get.set(sessionAtom, applyConfig(get(sessionAtom), payload));
+    applyConfig(get.registry, payload);
     get.set(editorAtom, { ...get(editorAtom), open: false, saving: false, error: '' });
     get.set(workspaceMenuAtom, null);
   }).pipe(
@@ -93,26 +94,27 @@ export type SessionAction =
 // All commands read the current registry state; no React closure owns business state.
 export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => {
   const state = get(sessionAtom);
-  const workspaces = state.payload?.config.workspaces ?? [];
+  const workspaces = get(workspaceProfilesAtom);
+  const store = get.registry;
   const editor = get(editorAtom);
   switch (action.type) {
     case 'reload':
       get.set(loadWorkspacesAtom, undefined);
       return;
     case 'addTab':
-      get.set(sessionAtom, newTab(state));
+      newTab(store);
       return;
     case 'addSftpTab':
-      get.set(sessionAtom, newTab(state, state.activeWorkspaceId, 'sftp'));
+      newTab(store, state.activeWorkspaceId, 'sftp');
       return;
     case 'openWorkspace':
-      get.set(sessionAtom, selectWorkspace(state, action.id));
+      selectWorkspace(store, action.id);
       return;
     case 'focusTab':
-      get.set(sessionAtom, selectTab(state, action.id));
+      selectTab(store, action.id);
       return;
     case 'closeTab':
-      get.set(sessionAtom, closeTab(state, action.id));
+      closeTab(store, action.id);
       return;
     case 'retryShells':
       get.refresh(shellsAtom);

@@ -1,5 +1,6 @@
 import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
+import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import { terminalSessionsAtom } from './terminalSessions';
 import type { Workspace, WorkspaceConfigPayload } from '../../shared/workspaces';
 
@@ -11,112 +12,193 @@ export interface TerminalTab {
   // Snapshot launch options: edits affect new tabs, not existing sessions.
   readonly profile: Workspace;
 }
-export interface SessionState {
-  readonly payload: WorkspaceConfigPayload | null;
-  readonly activeWorkspaceId: string | null;
-  readonly tabs: readonly TerminalTab[];
-  readonly activeTabs: Readonly<Record<string, number>>;
-  readonly nextTab: number;
-  readonly terminalErrors: Readonly<Record<number, string>>;
+export interface WorkspaceState {
+  readonly profile: Workspace;
+  readonly tabIds: readonly number[];
+  readonly activeTabId: number | undefined;
 }
-export const emptySession: SessionState = {
+export interface SessionState {
+  readonly payload: Omit<WorkspaceConfigPayload, 'config'> | null;
+  readonly workspaceIds: readonly string[];
+  readonly activeWorkspaceId: string | null;
+  readonly nextTab: number;
+}
+export const sessionAtom = Atom.make<SessionState>({
   payload: null,
+  workspaceIds: [],
   activeWorkspaceId: null,
-  tabs: [],
-  activeTabs: {},
   nextTab: 1,
-  terminalErrors: {},
-};
-// Every write reconciles native ownership before publishing the next UI state.
-export const sessionAtom = Atom.writable<SessionState, SessionState>(
-  (get) => {
-    get.mount(terminalSessionsAtom);
-    return emptySession;
-  },
-  (get, state) => {
-    const terminalErrors = get
-      .get(terminalSessionsAtom)
-      .reconcile(state.tabs, state.payload?.environment);
-    get.setSelf({ ...state, terminalErrors });
-  },
-).pipe(Atom.keepAlive);
+}).pipe(Atom.keepAlive);
+
+// Workspace membership is owned by each workspace, never inferred from tabs.
+export const workspaceAtom = Atom.family((_id: string) =>
+  Atom.make<WorkspaceState | undefined>(undefined).pipe(Atom.keepAlive),
+);
+export const tabAtom = Atom.family((_id: number) =>
+  Atom.make<TerminalTab | undefined>(undefined).pipe(Atom.keepAlive),
+);
+export const terminalErrorsAtom = Atom.make<Readonly<Record<number, string>>>({}).pipe(
+  Atom.keepAlive,
+);
 export const loadAtom = Atom.make({ loading: true, error: '' }).pipe(Atom.keepAlive);
+export const workspaceIdsAtom = Atom.make((get) => get(sessionAtom).workspaceIds);
+export const activeWorkspaceIdAtom = Atom.make((get) => get(sessionAtom).activeWorkspaceId);
+export const activeWorkspaceAtom = Atom.make((get) => {
+  const id = get(activeWorkspaceIdAtom);
+  return id === null ? undefined : get(workspaceAtom(id));
+});
+export const workspaceProfilesAtom = Atom.make((get) =>
+  get(workspaceIdsAtom).map((id) => get(workspaceAtom(id))!.profile),
+).pipe(
+  Atom.withEquality<readonly Workspace[]>(
+    (a, b) => a.length === b.length && a.every((profile, index) => profile === b[index]),
+  ),
+);
+export const allTabsAtom = Atom.make((get) =>
+  get(workspaceIdsAtom).flatMap((id) =>
+    get(workspaceAtom(id))!.tabIds.map((tabId) => get(tabAtom(tabId))!),
+  ),
+).pipe(
+  Atom.withEquality<readonly TerminalTab[]>(
+    (a, b) => a.length === b.length && a.every((tab, index) => tab === b[index]),
+  ),
+);
+
+type SessionAccess = Pick<AtomRegistry, 'get' | 'set'>;
+function reconcileSessions(store: SessionAccess) {
+  const state = store.get(sessionAtom);
+  // Read writable family values directly inside a batch: derived atoms may
+  // retain their previous cached value until the batch flushes notifications.
+  const tabs = state.workspaceIds.flatMap((id) =>
+    store.get(workspaceAtom(id))!.tabIds.map((tabId) => store.get(tabAtom(tabId))!),
+  );
+  const errors = store.get(terminalSessionsAtom).reconcile(tabs, state.payload?.environment);
+  store.set(terminalErrorsAtom, errors);
+}
 
 export function newTab(
-  state: SessionState,
-  workspaceId = state.activeWorkspaceId,
+  store: SessionAccess,
+  workspaceId = store.get(sessionAtom).activeWorkspaceId,
   kind: TerminalTab['kind'] = 'terminal',
-): SessionState {
-  const profile = state.payload?.config.workspaces.find(
-    (workspace) => workspace.id === workspaceId,
-  );
-  if (!profile || (kind === 'sftp' && profile.type !== 'ssh')) return state;
-  const number = state.nextTab;
-  if (number > 0xffffffff) throw new Error('Terminal session IDs exhausted');
-  const tab: TerminalTab = { id: number, workspaceId: profile.id, number, profile, kind };
-  return {
-    ...state,
-    activeWorkspaceId: profile.id,
-    tabs: [...state.tabs, tab],
-    activeTabs: { ...state.activeTabs, [profile.id]: tab.id },
-    nextTab: number + 1,
-  };
+): void {
+  if (workspaceId === null) return;
+  const workspace = store.get(workspaceAtom(workspaceId));
+  if (!workspace || (kind === 'sftp' && workspace.profile.type !== 'ssh')) return;
+  const state = store.get(sessionAtom);
+  const id = state.nextTab;
+  if (id > 0xffffffff) throw new Error('Terminal session IDs exhausted');
+  Atom.batch(() => {
+    store.set(tabAtom(id), { id, workspaceId, number: id, profile: workspace.profile, kind });
+    store.set(workspaceAtom(workspaceId), {
+      ...workspace,
+      tabIds: [...workspace.tabIds, id],
+      activeTabId: id,
+    });
+    store.set(sessionAtom, { ...state, activeWorkspaceId: workspaceId, nextTab: id + 1 });
+    reconcileSessions(store);
+  });
 }
-export function selectWorkspace(state: SessionState, id: string): SessionState {
-  if (!state.payload?.config.workspaces.some((workspace) => workspace.id === id)) return state;
-  const tabs = state.tabs.filter((tab) => tab.workspaceId === id);
-  if (!tabs.length) return newTab(state, id);
-  const active = tabs.find((tab) => tab.id === state.activeTabs[id]) ?? tabs[0]!;
-  return { ...state, activeWorkspaceId: id, activeTabs: { ...state.activeTabs, [id]: active.id } };
+export function selectWorkspace(store: SessionAccess, id: string): void {
+  const workspace = store.get(workspaceAtom(id));
+  if (!workspace) return;
+  if (!workspace.tabIds.length) return newTab(store, id);
+  const state = store.get(sessionAtom);
+  if (state.activeWorkspaceId !== id) store.set(sessionAtom, { ...state, activeWorkspaceId: id });
 }
-export function selectTab(state: SessionState, id: number): SessionState {
-  const tab = state.tabs.find((tab) => tab.id === id);
-  return tab
-    ? {
-        ...state,
-        activeWorkspaceId: tab.workspaceId,
-        activeTabs: { ...state.activeTabs, [tab.workspaceId]: tab.id },
+export function selectTab(store: SessionAccess, id: number): void {
+  const tab = store.get(tabAtom(id));
+  if (!tab) return;
+  const workspace = store.get(workspaceAtom(tab.workspaceId));
+  if (!workspace || !workspace.tabIds.includes(id)) return;
+  Atom.batch(() => {
+    if (workspace.activeTabId !== id)
+      store.set(workspaceAtom(tab.workspaceId), { ...workspace, activeTabId: id });
+    const state = store.get(sessionAtom);
+    if (state.activeWorkspaceId !== tab.workspaceId)
+      store.set(sessionAtom, { ...state, activeWorkspaceId: tab.workspaceId });
+  });
+}
+export function closeTab(store: SessionAccess, id: number): void {
+  const tab = store.get(tabAtom(id));
+  if (!tab) return;
+  const workspace = store.get(workspaceAtom(tab.workspaceId));
+  if (!workspace) return;
+  const index = workspace.tabIds.indexOf(id);
+  const tabIds = workspace.tabIds.filter((tabId) => tabId !== id);
+  Atom.batch(() => {
+    store.set(workspaceAtom(tab.workspaceId), {
+      ...workspace,
+      tabIds,
+      activeTabId:
+        workspace.activeTabId === id
+          ? tabIds[Math.min(index, tabIds.length - 1)]
+          : workspace.activeTabId,
+    });
+    store.set(tabAtom(id), undefined);
+    // Closing the final tab leaves the empty workspace selected.
+    reconcileSessions(store);
+  });
+}
+export function applyConfig(store: SessionAccess, payload: WorkspaceConfigPayload): void {
+  const state = store.get(sessionAtom);
+  const workspaceIds = payload.config.workspaces.map((workspace) => workspace.id);
+  Atom.batch(() => {
+    for (const id of state.workspaceIds) {
+      if (workspaceIds.includes(id)) continue;
+      const workspace = store.get(workspaceAtom(id))!;
+      for (const tabId of workspace.tabIds) store.set(tabAtom(tabId), undefined);
+      store.set(workspaceAtom(id), undefined);
+    }
+    for (const profile of payload.config.workspaces) {
+      const previous = store.get(workspaceAtom(profile.id));
+      if (!previous) {
+        store.set(workspaceAtom(profile.id), { profile, tabIds: [], activeTabId: undefined });
+      } else if (JSON.stringify(previous.profile) !== JSON.stringify(profile)) {
+        store.set(workspaceAtom(profile.id), { ...previous, profile });
       }
-    : state;
-}
-export function closeTab(state: SessionState, id: number): SessionState {
-  const tab = state.tabs.find((tab) => tab.id === id);
-  if (!tab) return state;
-  const workspaceTabs = state.tabs.filter((other) => other.workspaceId === tab.workspaceId);
-  const index = workspaceTabs.findIndex((other) => other.id === id);
-  const remaining = workspaceTabs.filter((other) => other.id !== id);
-  const activeTabs = { ...state.activeTabs };
-  if (activeTabs[tab.workspaceId] === id) {
-    const next = remaining[Math.min(index, remaining.length - 1)];
-    if (next) activeTabs[tab.workspaceId] = next.id;
-    else delete activeTabs[tab.workspaceId];
-  }
-  // Keep the empty workspace selected so closing the final tab stays closed.
-  return { ...state, tabs: state.tabs.filter((other) => other.id !== id), activeTabs };
-}
-export function applyConfig(state: SessionState, payload: WorkspaceConfigPayload): SessionState {
-  const validIds = new Set(payload.config.workspaces.map((workspace) => workspace.id));
-  const tabs = state.tabs.filter((tab) => validIds.has(tab.workspaceId));
-  const activeTabs = Object.fromEntries(
-    Object.entries(state.activeTabs).filter(([id]) => validIds.has(id)),
-  );
-  const next = { ...state, payload, tabs, activeTabs };
-  if (!state.payload || !state.activeWorkspaceId || !validIds.has(state.activeWorkspaceId)) {
-    return selectWorkspace(next, payload.config.workspaces[0]!.id);
-  }
-  return next;
+    }
+    const activeWorkspaceId =
+      state.activeWorkspaceId !== null && workspaceIds.includes(state.activeWorkspaceId)
+        ? state.activeWorkspaceId
+        : workspaceIds[0]!;
+    store.set(sessionAtom, {
+      ...state,
+      payload: { path: payload.path, environment: payload.environment },
+      workspaceIds:
+        state.workspaceIds.length === workspaceIds.length &&
+        state.workspaceIds.every((id, index) => id === workspaceIds[index])
+          ? state.workspaceIds
+          : workspaceIds,
+      activeWorkspaceId,
+    });
+    if (!state.payload || activeWorkspaceId !== state.activeWorkspaceId)
+      selectWorkspace(store, activeWorkspaceId);
+    reconcileSessions(store);
+  });
 }
 
 export const sessionViewAtom = Atom.make((get) => {
+  const current = get(activeWorkspaceAtom);
+  const workspace = current?.profile;
+  const tabs = current?.tabIds.map((id) => get(tabAtom(id))!) ?? [];
+  const activeTab =
+    current?.activeTabId === undefined ? undefined : get(tabAtom(current.activeTabId));
   const state = get(sessionAtom);
-  const workspaces = state.payload?.config.workspaces ?? [];
-  const workspace = workspaces.find((item) => item.id === state.activeWorkspaceId);
-  const tabs = state.tabs.filter((tab) => tab.workspaceId === workspace?.id);
-  const activeTab = tabs.find((tab) => tab.id === state.activeTabs[workspace?.id ?? '']);
-  const runningIds = new Set(state.tabs.map((tab) => tab.workspaceId));
-  const terminalError = activeTab ? (state.terminalErrors[activeTab.id] ?? '') : '';
+  const runningIds = new Set(
+    state.workspaceIds.filter((id) => get(workspaceAtom(id))!.tabIds.length > 0),
+  );
+  const errors = get(terminalErrorsAtom);
+  const terminalError = activeTab ? (errors[activeTab.id] ?? '') : '';
   const terminalId = activeTab?.kind === 'terminal' && !terminalError ? activeTab.id : 0;
-  return { state, workspaces, workspace, tabs, activeTab, runningIds, terminalId, terminalError };
+  return {
+    workspaces: get(workspaceProfilesAtom),
+    workspace,
+    tabs,
+    activeTab,
+    runningIds,
+    terminalId,
+    terminalError,
+  };
 });
 
 export interface WorkspaceDraft {

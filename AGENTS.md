@@ -40,6 +40,9 @@
 - Run business state and actions in the application-level Effect registry,
   independently of React. Hooks subscribe to region view atoms and dispatch
   commands; registry reset/dispose owns cancellation and resource cleanup.
+- Store workspace profiles, tab ID lists and active tab IDs in a workspace atom
+  family. Global workspace ordering stores IDs only; never infer membership by
+  filtering all tabs. Tab data lives in its own family and TabItem subscribes by ID.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
