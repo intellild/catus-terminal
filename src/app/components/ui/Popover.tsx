@@ -150,6 +150,59 @@ export function PopoverTrigger({
   );
 }
 
+// Hover details use a measured page-space reference, without a click trigger.
+export function PopoverHoverTrigger({
+  children,
+  className,
+  ...props
+}: ViewProps & { children?: ReactNode }) {
+  const { setOpen } = usePopover();
+  const { updateRects } = useContext(LynxPopoverContext);
+  const ref = useRef<NodesRef>(null);
+  const hovering = useRef(false);
+  useEffect(
+    () => () => {
+      hovering.current = false;
+    },
+    [],
+  );
+  return (
+    <view
+      {...props}
+      ref={ref}
+      className={cn('shrink-0', className)}
+      bindmouseenter={(event) => {
+        props.bindmouseenter?.(event);
+        hovering.current = true;
+        ref.current
+          ?.invoke({
+            method: 'boundingClientRect',
+            params: { relativeTo: 'screen' },
+            success(result) {
+              if (!hovering.current) {
+                return;
+              }
+              const rect = result as { left: number; top: number; width: number; height: number };
+              updateRects({
+                type: 'updateReference',
+                rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+              });
+              setOpen(true);
+            },
+          })
+          .exec();
+      }}
+      bindmouseleave={(event) => {
+        props.bindmouseleave?.(event);
+        hovering.current = false;
+        setOpen(false);
+      }}
+    >
+      {children}
+    </view>
+  );
+}
+
 export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
   style?: CSSProperties;
   children?: ReactNode;
@@ -157,6 +210,7 @@ export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   dismissId?: string;
+  modal?: boolean;
 }
 
 export function PopoverContent({
@@ -165,6 +219,7 @@ export function PopoverContent({
   align = 'start',
   sideOffset = 4,
   dismissId,
+  modal = true,
   className = '',
   style,
   ...props
@@ -175,21 +230,25 @@ export function PopoverContent({
   const { open, setOpen } = usePopover();
   const setActive = portal?.setActive;
   useEffect(() => {
-    if (!open || !setActive) {
+    if (!open || !modal || !setActive) {
       return;
     }
     setActive((count) => count + 1);
     return () => setActive((count) => count - 1);
-  }, [open, setActive]);
+  }, [open, modal, setActive]);
   if (!portal?.host) {
     return null;
   }
   return createPortal(
     <view
-      className="absolute inset-0 [-x-app-region:no-drag]"
+      className={
+        modal
+          ? 'absolute inset-0 [-x-app-region:no-drag]'
+          : 'absolute left-0 top-0 w-0 h-0 overflow-visible [-x-app-region:no-drag]'
+      }
       style={{ display: open ? 'flex' : 'none' }}
     >
-      {open ? (
+      {open && modal ? (
         <view id={dismissId} className="absolute inset-0" bindtap={() => setOpen(false)} />
       ) : null}
       {/* Lynx UI positions relative to its anchor. Translate that origin into

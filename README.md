@@ -5,6 +5,20 @@
 内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染，
 当前每个 tab 固定启动账户默认 shell（`-l -i`），工作目录为用户主目录。
 
+Web 开发预览使用官方 [Lynx for Web / Rspeedy web 环境](https://lynxjs.org/3.6/rspeedy/start/integrate-with-existing-apps)：
+
+```sh
+pnpm dev:web
+# 仅构建 web bundle
+pnpm build:web
+```
+
+打开终端输出的 `Preview` 地址。Web 模式复用 tab、workspace、设置弹窗和状态栏，
+内容区保持空白，不需要编译 Rust 或启动 Lynxtron。配置使用内存中的默认 workspace，
+支持编辑、新建和删除；刷新后恢复默认值，不读写桌面配置。Shell 候选不做系统检测，
+可以选择默认 Shell 或自定义命令。Web 模式不启动 PTY 或 SSH/SFTP 连接。
+构建产物位于 `dist/web/main.web.bundle`。
+
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
 构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
 布局组件，由 `App.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程

@@ -6,7 +6,7 @@ import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
 import { startSessionRuntime } from '../state/sessionRuntime';
-import { closeTab } from '../state/session';
+import { activeWorkspaceIdAtom, closeTab } from '../state/session';
 import type { TerminalHost } from '../state/terminalSessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
@@ -484,7 +484,7 @@ test('right-click edits an inactive workspace without starting it; failed deleti
   expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Local');
   expect(root.querySelector('#delete-workspace')).toBeNull();
   expect(root.querySelector('#edit-profile-shell')).toBeNull();
-  expect(root.querySelector('#active-workspace')?.textContent).toBe('Shell');
+  expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
   fireEvent.tap(root.querySelector('#close-settings')!);
   fireEvent.tap(root.querySelector('#workspace-local')!);
   await rstest.waitFor(() => expect(terminal.createTerminalSession).toHaveBeenCalledTimes(2));
@@ -500,5 +500,40 @@ test('right-click edits an inactive workspace without starting it; failed deleti
   fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
   await rstest.waitFor(() => expect(root.querySelector('#workspace-local')).toBeNull());
   expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2);
-  expect(root.querySelector('#active-workspace')?.textContent).toBe('Shell');
+  expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
+});
+
+function hoverWorkspace(id: string, enter: boolean) {
+  const trigger = elementTree.root!.querySelector(`#workspace-hover-${id}`)!;
+  const eventName = enter ? 'mouseenter' : 'mouseleave';
+  fireEvent(
+    trigger,
+    Object.assign(new Event(`bindEvent:${eventName}`), { eventType: 'bindEvent', eventName }),
+  );
+}
+
+test('workspace buttons show details on hover without starting or selecting a workspace', async () => {
+  renderApp();
+  await waitForTerminal();
+  const root = elementTree.root!;
+  const terminal = NativeModules.nodejs.exposed as TerminalHost;
+  expect(root.querySelector('#workspace-local')?.textContent).not.toContain('Local');
+  hoverWorkspace('local', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#workspace-details-local')?.textContent).toContain('Local'),
+  );
+  expect(root.querySelector('#workspace-details-local')?.textContent).toContain(
+    'Working directory',
+  );
+  expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
+  expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
+  // Informational popovers must not install a screen-wide click interceptor.
+  expect(root.querySelector('#popover-host')?.className).toContain('w-0');
+  hoverWorkspace('local', false);
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+  hoverWorkspace('local', true);
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).not.toBeNull());
+  contextMenu(root, 'local');
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+  expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
 });

@@ -7,7 +7,6 @@ import type { TerminalTab } from '../../state/session';
 export function TerminalContent({
   workspace,
   activeTab,
-  tabCount = 0,
   loading = false,
   error = '',
   children,
@@ -26,23 +25,7 @@ export function TerminalContent({
   const { t } = useTranslation();
   return (
     <>
-      <view className="h-[57px] flex flex-row items-center justify-between py-0 px-[25px] border-b border-solid border-[#272c32] shrink-0">
-        <view className="flex flex-row items-center gap-[12px]">
-          <text
-            className="text-[16px] font-bold text-[color:var(--workspace-color)]"
-            style={`--workspace-color: ${workspace?.color ?? '#a8e6cf'}`}
-          >
-            {workspace?.icon ?? '>_'}
-          </text>
-          <text id="active-workspace" className="text-[13px] font-bold text-[#d8dee5]">
-            {workspace?.name ?? t('terminal.workspaces')}
-          </text>
-          <text className="text-[14px] text-[#515c6a]">/</text>
-          <text className="text-[12px] text-[#8993a1]">{t('tabs.count', { count: tabCount })}</text>
-        </view>
-      </view>
-
-      <view className="flex-1 min-h-0 flex flex-col bg-[#111419] m-[16px] border border-solid border-[#272d35] rounded-[12px] overflow-hidden">
+      <view className="flex-1 min-h-0 flex flex-col bg-[#111419] border border-solid border-[#272d35] overflow-hidden">
         {error ? (
           <view className="flex-1 flex flex-col items-center justify-center py-[18px] px-[30px]">
             <text className="text-[27px] font-medium text-[#dce3e7] text-center mb-[12px]">

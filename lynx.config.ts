@@ -29,7 +29,7 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 5969,
+    port: process.env.CATUS_WEB === '1' ? 5970 : 5969,
   },
   resolve: {
     alias: {
@@ -56,7 +56,10 @@ export default defineConfig({
       // TODO: remove when Lynxtron's BTS RAF advances Presence callbacks.
       config.plugins.push(
         new rspack.NormalModuleReplacementPlugin(/delayFrames\.(jsx|ts)$/, (resource) => {
-          if (/[\\/]@lynx-js[\\/]lynx-ui-common[\\/]/.test(resource.context)) {
+          if (
+            process.env.CATUS_WEB !== '1' &&
+            /[\\/]@lynx-js[\\/]lynx-ui-common[\\/]/.test(resource.context)
+          ) {
             resource.request = path.resolve(rootPath, 'src/app/components/ui/frames.ts');
           }
         }),
@@ -64,6 +67,30 @@ export default defineConfig({
     },
   },
   environments: {
+    web: {
+      source: { entry: { main: './src/app/web/index.tsx' } },
+      output: { distPath: { root: './dist/web' } },
+      resolve: {
+        alias: {
+          [path.resolve(rootPath, 'src/app/runtime.ts')]: path.resolve(
+            rootPath,
+            'src/app/web/runtime.ts',
+          ),
+          [path.resolve(rootPath, 'src/app/frameDriver.ts')]: path.resolve(
+            rootPath,
+            'src/app/web/frameDriver.ts',
+          ),
+          [path.resolve(rootPath, 'src/app/components/Terminal/TerminalContent.tsx')]: path.resolve(
+            rootPath,
+            'src/app/web/SessionContent.tsx',
+          ),
+          [path.resolve(rootPath, 'src/app/components/Terminal/SessionContent.tsx')]: path.resolve(
+            rootPath,
+            'src/app/web/SessionContent.tsx',
+          ),
+        },
+      },
+    },
     lynx: {
       source: {
         entry: {
@@ -99,6 +126,6 @@ export default defineConfig({
       enableCSSInheritance: true,
     }),
     pluginTypeCheck(),
-    pluginRspeedyDevReady(),
+    ...(process.env.CATUS_WEB === '1' ? [] : [pluginRspeedyDevReady()]),
   ],
 });

@@ -16,10 +16,7 @@ export function AppLayout({ children }: LayoutChildren) {
 
 export function AppLayoutHeader({ children }: LayoutChildren) {
   return (
-    <view
-      id="window-tab-bar"
-      className="h-[54px] shrink-0 flex flex-row bg-[#1b1e23] border-b border-solid border-[#2b3036]"
-    >
+    <view id="window-tab-bar" className="h-12 shrink-0 flex flex-row items-center pr-[20px]">
       {children}
     </view>
   );
@@ -27,7 +24,7 @@ export function AppLayoutHeader({ children }: LayoutChildren) {
 
 export function AppLayoutHeaderContent({ children }: LayoutChildren) {
   return (
-    <view className="flex-1 min-w-0 h-[54px] flex flex-row items-center pr-[20px]">{children}</view>
+    <view className="flex-1 min-w-0 h-full flex flex-row items-center pr-[20px]">{children}</view>
   );
 }
 
@@ -39,7 +36,7 @@ export function AppLayoutSidebar({ children }: LayoutChildren) {
   return (
     <view
       id="workspace-dock"
-      className="w-[80px] shrink-0 flex flex-col items-center bg-[#181b20] border-r border-solid border-[#282c32] pt-[18px] px-[8px] pb-[12px]"
+      className="w-14 shrink-0 flex flex-col items-center bg-[#181b20] border-r border-solid border-[#282c32] py-1"
     >
       {children}
     </view>
