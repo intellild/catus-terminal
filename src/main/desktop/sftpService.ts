@@ -15,7 +15,10 @@ const fileType = (entry: {
         : 'other';
 
 // Only the Node main environment creates N-API objects and receives their Promise completions.
-export function createSftpService(connect: SftpHost['connectSftp']) {
+export function createSftpService(
+  connect: SftpHost['connectSftp'],
+  uploadFiles?: (destination: string, path: string) => Promise<boolean>,
+) {
   const connections = new Map<number, RemoteFs>();
   let nextId = 1;
   let disposed = false;
@@ -24,6 +27,12 @@ export function createSftpService(connect: SftpHost['connectSftp']) {
       try {
         if (disposed) {
           throw new Error('SFTP service is closed');
+        }
+        if (request.operation === 'upload') {
+          if (!uploadFiles) {
+            throw new Error('File upload is unavailable');
+          }
+          return { ok: true, value: await uploadFiles(request.destination, request.path) };
         }
         if (request.operation === 'connect') {
           const fs = await connect({ destination: request.destination });

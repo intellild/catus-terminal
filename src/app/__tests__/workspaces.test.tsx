@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
 import defaults from '../../../tests/fixtures/workspaces.json';
+import { sftpClient } from '../api/sftp';
 import { App } from '../App';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
@@ -372,6 +373,7 @@ test('terminal forwards control keys to the native PTY and keeps macOS shortcuts
 });
 
 test('SSH has separate terminal and SFTP buttons; directory navigation preserves the native view', async () => {
+  const upload = rstest.spyOn(sftpClient, 'uploadFiles').mockResolvedValue(true);
   const fs = {
     realpath: rstest.fn(async (path: string) =>
       path === '.' ? '/srv/users/home/test' : path.endsWith('/..') ? '/srv/users/home/test' : path,
@@ -421,38 +423,57 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   const root = elementTree.root!;
   const surface = root.querySelector('#terminal-surface');
   expect(root.querySelector('#new-sftp-tab')).not.toBeNull();
+  const list = () =>
+    root.querySelector('#sftp-list')! as Parameters<typeof elementTree.enterListItemAtIndex>[0];
+  let visibleCells: number[] = [];
+  // The test host has no viewport: simulate native requests and recycling.
+  const visibleText = (count: number) => {
+    visibleCells.forEach((cell) => elementTree.leaveListItem(list(), cell));
+    visibleCells = [];
+    for (let index = 0; index < count; index++) {
+      visibleCells.push(elementTree.enterListItemAtIndex(list(), index));
+    }
+    return visibleCells
+      .map((cell) => elementTree.__GetElementByUniqueId(cell)!.textContent)
+      .join('');
+  };
   fireEvent.tap(root.querySelector('#new-sftp-tab')!);
-  await rstest.waitFor(() =>
-    expect(root.querySelector('#sftp-entry-0')?.textContent).toContain('docs'),
-  );
+  await rstest.waitFor(() => expect(visibleText(1)).toContain('docs'));
   expect(root.querySelector('#sftp-path')?.textContent).toBe('…›users›home›test');
-  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.env');
+  expect(visibleText(1)).not.toContain('.env');
   expect(root.querySelector('#session-label')).toBeNull();
   expect(root.querySelector('#session-directory')).toBeNull();
-  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.cache');
+  expect(visibleText(1)).not.toContain('.cache');
   fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
-  await rstest.waitFor(() =>
-    expect(root.querySelector('#sftp-list')?.textContent).toContain('.cache'),
-  );
-  expect(root.querySelector('#sftp-list')?.textContent).toContain('.env');
+  await rstest.waitFor(() => expect(visibleText(3)).toContain('.cache'));
+  expect(visibleText(3)).toContain('.env');
   fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
-  await rstest.waitFor(() =>
-    expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.cache'),
-  );
-  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.env');
+  await rstest.waitFor(() => expect(visibleText(1)).not.toContain('.cache'));
+  expect(visibleText(1)).not.toContain('.env');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(0);
-  fireEvent.tap(root.querySelector('#sftp-entry-0')!);
-  await rstest.waitFor(() => expect(root.querySelector('#sftp-empty')).not.toBeNull());
+  fireEvent.tap(
+    elementTree.__GetElementByUniqueId(visibleCells[0]!)!.querySelector('#sftp-entry-0')!,
+  );
+  await rstest.waitFor(() => {
+    visibleText(1);
+    expect(
+      elementTree.__GetElementByUniqueId(visibleCells[0]!)!.querySelector('#sftp-empty'),
+    ).not.toBeNull();
+  });
   expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users/home/test/docs', { withFileTypes: true });
   fireEvent.tap(root.querySelector('#sftp-up')!);
-  await rstest.waitFor(() => expect(root.querySelector('#sftp-entry-0')).not.toBeNull());
+  await rstest.waitFor(() => expect(visibleText(1)).toContain('docs'));
   fireEvent.tap(root.querySelector('#sftp-breadcrumb-0')!);
   await rstest.waitFor(() =>
     expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users', { withFileTypes: true }),
   );
   expect(root.querySelector('#sftp-breadcrumb-ellipsis')).toBeNull();
   expect(root.querySelector('#sftp-breadcrumb-current')?.textContent).toBe('users');
+  const reads = fs.readdir.mock.calls.length;
+  fireEvent.tap(root.querySelector('#sftp-upload')!);
+  await rstest.waitFor(() => expect(fs.readdir.mock.calls.length).toBeGreaterThan(reads));
+  expect(upload).toHaveBeenCalledWith('test-alias', '/srv/users');
   fireEvent.tap(root.querySelector('#tab-1')!);
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(1);

@@ -1,6 +1,7 @@
 export const SFTP_CHANNEL = 'catus:sftp';
 export type SftpRequest =
   | { operation: 'connect'; destination: string }
+  | { operation: 'upload'; destination: string; path: string }
   | { operation: 'readdir' | 'realpath' | 'stat'; connection: number; path: string }
   | { operation: 'close'; connection: number };
 export type SftpReply = { ok: true; value: unknown } | { ok: false; error: string };

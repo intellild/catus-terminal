@@ -69,6 +69,8 @@ fields = "Check the highlighted fields."
 arguments = 'Arguments must be a JSON array of strings, for example ["-l"].'
 
 [sftp]
+upload = "Upload files"
+uploading = "Uploading…"
 up = "↑ Up"
 refresh = "Refresh"
 loading = "Loading directory…"

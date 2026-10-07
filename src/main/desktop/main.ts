@@ -1,8 +1,9 @@
-import { app, LynxWindow, lynxBridge } from '@lynx-js/lynxtron';
+import { app, dialog, LynxWindow, lynxBridge } from '@lynx-js/lynxtron';
 import { LYNX_BUNDLE_PATH } from './vendorPaths';
 import path from 'node:path';
 
 import { connectSftp } from './sftp';
+import { createFileUploader } from './uploadFiles';
 import { createSftpService } from './sftpService';
 import { SFTP_CHANNEL } from '../../shared/sftpBridge';
 import type { SftpRequest } from '../../shared/sftpBridge';
@@ -13,7 +14,14 @@ import type { SftpRequest } from '../../shared/sftpBridge';
 // Keep native objects and async completions in Node main and relay JSON via lynxBridge.
 // Main calls pass windowless SFTP E2E; the upstream BTS context issue remains unresolved.
 // See docs/sftp-async.md.
-const sftp = createSftpService(connectSftp);
+const sftp = createSftpService(
+  connectSftp,
+  createFileUploader(() =>
+    process.env.CATUS_E2E_PTY && process.env.CATUS_E2E_UPLOAD_FILE
+      ? Promise.resolve({ canceled: false, filePaths: [process.env.CATUS_E2E_UPLOAD_FILE] })
+      : dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] }),
+  ),
+);
 lynxBridge.handle(SFTP_CHANNEL, (_event, request) => sftp.handle(request as SftpRequest));
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -57,4 +65,8 @@ function createWindow() {
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
   void sftp.dispose().finally(() => app.quit());
+});
+
+app.on('open-file', (event) => {
+  console.log(event);
 });

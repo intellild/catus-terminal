@@ -94,6 +94,12 @@ export class LynxApp {
         '#!/bin/sh\nfor arg in "$@"; do\n  case "$arg" in */etc/shells*) printf "/bin/zsh\\n/bin/bash\\n"; exit 0 ;; esac\ndone\nexec /usr/libexec/sftp-server -d "$CATUS_SFTP_DIRECTORY"\n',
       );
       await chmod(path.join(bin, 'ssh'), 0o755);
+      await writeFile(path.join(this.temporary, 'uploaded.txt'), 'Uploaded fixture');
+      await writeFile(
+        path.join(bin, 'scp'),
+        '#!/bin/sh\nexec /usr/bin/scp -D /usr/libexec/sftp-server "$@"\n',
+      );
+      await chmod(path.join(bin, 'scp'), 0o755);
       fixturePath = `${bin}${path.delimiter}${fixturePath}`;
     }
     const existing = await this.connector.listClients();
@@ -116,6 +122,9 @@ export class LynxApp {
           PATH: fixturePath,
           CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'one', 'two', 'three', 'remote'),
           CATUS_WORKSPACES_FILE: configuration,
+          CATUS_E2E_UPLOAD_FILE: options.ssh
+            ? path.join(this.temporary, 'uploaded.txt')
+            : undefined,
           CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
           CATUS_E2E_NODE: process.execPath,
           CATUS_E2E_WINDOWLESS: process.env.CATUS_E2E_WINDOWLESS ?? '1',
@@ -235,11 +244,14 @@ export class LynxApp {
   private async nodePath(selector: string) {
     const { root } = await this.cdp<{ root: NodeInfo }>('DOM.getDocument', { depth: -1 });
     const value = selector.slice(1);
+    const attributeSelector = /^\[([\w-]+)="([^"]*)"\]$/.exec(selector);
     const find = (node: NodeInfo, ancestors: NodeInfo[]): NodeInfo[] | undefined => {
       const nodes = [...ancestors, node];
-      const matches = selector.startsWith('.')
-        ? this.attribute(node, 'class')?.split(/\s+/).includes(value)
-        : this.attribute(node, 'idSelector') === value;
+      const matches = attributeSelector
+        ? this.attribute(node, attributeSelector[1]!) === attributeSelector[2]
+        : selector.startsWith('.')
+          ? this.attribute(node, 'class')?.split(/\s+/).includes(value)
+          : this.attribute(node, 'idSelector') === value;
       if (matches) {
         return nodes;
       }

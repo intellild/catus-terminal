@@ -21,6 +21,10 @@ export class SftpClient implements SftpHost {
     return reply.value as T;
   }
 
+  uploadFiles(destination: string, path: string): Promise<boolean> {
+    return this.request({ operation: 'upload', destination, path });
+  }
+
   async connectSftp({ destination }: { destination: string }): Promise<RemoteFs> {
     const connection = await this.request<number>({ operation: 'connect', destination });
     return new SftpConnection(connection, (request) => this.request(request));

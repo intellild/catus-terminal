@@ -13,9 +13,10 @@ import { Fragment } from '@lynx-js/react';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import 'background-only';
-import { useEffect, useState } from '@lynx-js/react';
+import { useEffect, useRef, useState } from '@lynx-js/react';
 import { useAtomValue } from '@effect/atom-react';
 import { terminalSessionsAtom } from '../state/terminalSessions';
+import { sftpClient } from '../api/sftp';
 import type { RemoteFs } from '../../shared/sftp';
 
 interface Entry {
@@ -41,6 +42,14 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
     error: '',
   });
   const [selected, setSelected] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [showHiddenFiles, setShowHiddenFiles] = useState(false);
   const entries = listing.entries.filter((entry) => showHiddenFiles || !entry.name.startsWith('.'));
   const parts = listing.path.split('/').filter(Boolean);
@@ -85,9 +94,32 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       disposed = true;
     };
   }, [id, path, refresh, sessions]);
+  const upload = async () => {
+    'background only';
+    if (uploading || listing.loading || !listing.path) {
+      return;
+    }
+    setUploading(true);
+    setListing((current) => ({ ...current, error: '' }));
+    try {
+      if (await sftpClient.uploadFiles(host, listing.path)) {
+        if (mounted.current) {
+          setRefresh((value) => value + 1);
+        }
+      }
+    } catch (error) {
+      if (mounted.current) {
+        setListing((current) => ({ ...current, error: String(error) }));
+      }
+    } finally {
+      if (mounted.current) {
+        setUploading(false);
+      }
+    }
+  };
   const open = async (entry: Entry) => {
     'background only';
-    if (listing.loading) {
+    if (listing.loading || uploading) {
       return;
     }
     const next = joinPath(listing.path, entry.name);
@@ -121,10 +153,10 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         <Button
           variant="link"
           size="sm"
-          disabled={listing.loading || !listing.path}
+          disabled={uploading || listing.loading || !listing.path}
           id="sftp-up"
           bindtap={() => {
-            if (!listing.loading && listing.path) {
+            if (!uploading && !listing.loading && listing.path) {
               setPath(joinPath(listing.path, '..'));
             }
           }}
@@ -154,7 +186,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
                   ) : (
                     <BreadcrumbLink
                       id={`sftp-breadcrumb-${index}`}
-                      disabled={listing.loading}
+                      disabled={uploading || listing.loading}
                       bindtap={() => setPath(crumb.path)}
                     >
                       <text className="text-[12px] truncate">{crumb.name}</text>
@@ -176,7 +208,20 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         <Button
           variant="link"
           size="sm"
-          disabled={listing.loading}
+          disabled={uploading || listing.loading || !listing.path}
+          id="sftp-upload"
+          bindtap={() => {
+            void upload();
+          }}
+        >
+          <text className="text-[12px] text-[#a8e6cf]">
+            {t(uploading ? 'sftp.uploading' : 'sftp.upload')}
+          </text>
+        </Button>
+        <Button
+          variant="link"
+          size="sm"
+          disabled={uploading || listing.loading}
           id="sftp-refresh"
           bindtap={() => {
             if (!listing.loading) {
@@ -200,36 +245,49 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           {t('sftp.loading')}
         </text>
       ) : null}
-      <scroll-view id="sftp-list" scroll-y className="flex-1 min-h-0">
+      <list
+        id="sftp-list"
+        list-type="single"
+        scroll-orientation="vertical"
+        className="flex-1 min-h-0"
+      >
         {!listing.loading && !listing.error && !entries.length ? (
-          <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
-            {t('sftp.empty')}
-          </text>
+          <list-item key="empty" item-key="empty" estimated-main-axis-size-px={18}>
+            <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
+              {t('sftp.empty')}
+            </text>
+          </list-item>
         ) : null}
         {entries.map((entry, index) => (
-          <Button
-            variant="ghost"
-            disabled={listing.loading}
-            id={`sftp-entry-${index}`}
-            key={entry.name}
-            className={cn(
-              'w-full h-auto justify-start gap-0 py-[10px] px-[12px] rounded-[6px] font-normal',
-              selected === entry.name ? 'bg-[#35483f]' : 'bg-[#111419]',
-            )}
-            bindtap={() => {
-              void open(entry);
-            }}
+          <list-item
+            key={joinPath(listing.path, entry.name)}
+            item-key={joinPath(listing.path, entry.name)}
+            estimated-main-axis-size-px={40}
           >
-            <text className="w-[28px] text-[12px] text-[#a8e6cf]">
-              {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
-            </text>
-            <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
-            <text className="text-[10px] text-[#8c99a7]">
-              {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
-            </text>
-          </Button>
+            <Button
+              variant="ghost"
+              disabled={uploading || listing.loading}
+              id={`sftp-entry-${index}`}
+              data-filename={entry.name}
+              className={cn(
+                'w-full h-auto justify-start gap-0 py-[10px] px-[12px] rounded-[6px] font-normal',
+                selected === entry.name ? 'bg-[#35483f]' : 'bg-[#111419]',
+              )}
+              bindtap={() => {
+                void open(entry);
+              }}
+            >
+              <text className="w-[28px] text-[12px] text-[#a8e6cf]">
+                {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
+              </text>
+              <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
+              <text className="text-[10px] text-[#8c99a7]">
+                {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
+              </text>
+            </Button>
+          </list-item>
         ))}
-      </scroll-view>
+      </list>
     </view>
   );
 }

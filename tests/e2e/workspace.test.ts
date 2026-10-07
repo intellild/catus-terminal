@@ -108,12 +108,16 @@ test('SFTP browser uses native directory APIs and keeps terminal ownership separ
   expect(await app.node('#sftp-entry-2')).toBeUndefined(); // .cache and .env are hidden
   expect(await app.node('#session-label')).toBeUndefined();
   expect(await app.node('#session-directory')).toBeUndefined();
+  const visibleDirectory = await app.screenshot('#sftp-list');
   await app.tap('#sftp-show-hidden');
   await waitFor('hidden directory visible', () => app.node('#sftp-entry-3'));
   await expectScreenshot('sftp-toolbar-hidden-directories', await app.screenshot('#sftp-toolbar'));
   await app.tap('#sftp-show-hidden');
-  await waitFor('hidden directory removed', async () =>
-    !(await app.node('#sftp-entry-2')) ? true : undefined,
+  // Recycled cells may remain in the DOM; compare the rendered viewport.
+  await waitFor('hidden files removed from the viewport', async () =>
+    comparePng(visibleDirectory, await app.screenshot('#sftp-list')).changed === 0
+      ? true
+      : undefined,
   );
   await expectScreenshot('sftp-toolbar', await app.screenshot('#sftp-toolbar'));
   await expectScreenshot('sftp-directory', await app.screenshot('#sftp-list'));
@@ -126,6 +130,15 @@ test('SFTP browser uses native directory APIs and keeps terminal ownership separ
   await waitFor('parent directory listing', () => app.node('#sftp-entry-1'));
   await app.tap('#sftp-refresh');
   await waitFor('refreshed directory', () => app.node('#sftp-entry-1'));
+  await waitFor('upload button enabled after refresh', async () => {
+    const button = await app.node('#sftp-upload');
+    return button && !app.attribute(button, 'class')?.includes('opacity-50') ? true : undefined;
+  });
+  await app.tap('#sftp-upload');
+  await waitFor('uploaded file appears after refresh', () =>
+    app.node('[data-filename="uploaded.txt"]'),
+  );
+  await expectScreenshot('sftp-uploaded-directory', await app.screenshot('#sftp-list'));
   await app.tap('#close-tab-3');
   await waitFor('SFTP browser released', async () =>
     !(await app.node('#sftp-browser')) ? true : undefined,
