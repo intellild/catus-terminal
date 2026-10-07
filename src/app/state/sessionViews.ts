@@ -7,7 +7,6 @@ import {
   loadAtom,
   sessionAtom,
   sessionViewAtom,
-  workspaceMenuAtom,
   activeWorkspaceAtom,
   activeWorkspaceIdAtom,
   workspaceAtom,
@@ -98,7 +97,6 @@ export const settingsViewAtom = Atom.make((get) => {
   const payload = get(payloadAtom);
   return {
     editor: get(editorAtom),
-    menu: get(workspaceMenuAtom),
     canDelete: get(sessionAtom).workspaceIds.length > 1,
     configPath: payload?.path,
     environment: payload?.environment,

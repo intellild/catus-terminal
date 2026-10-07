@@ -2,26 +2,23 @@
 /* eslint-disable */
 
 export declare class SftpConnection {
-  realpath(path: string, callback: (err: Error | null, arg: string) => void): void;
-  stat(path: string, callback: (err: Error | null, arg: SftpMetadata) => void): void;
-  readdir(path: string, callback: (err: Error | null, arg: Array<SftpEntry>) => void): void;
-  readDir(path: string, callback: (err: Error | null, arg: Array<SftpEntry>) => void): void;
-  metadata(path: string, callback: (err: Error | null, arg: SftpMetadata) => void): void;
-  readFile(path: string, callback: (err: Error | null, arg: Uint8Array) => void): void;
-  writeFile(path: string, data: Uint8Array, callback: (err: Error | null) => void): void;
-  createDir(path: string, callback: (err: Error | null) => void): void;
-  rename(from: string, to: string, callback: (err: Error | null) => void): void;
-  removeFile(path: string, callback: (err: Error | null) => void): void;
-  removeDir(path: string, callback: (err: Error | null) => void): void;
-  close(callback: (err: Error | null) => void): void;
+  realpath(path: string): Promise<string>;
+  stat(path: string): Promise<SftpMetadata>;
+  readdir(path: string): Promise<Array<SftpEntry>>;
+  readDir(path: string): Promise<Array<SftpEntry>>;
+  metadata(path: string): Promise<SftpMetadata>;
+  readFile(path: string): Promise<Uint8Array>;
+  writeFile(path: string, data: Uint8Array): Promise<undefined>;
+  createDir(path: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  removeFile(path: string): Promise<void>;
+  removeDir(path: string): Promise<void>;
+  close(): Promise<void>;
 }
 
 export declare function closeTerminalSession(id: number): void;
 
-export declare function connectSftp(
-  options: SftpOptions,
-  callback: (err: Error | null, arg: SftpConnection) => void,
-): void;
+export declare function connectSftp(options: SftpOptions): Promise<SftpConnection>;
 
 export declare function createTerminalSession(
   id: number,

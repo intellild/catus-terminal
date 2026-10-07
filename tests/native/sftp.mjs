@@ -2,11 +2,9 @@ import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
-// Exercise the callback boundary wrapped as a JS Promise and the real OpenSSH protocol.
-export async function verifySftp(connectSftpCallback) {
-  const connectSftp = promisify(connectSftpCallback);
+// Exercise native Promises and the real OpenSSH protocol.
+export async function verifySftp(connectSftp) {
   const directory = await mkdtemp(path.join(tmpdir(), 'catus-sftp-'));
   const bin = path.join(directory, 'bin');
   const remote = path.join(directory, 'remote');
@@ -31,23 +29,7 @@ export async function verifySftp(connectSftpCallback) {
     await assert.rejects(connectSftp({ destination: '-bad' }), /Invalid SSH destination/);
     const pending = connectSftp({ destination: 'test-alias', port: 2222 });
     assert.ok(pending instanceof Promise);
-    const native = await pending;
-    connection = Object.fromEntries(
-      [
-        'realpath',
-        'stat',
-        'readdir',
-        'readDir',
-        'metadata',
-        'readFile',
-        'writeFile',
-        'createDir',
-        'rename',
-        'removeFile',
-        'removeDir',
-        'close',
-      ].map((name) => [name, promisify(native[name].bind(native))]),
-    );
+    connection = await pending;
     assert.deepEqual(
       (await readFile(process.env.CATUS_SFTP_ARGUMENTS, 'utf8')).trim().split('\n'),
       ['-T', '-o', 'BatchMode=yes', '-p', '2222', '-s', '--', 'test-alias', 'sftp'],

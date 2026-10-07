@@ -82,8 +82,8 @@
 - Use `anyhow::Result` with `?` / `Context` internally; convert to `napi::Result`
   only at N-API boundaries and preserve the full error chain.
 - SFTP uses ordinary SSH pipes and napi's Tokio runtime. Close connections
-  explicitly and retain drop cleanup. Before changing the callback API, consult
-  the crash TODO in `native/src/sftp_api.rs`.
+  explicitly and retain drop cleanup. Keep async native calls in Node main; consult
+  the BTS crash TODO in `src/main/desktop/main.ts` before moving them to preload.
 - Native components share one package. When adding components, update CMake
   sources, Lynx registration and element types. Do not hand-edit generated API types.
 

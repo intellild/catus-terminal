@@ -100,3 +100,24 @@ test('the Effect interruptor prevents the delayed callback from running', () => 
   advance(200);
   expect(callback).not.toHaveBeenCalled();
 });
+
+test('outside taps close a popover without waiting for Presence to enable its button', () => {
+  function Modal() {
+    return (
+      <Popover>
+        <PopoverAnchor>
+          <Toggle />
+          <PopoverContent id="test-popover-content" dismissClassName="popover-dismiss">
+            Details
+          </PopoverContent>
+        </PopoverAnchor>
+      </Popover>
+    );
+  }
+  render(<Modal />, { enableMainThread: true });
+  toggle();
+  advance(100);
+  fireEvent.tap(elementTree.root!.querySelector('.popover-dismiss')!);
+  advance(100);
+  expect(contentCount()).toBe(0);
+});

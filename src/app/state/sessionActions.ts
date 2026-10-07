@@ -16,7 +16,6 @@ import {
   selectTab,
   selectWorkspace,
   sessionAtom,
-  workspaceMenuAtom,
   workspaceProfilesAtom,
 } from './session';
 import type { WorkspaceDraft } from './session';
@@ -65,7 +64,6 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
     yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
     get.set(editorAtom, { ...get(editorAtom), open: false, saving: false, error: '' });
-    get.set(workspaceMenuAtom, null);
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() =>
@@ -83,14 +81,12 @@ export type SessionAction =
         | 'addSftpTab'
         | 'addWorkspace'
         | 'closeSettings'
-        | 'closeMenu'
         | 'saveDraft'
         | 'retryShells';
     }
   | { type: 'openWorkspace' | 'deleteWorkspace'; id: string }
   | { type: 'focusTab' | 'closeTab'; id: number }
   | { type: 'editWorkspace'; id?: string }
-  | { type: 'openMenu'; id: string; x: number; y: number }
   | { type: 'updateDraft'; field: keyof WorkspaceDraft; value: string };
 
 // All commands read the current registry state; no React closure owns business state.
@@ -126,7 +122,6 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
         return;
       }
       const target = workspaces.find((item) => item.id === (action.id ?? state.activeWorkspaceId));
-      get.set(workspaceMenuAtom, null);
       if (target) {
         get.set(editorAtom, editWorkspace(target));
       }
@@ -134,24 +129,12 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
     }
     case 'addWorkspace':
       if (!editor.saving && state.payload) {
-        get.set(workspaceMenuAtom, null);
         get.set(editorAtom, createDraft(workspaces));
       }
       return;
     case 'closeSettings':
       if (!editor.saving) {
         get.set(editorAtom, { ...editor, open: false });
-      }
-      return;
-    case 'openMenu':
-      if (!editor.saving && workspaces.some((item) => item.id === action.id)) {
-        get.set(editorAtom, { ...editor, error: '' });
-        get.set(workspaceMenuAtom, { id: action.id, x: action.x, y: action.y });
-      }
-      return;
-    case 'closeMenu':
-      if (!editor.saving) {
-        get.set(workspaceMenuAtom, null);
       }
       return;
     case 'updateDraft': {

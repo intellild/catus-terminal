@@ -15,7 +15,6 @@ import { WorkspaceItem } from './Workspace/WorkspaceItem';
 import { WorkspaceList } from './Workspace/WorkspaceList';
 import { StatusBar } from './StatusBar';
 import { WorkspaceSettings } from './Workspace/WorkspaceSettings';
-import { WorkspaceContextMenu } from './Workspace/WorkspaceContextMenu';
 
 export function SessionTabs() {
   const view = useAtomValue(tabsViewAtom);
@@ -78,24 +77,6 @@ export function SessionSettings() {
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
     <>
-      <WorkspaceContextMenu
-        menu={view.menu}
-        canDelete={view.canDelete}
-        busy={view.editor.saving}
-        error={view.editor.error}
-        onClose={() => {
-          'background only';
-          dispatch({ type: 'closeMenu' });
-        }}
-        onEdit={(id) => {
-          'background only';
-          dispatch({ type: 'editWorkspace', id });
-        }}
-        onDelete={(id) => {
-          'background only';
-          dispatch({ type: 'deleteWorkspace', id });
-        }}
-      />
       <WorkspaceSettings
         editor={view.editor}
         shells={shells}
