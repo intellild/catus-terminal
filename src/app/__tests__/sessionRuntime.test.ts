@@ -3,13 +3,26 @@ import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import type { WorkspaceConfig, WorkspaceConfigPayload } from '../../shared/workspaces';
-import { editorAtom, loadAtom, sessionAtom, allTabsAtom, tabAtom } from '../state/session';
+import {
+  editorAtom,
+  loadAtom,
+  sessionAtom,
+  allTabsAtom,
+  tabAtom,
+  workspaceAtom,
+} from '../state/session';
 import { sessionActionsAtom } from '../state/sessionActions';
 import type { SessionAction } from '../state/sessionActions';
 import { startSessionRuntime } from '../state/sessionRuntime';
 import { terminalHostAtom } from '../state/terminalSessions';
 import { shellOptionsAtom } from '../state/shells';
-import { tabsViewAtom, tabViewAtom, statusViewAtom } from '../state/sessionViews';
+import {
+  tabsViewAtom,
+  tabViewAtom,
+  statusViewAtom,
+  workspaceViewAtom,
+  workspacesViewAtom,
+} from '../state/sessionViews';
 
 let registry: AtomRegistry.AtomRegistry;
 const payload: WorkspaceConfigPayload = {
@@ -180,5 +193,39 @@ test('tab families notify only changed items; selection leaves the tab list unch
   expect(registry.get(tabsViewAtom).tabIds).toEqual([2, 3]);
   expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(1);
   stopList();
+  stops.forEach((stop) => stop());
+});
+
+test('workspace families notify only affected buttons; the dock subscribes to IDs only', async () => {
+  startSessionRuntime(registry, makeHost());
+  await loaded();
+  const shellChanged = rstest.fn();
+  const localChanged = rstest.fn();
+  const listChanged = rstest.fn();
+  registry.get(workspaceViewAtom('shell'));
+  registry.get(workspaceViewAtom('local'));
+  registry.get(workspacesViewAtom);
+  const stops = [
+    registry.subscribe(workspaceViewAtom('shell'), shellChanged),
+    registry.subscribe(workspaceViewAtom('local'), localChanged),
+    registry.subscribe(workspacesViewAtom, listChanged),
+  ];
+  dispatch({ type: 'addTab' });
+  // Running stays true: adding tabs does not rerender the workspace button.
+  expect(shellChanged).not.toHaveBeenCalled();
+  expect(localChanged).not.toHaveBeenCalled();
+  expect(listChanged).not.toHaveBeenCalled();
+  registry.update(workspaceAtom('local'), (state) => ({
+    ...state!,
+    profile: { ...state!.profile, name: 'Updated workspace' },
+  }));
+  expect(localChanged).toHaveBeenCalledOnce();
+  expect(shellChanged).not.toHaveBeenCalled();
+  expect(listChanged).not.toHaveBeenCalled();
+  localChanged.mockClear();
+  dispatch({ type: 'openWorkspace', id: 'local' });
+  expect(shellChanged).toHaveBeenCalledOnce();
+  expect(localChanged).toHaveBeenCalledOnce();
+  expect(listChanged).not.toHaveBeenCalled();
   stops.forEach((stop) => stop());
 });

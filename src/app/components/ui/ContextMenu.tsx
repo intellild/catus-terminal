@@ -27,6 +27,7 @@ export function ContextMenu({
   children,
   open,
   defaultOpen = false,
+  delay,
   onOpenChange,
 }: ComponentProps<typeof Popover>) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -47,44 +48,31 @@ export function ContextMenu({
         },
       }}
     >
-      <Popover open={open ?? internalOpen} onOpenChange={setOpen}>
+      <Popover open={open ?? internalOpen} delay={delay} onOpenChange={setOpen}>
         {children}
       </Popover>
     </MenuContext.Provider>
   );
 }
 
-// A controlled trigger also works across separate background-only regions.
-export function ContextMenuTrigger({
-  children,
-  onContextMenu,
-  ...props
-}: ViewProps & {
-  children?: ReactNode;
-  onContextMenu?(point: { x: number; y: number }): void;
-}) {
+// Can also dispatch a controlled menu in a separate business region.
+export function useContextMenuTrigger(onContextMenu?: (point: { x: number; y: number }) => void) {
   const context = useContext(MenuContext);
-  return (
-    <Button
-      variant="ghost"
-      {...props}
-      bindmousedown={(event) => {
-        // Clay supplies the pressed-button bit mask; button can remain 0.
-        if (event.button === 2 || (event.buttons & 2) !== 0) {
-          const point = { x: event.pageX, y: event.pageY };
-          if (onContextMenu) {
-            onContextMenu(point);
-          } else if (context) {
-            context.trigger(point);
-          } else {
-            throw new Error('ContextMenuTrigger requires ContextMenu or onContextMenu');
-          }
-        }
-      }}
-    >
-      {children}
-    </Button>
-  );
+  const onMouseDown: NonNullable<ViewProps['bindmousedown']> = (event) => {
+    // Clay supplies the pressed-button bit mask; button can remain 0.
+    if (event.button !== 2 && (event.buttons & 2) === 0) {
+      return;
+    }
+    const point = { x: event.pageX, y: event.pageY };
+    if (onContextMenu) {
+      onContextMenu(point);
+    } else if (context) {
+      context.trigger(point);
+    } else {
+      throw new Error('useContextMenuTrigger requires ContextMenu or a callback');
+    }
+  };
+  return { onMouseDown };
 }
 
 export function ContextMenuAnchor({
@@ -96,25 +84,29 @@ export function ContextMenuAnchor({
   return (
     <PopoverAnchor
       {...props}
-      className={cn('fixed w-[1px] h-[1px]', className)}
+      className={cn('fixed w-[1px] h-[1px] overflow-visible z-50', className)}
       style={{ left: `${point.x}px`, top: `${point.y}px`, ...style }}
     />
   );
 }
 
-export function ContextMenuContent({ className = '', ...props }: PopoverContentProps) {
+export function ContextMenuContent({
+  className = '',
+  point,
+  ...props
+}: PopoverContentProps & { point?: { x: number; y: number } }) {
   const context = useContext(MenuContext);
-  return (
-    <>
-      {context?.point ? <ContextMenuAnchor point={context.point} /> : null}
+  const anchor = point ?? context?.point;
+  return anchor ? (
+    <ContextMenuAnchor point={anchor}>
       <PopoverContent
         side="right"
         sideOffset={2}
         {...props}
         className={cn('w-[170px]', className)}
       />
-    </>
-  );
+    </ContextMenuAnchor>
+  ) : null;
 }
 
 export function ContextMenuItem({

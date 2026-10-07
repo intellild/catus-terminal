@@ -1,10 +1,5 @@
 import { useTranslation } from '../../i18n';
-import {
-  ContextMenu,
-  ContextMenuAnchor,
-  ContextMenuContent,
-  ContextMenuItem,
-} from '../ui/ContextMenu';
+import { ContextMenu, ContextMenuContent, ContextMenuItem } from '../ui/ContextMenu';
 
 export function WorkspaceContextMenu({
   menu,
@@ -36,8 +31,11 @@ export function WorkspaceContextMenu({
         }
       }}
     >
-      <ContextMenuAnchor point={menu} />
-      <ContextMenuContent id="workspace-context-menu" dismissId="workspace-menu-dismiss">
+      <ContextMenuContent
+        point={menu}
+        id="workspace-context-menu"
+        dismissClassName="workspace-menu-dismiss"
+      >
         <ContextMenuItem id="workspace-menu-edit" disabled={busy} onSelect={() => onEdit(menu.id)}>
           {t('workspace.edit')}
         </ContextMenuItem>

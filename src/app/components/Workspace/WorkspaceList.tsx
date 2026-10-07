@@ -1,24 +1,15 @@
 import { Button } from '../ui/Button';
-import { WorkspaceItem } from './WorkspaceItem';
+import type { ReactNode } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
-import type { Workspace } from '../../../shared/workspaces';
 
 export function WorkspaceList({
-  workspaces = [],
-  activeWorkspaceId,
-  runningIds = new Set<string>(),
+  children,
   loading = false,
-  onSelect,
   onAdd,
-  onContextMenu,
 }: {
-  workspaces?: readonly Workspace[];
-  activeWorkspaceId?: string | null;
-  runningIds?: ReadonlySet<string>;
+  children?: ReactNode;
   loading?: boolean;
-  onSelect?(id: string): void;
   onAdd?(): void;
-  onContextMenu?(id: string, x: number, y: number): void;
 }) {
   const { t } = useTranslation();
   return (
@@ -26,20 +17,10 @@ export function WorkspaceList({
       <scroll-view scroll-y className="w-14 flex-1 min-h-0">
         <view className="flex flex-col items-center gap-[8px] py-[4px]">
           {loading &&
-            !workspaces.length &&
             [0, 1, 2].map((index) => (
               <view key={index} className="w-10 h-10 rounded-[10px] bg-[#25292f]" />
             ))}
-          {workspaces.map((workspace) => (
-            <WorkspaceItem
-              key={workspace.id}
-              workspace={workspace}
-              active={activeWorkspaceId === workspace.id}
-              running={runningIds.has(workspace.id)}
-              onSelect={onSelect}
-              onContextMenu={onContextMenu}
-            />
-          ))}
+          {children}
         </view>
       </scroll-view>
       <Button

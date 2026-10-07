@@ -83,7 +83,7 @@ async function changeInput(
   });
 }
 
-function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
+async function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
   fireEvent(
     root.querySelector(`#workspace-${id}`)!,
     Object.assign(new CustomEvent('bindEvent:mousedown'), {
@@ -93,9 +93,10 @@ function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
       pageY: 120,
     }),
   );
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).not.toBeNull());
 }
-function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
-  contextMenu(root, id);
+async function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
+  await contextMenu(root, id);
   fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
 }
 
@@ -146,7 +147,7 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
-test('background hydration preserves the main-thread layout and portal host nodes', async () => {
+test('background hydration preserves the main-thread layout nodes', async () => {
   const main = lynxTestingEnv.mainThread.globalThis;
   lynxTestingEnv.switchToMainThread();
   const renderPage = Reflect.get(globalThis, 'renderPage') as (...args: unknown[]) => unknown;
@@ -159,7 +160,6 @@ test('background hydration preserves the main-thread layout and portal host node
     'workspace-dock',
     'terminal-content',
     'application-status',
-    'popover-host',
   ];
   let firstFrame: { id: string; element: unknown }[] = [];
   // Capture the native element tree after IFR, before testing-library hydrates BTS.
@@ -263,9 +263,12 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   renderApp(host);
   const root = elementTree.root!;
   await waitForTerminal();
-  openEditor(root);
+  await openEditor(root);
   await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
   fireEvent.tap(root.querySelector('#profile-shell')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
+  );
   fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
   await changeInput(root, '#profile-command', 'printf hello');
   fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
@@ -309,7 +312,7 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   fireEvent.tap(root.querySelector('#workspace-workspace-1')!);
   await findByText('New workspace 2');
   expect(root.querySelector('#running-workspace-1')).not.toBeNull();
-  contextMenu(root, 'workspace-1');
+  await contextMenu(root, 'workspace-1');
   fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
   await findByText('Shell 1');
   expect(root.querySelector('#workspace-workspace-1')).toBeNull();
@@ -438,7 +441,7 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
   renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
-  openEditor(root);
+  await openEditor(root);
   await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith(undefined));
   expect(root.querySelector('#profile-command')).toBeNull();
   fireEvent.tap(root.querySelector('#profile-shell')!);
@@ -452,13 +455,16 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
     args: ['-l'],
   });
   await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).toBeNull());
-  openEditor(root);
+  await openEditor(root);
   await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
   fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
   await changeInput(root, '#profile-host', 'remote-alias');
   await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith('remote-alias'));
   expect(root.querySelector('#ssh-command-preview')?.textContent).toContain('exec');
   fireEvent.tap(root.querySelector('#profile-shell')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
+  );
   fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
   await changeInput(root, '#profile-command', 'exec fish');
   fireEvent.tap(root.querySelector('#save-workspace')!);
@@ -477,7 +483,7 @@ test('right-click edits an inactive workspace without starting it; failed deleti
   await waitForTerminal();
   const root = elementTree.root!;
   const terminal = NativeModules.nodejs.exposed as TerminalHost;
-  contextMenu(root, 'local');
+  await contextMenu(root, 'local');
   expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
@@ -489,7 +495,7 @@ test('right-click edits an inactive workspace without starting it; failed deleti
   fireEvent.tap(root.querySelector('#workspace-local')!);
   await rstest.waitFor(() => expect(terminal.createTerminalSession).toHaveBeenCalledTimes(2));
   fireEvent.tap(root.querySelector('#workspace-shell')!);
-  contextMenu(root, 'local');
+  await contextMenu(root, 'local');
   rstest.mocked(host.saveWorkspaces).mockRejectedValueOnce(new Error('Permission denied'));
   fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
   await rstest.waitFor(() =>
@@ -504,7 +510,7 @@ test('right-click edits an inactive workspace without starting it; failed deleti
 });
 
 function hoverWorkspace(id: string, enter: boolean) {
-  const trigger = elementTree.root!.querySelector(`#workspace-hover-${id}`)!;
+  const trigger = elementTree.root!.querySelector(`#workspace-${id}`)!;
   const eventName = enter ? 'mouseenter' : 'mouseleave';
   fireEvent(
     trigger,
@@ -528,12 +534,71 @@ test('workspace buttons show details on hover without starting or selecting a wo
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   // Informational popovers must not install a screen-wide click interceptor.
-  expect(root.querySelector('#popover-host')?.className).toContain('w-0');
+  expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
   hoverWorkspace('local', false);
   await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
   hoverWorkspace('local', true);
   await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).not.toBeNull());
-  contextMenu(root, 'local');
+  await contextMenu(root, 'local');
   await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
   expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
+});
+
+test('hover deduplicates measurements and rejects responses from a previous visit', async () => {
+  renderApp();
+  await waitForTerminal();
+  const root = elementTree.root!;
+  const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
+  const invoke = rstest.mocked(Object.getPrototypeOf(query.selectUniqueID(0)).invoke);
+  const original = invoke.getMockImplementation()!;
+  const responses: ((result: unknown) => void)[] = [];
+  invoke.mockImplementation(function (
+    this: unknown,
+    options: { method: string; success(result: unknown): void },
+  ) {
+    if (options.method === 'boundingClientRect') {
+      return {
+        exec: () => {
+          responses.push(options.success);
+        },
+      };
+    }
+    return original.call(this, options);
+  });
+  for (let count = 0; count < 25; count++) {
+    hoverWorkspace('local', true);
+  }
+  expect(responses).toHaveLength(1);
+  hoverWorkspace('local', false);
+  hoverWorkspace('local', true);
+  expect(responses).toHaveLength(2);
+  act(() => responses[0]!({ left: 0, top: 0, width: 40, height: 40 }));
+  expect(root.querySelector('#workspace-details-local')).toBeNull();
+  act(() => responses[1]!({ left: 8, top: 100, width: 40, height: 40 }));
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).not.toBeNull());
+  const details = root.querySelector('#workspace-details-local')!;
+  expect(details.className).toContain('pointer-events-none');
+  expect(details.getAttribute('event-through')).toBe('true');
+  hoverWorkspace('local', false);
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+});
+
+test('leaving hover preserves styles during the delay and then removes the content', async () => {
+  renderApp();
+  await waitForTerminal();
+  const root = elementTree.root!;
+  for (let count = 0; count < 3; count++) {
+    hoverWorkspace('local', true);
+    await rstest.waitFor(() =>
+      expect(root.querySelector('#workspace-details-local')).not.toBeNull(),
+    );
+    const details = root.querySelector('#workspace-details-local')!;
+    const classes = details.className;
+    expect(classes).toContain('bg-[#20262d]');
+    hoverWorkspace('local', false);
+    expect(root.querySelector('#workspace-details-local')).toBe(details);
+    expect(details.className).toBe(classes);
+    await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+    expect(details.className).toBe(classes);
+  }
 });

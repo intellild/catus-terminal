@@ -126,7 +126,10 @@ export function WorkspaceSettings({
                             {shellOptions.find((option) => option.value === field.value)?.label}
                           </SelectValue>
                         </SelectTrigger>
-                        <SelectContent id="profile-shell-content" dismissId="profile-shell-dismiss">
+                        <SelectContent
+                          id="profile-shell-content"
+                          dismissClassName="profile-shell-dismiss"
+                        >
                           {shellOptions.map((option, index) => (
                             <SelectItem
                               key={option.value}

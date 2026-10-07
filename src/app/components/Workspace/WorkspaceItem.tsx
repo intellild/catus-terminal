@@ -1,69 +1,79 @@
-import { useState } from '@lynx-js/react';
+import 'background-only';
+import '../../runtime';
+import { useAtomSet, useAtomValue } from '@effect/atom-react';
+import { workspaceViewAtom } from '../../state/sessionViews';
+import { sessionActionsAtom } from '../../state/sessionActions';
+import { memo } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
+import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
-import { ContextMenuTrigger } from '../ui/ContextMenu';
-import { Popover, PopoverHoverTrigger, PopoverContent } from '../ui/Popover';
-import type { Workspace } from '../../../shared/workspaces';
+import { useContextMenuTrigger } from '../ui/ContextMenu';
+import { Popover, PopoverAnchor, usePopoverHoverTrigger, PopoverContent } from '../ui/Popover';
 
-export function WorkspaceItem({
-  workspace,
-  active,
-  running,
-  onSelect,
-  onContextMenu,
-}: {
-  workspace: Workspace;
-  active: boolean;
-  running: boolean;
-  onSelect?(id: string): void;
-  onContextMenu?(id: string, x: number, y: number): void;
-}) {
+export const WorkspaceItem = memo(function WorkspaceItem({ id }: { id: string }) {
+  return (
+    <Popover>
+      <WorkspaceItemContent id={id} />
+    </Popover>
+  );
+});
+
+function WorkspaceItemContent({ id }: { id: string }) {
+  const { workspace, active, running } = useAtomValue(workspaceViewAtom(id));
+  const dispatch = useAtomSet(sessionActionsAtom);
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const hover = usePopoverHoverTrigger();
+  const menu = useContextMenuTrigger(({ x, y }) => {
+    hover.close();
+    dispatch({ type: 'openMenu', id, x, y });
+  });
+  if (!workspace) {
+    return null;
+  }
   const shell =
     workspace.command === '$SHELL'
       ? t('workspace.defaultShell')
       : [workspace.command, ...workspace.args].join(' ');
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverHoverTrigger id={`workspace-hover-${workspace.id}`} className="w-10 h-10">
-        <ContextMenuTrigger
-          id={`workspace-${workspace.id}`}
-          accessibility-label={workspace.name}
-          className={cn(
-            'w-10 h-10 p-0 rounded-[10px] relative',
-            active && 'bg-[#303b40] hover:bg-[#3a474d]',
-          )}
-          bindtap={() => {
-            setOpen(false);
-            onSelect?.(workspace.id);
-          }}
-          onContextMenu={({ x, y }) => {
-            setOpen(false);
-            onContextMenu?.(workspace.id, x, y);
-          }}
+    <PopoverAnchor className="w-10 h-10 overflow-visible">
+      <Button
+        variant="ghost"
+        ref={hover.ref}
+        bindmouseenter={hover.onMouseEnter}
+        bindmouseleave={hover.onMouseLeave}
+        bindmousedown={menu.onMouseDown}
+        id={`workspace-${workspace.id}`}
+        accessibility-label={workspace.name}
+        className={cn(
+          'w-10 h-10 p-0 rounded-[10px] relative',
+          active && 'bg-[#303b40] hover:bg-[#3a474d]',
+        )}
+        bindtap={() => {
+          hover.close();
+          dispatch({ type: 'openWorkspace', id });
+        }}
+      >
+        <text
+          className="text-[16px] font-bold text-[color:var(--workspace-color)]"
+          style={`--workspace-color: ${active ? workspace.color : '#aeb7c4'}`}
         >
-          <text
-            className="text-[16px] font-bold text-[color:var(--workspace-color)]"
-            style={`--workspace-color: ${active ? workspace.color : '#aeb7c4'}`}
-          >
-            {workspace.icon}
-          </text>
-          {running && (
-            <view
-              id={`running-${workspace.id}`}
-              className="absolute bottom-[3px] left-[18px] w-[4px] h-[4px] rounded-full bg-[var(--workspace-color)]"
-              style={`--workspace-color: ${workspace.color}`}
-            />
-          )}
-        </ContextMenuTrigger>
-      </PopoverHoverTrigger>
+          {workspace.icon}
+        </text>
+        {running && (
+          <view
+            id={`running-${workspace.id}`}
+            className="absolute bottom-[3px] left-[18px] w-[4px] h-[4px] rounded-full bg-[var(--workspace-color)]"
+            style={`--workspace-color: ${workspace.color}`}
+          />
+        )}
+      </Button>
       <PopoverContent
         id={`workspace-details-${workspace.id}`}
         side="right"
         align="center"
         sideOffset={12}
         modal={false}
+        interactive={false}
         className="w-[240px] p-[12px] flex flex-col gap-[8px]"
       >
         <text className="text-[13px] font-bold text-[#e2e8ed] break-all">{workspace.name}</text>
@@ -87,6 +97,6 @@ export function WorkspaceItem({
           {t('workspace.cwd')} · {workspace.cwd}
         </text>
       </PopoverContent>
-    </Popover>
+    </PopoverAnchor>
   );
 }

@@ -1,6 +1,7 @@
 import 'background-only';
 import * as Atom from 'effect/reactivity/Atom';
 import type { TerminalTab } from './session';
+import type { Workspace } from '../../shared/workspaces';
 import {
   editorAtom,
   loadAtom,
@@ -10,6 +11,7 @@ import {
   activeWorkspaceAtom,
   activeWorkspaceIdAtom,
   workspaceAtom,
+  workspaceIdsAtom,
   tabAtom,
   allTabsAtom,
 } from './session';
@@ -49,15 +51,28 @@ export const tabViewAtom = Atom.family((id: number) =>
   ),
 );
 
-export const workspacesViewAtom = Atom.make((get) => {
-  const { workspaces, workspace, runningIds } = get(sessionViewAtom);
-  return {
-    workspaces,
-    activeWorkspaceId: workspace?.id,
-    runningIds,
-    loading: get(loadAtom).loading,
-  };
-});
+export const workspaceViewAtom = Atom.family((id: string) =>
+  Atom.make((get) => {
+    const state = get(workspaceAtom(id));
+    return {
+      workspace: state?.profile,
+      active: get(activeWorkspaceIdAtom) === id,
+      running: !!state?.tabIds.length,
+    };
+  }).pipe(
+    Atom.withEquality<{ workspace: Workspace | undefined; active: boolean; running: boolean }>(
+      (a, b) => a.workspace === b.workspace && a.active === b.active && a.running === b.running,
+    ),
+  ),
+);
+export const workspacesViewAtom = Atom.make((get) => ({
+  workspaceIds: get(workspaceIdsAtom),
+  loading: get(loadAtom).loading,
+})).pipe(
+  Atom.withEquality<{ workspaceIds: readonly string[]; loading: boolean }>(
+    (a, b) => a.workspaceIds === b.workspaceIds && a.loading === b.loading,
+  ),
+);
 export const contentViewAtom = Atom.make((get) => {
   const { workspace, activeTab, tabs, terminalId, terminalError } = get(sessionViewAtom);
   const load = get(loadAtom);
