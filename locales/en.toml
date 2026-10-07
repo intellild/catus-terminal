@@ -76,3 +76,6 @@ empty = "Empty directory"
 directory = "Directory"
 link = "Link"
 file = "File"
+
+showHiddenFiles = "Show hidden files"
+currentDirectory = "{{host}}: {{path}}"

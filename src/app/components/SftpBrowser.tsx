@@ -1,4 +1,15 @@
 import { Button } from './ui/Button';
+import { Checkbox } from './ui/Checkbox';
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis,
+} from './ui/Breadcrumb';
+import { Fragment } from '@lynx-js/react';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import 'background-only';
@@ -30,6 +41,14 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
     error: '',
   });
   const [selected, setSelected] = useState('');
+  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+  const entries = listing.entries.filter((entry) => showHiddenFiles || !entry.name.startsWith('.'));
+  const parts = listing.path.split('/').filter(Boolean);
+  const breadcrumbs = parts.length
+    ? parts
+        .map((name, index) => ({ name, path: `/${parts.slice(0, index + 1).join('/')}` }))
+        .slice(-3)
+    : [{ name: listing.path || '.', path: listing.path || '.' }];
   useEffect(() => {
     'background only';
     let disposed = false;
@@ -95,7 +114,10 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       id="sftp-browser"
       className="flex-1 min-h-0 flex flex-col p-[16px] [-x-app-region:no-drag]"
     >
-      <view className="flex flex-row items-center gap-[14px] mb-[14px]">
+      <view
+        id="sftp-toolbar"
+        className="shrink-0 flex flex-row items-center gap-[8px] pb-[12px] mb-[12px] border-b border-solid border-[#29313a]"
+      >
         <Button
           variant="link"
           size="sm"
@@ -109,9 +131,48 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.up')}</text>
         </Button>
-        <text id="sftp-path" className="flex-1 text-[12px] text-[#c3cdd6] break-all">
-          {host}: {listing.path || '.'}
-        </text>
+        <Breadcrumb
+          id="sftp-path"
+          className="flex-1"
+          accessibility-label={t('sftp.currentDirectory', { host, path: listing.path || '.' })}
+        >
+          <BreadcrumbList>
+            {parts.length > 3 ? (
+              <>
+                <BreadcrumbItem>
+                  <BreadcrumbEllipsis id="sftp-breadcrumb-ellipsis" />
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+              </>
+            ) : null}
+            {breadcrumbs.map((crumb, index) => (
+              <Fragment key={crumb.path}>
+                {index ? <BreadcrumbSeparator /> : null}
+                <BreadcrumbItem>
+                  {index === breadcrumbs.length - 1 ? (
+                    <BreadcrumbPage id="sftp-breadcrumb-current">{crumb.name}</BreadcrumbPage>
+                  ) : (
+                    <BreadcrumbLink
+                      id={`sftp-breadcrumb-${index}`}
+                      disabled={listing.loading}
+                      bindtap={() => setPath(crumb.path)}
+                    >
+                      <text className="text-[12px] truncate">{crumb.name}</text>
+                    </BreadcrumbLink>
+                  )}
+                </BreadcrumbItem>
+              </Fragment>
+            ))}
+          </BreadcrumbList>
+        </Breadcrumb>
+        <Checkbox
+          id="sftp-show-hidden"
+          className="shrink-0"
+          checked={showHiddenFiles}
+          onCheckedChange={setShowHiddenFiles}
+        >
+          <text className="text-[11px] text-[#c3cdd6]">{t('sftp.showHiddenFiles')}</text>
+        </Checkbox>
         <Button
           variant="link"
           size="sm"
@@ -140,12 +201,12 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         </text>
       ) : null}
       <scroll-view id="sftp-list" scroll-y className="flex-1 min-h-0">
-        {!listing.loading && !listing.error && !listing.entries.length ? (
+        {!listing.loading && !listing.error && !entries.length ? (
           <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
             {t('sftp.empty')}
           </text>
         ) : null}
-        {listing.entries.map((entry, index) => (
+        {entries.map((entry, index) => (
           <Button
             variant="ghost"
             disabled={listing.loading}

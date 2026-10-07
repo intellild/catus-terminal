@@ -82,10 +82,12 @@ export class LynxApp {
     let fixturePath = process.env.PATH;
     if (options.ssh) {
       const bin = path.join(this.temporary, 'bin');
-      const remote = path.join(this.temporary, 'remote');
+      const remote = path.join(this.temporary, 'one', 'two', 'three', 'remote');
       await mkdir(bin);
-      await mkdir(remote);
+      await mkdir(remote, { recursive: true });
       await mkdir(path.join(remote, 'docs'));
+      await mkdir(path.join(remote, '.cache'));
+      await writeFile(path.join(remote, '.env'), 'DOTFILE=visible');
       await writeFile(path.join(remote, 'readme.txt'), 'SFTP fixture');
       await writeFile(
         path.join(bin, 'ssh'),
@@ -112,7 +114,7 @@ export class LynxApp {
           ...process.env,
           NODE_ENV: 'test',
           PATH: fixturePath,
-          CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'remote'),
+          CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'one', 'two', 'three', 'remote'),
           CATUS_WORKSPACES_FILE: configuration,
           CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
           CATUS_E2E_NODE: process.execPath,

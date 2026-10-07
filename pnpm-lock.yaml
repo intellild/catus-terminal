@@ -28,6 +28,9 @@ importers:
       '@formatjs/intl-pluralrules':
         specifier: ^5.4.6
         version: 5.4.6
+      '@lynx-js/lynx-ui-checkbox':
+        specifier: ^3.139.0
+        version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
       '@lynx-js/lynx-ui-input':
         specifier: ^3.139.0
         version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
@@ -755,6 +758,13 @@ packages:
 
   '@lynx-js/lynx-ui-button@3.139.0':
     resolution: {integrity: sha512-UxJ4GOsQ1+nSJ39tgvbgExrikN6gnJxYKpup1QGEmSuL/DHELvKn/GK/vt5HIpkjgvQwxlEt0PZYUQj2fDwg8A==}
+    peerDependencies:
+      '@lynx-js/react': '>=0.100.0'
+      '@lynx-js/types': '*'
+      '@types/react': ^18
+
+  '@lynx-js/lynx-ui-checkbox@3.139.0':
+    resolution: {integrity: sha512-gIWEP4jbwlzdGeX/XejK47E6x0TR6xS0SEyG8yHujDG1FRR8ajFuZqkg1769d86JXgcQbvWA2xkK1vAgIuM37g==}
     peerDependencies:
       '@lynx-js/react': '>=0.100.0'
       '@lynx-js/types': '*'
@@ -5778,6 +5788,18 @@ snapshots:
       '@lynx-js/lynx-ui-common': 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
       '@lynx-js/react': 0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31)
       '@lynx-js/react-use': 0.2.2(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
+      '@lynx-js/types': 4.3.0
+      '@types/react': 18.3.31
+      clsx: 2.1.1
+    transitivePeerDependencies:
+      - react
+      - react-dom
+
+  '@lynx-js/lynx-ui-checkbox@3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@lynx-js/lynx-ui-button': 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
+      '@lynx-js/lynx-ui-common': 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
+      '@lynx-js/react': 0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31)
       '@lynx-js/types': 4.3.0
       '@types/react': 18.3.31
       clsx: 2.1.1

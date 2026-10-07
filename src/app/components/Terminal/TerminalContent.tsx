@@ -47,34 +47,37 @@ export function TerminalContent({
           </view>
         ) : null}
         <>
-          <view
-            className={
-              error
-                ? 'hidden'
-                : 'h-[55px] py-0 px-[24px] flex flex-row items-center justify-between shrink-0'
-            }
-          >
-            <view className="flex flex-row items-center gap-[10px] flex-1 min-w-0">
-              <text className="text-[18px] text-[#778b86]">~</text>
-              <text
-                id="session-directory"
-                className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
-              >
-                {activeTab
-                  ? activeTab.kind === 'sftp'
-                    ? t('terminal.sftpBrowser')
-                    : activeTab.profile.type === 'ssh'
+          {activeTab?.kind !== 'sftp' ? (
+            <view
+              className={
+                error
+                  ? 'hidden'
+                  : 'h-[55px] py-0 px-[24px] flex flex-row items-center justify-between shrink-0'
+              }
+            >
+              <view className="flex flex-row items-center gap-[10px] flex-1 min-w-0">
+                <text className="text-[18px] text-[#778b86]">~</text>
+                <text
+                  id="session-directory"
+                  className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  {activeTab
+                    ? activeTab.profile.type === 'ssh'
                       ? t('terminal.sshHost', { host: activeTab.profile.host })
                       : activeTab.profile.command
-                  : t('terminal.chooseWorkspace')}
+                    : t('terminal.chooseWorkspace')}
+                </text>
+              </view>
+              <text
+                id="session-label"
+                className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]"
+              >
+                {activeTab
+                  ? t('terminal.session', { number: String(activeTab.number).padStart(2, '0') })
+                  : t('terminal.noSession')}
               </text>
             </view>
-            <text id="session-label" className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]">
-              {activeTab
-                ? t('terminal.session', { number: String(activeTab.number).padStart(2, '0') })
-                : t('terminal.noSession')}
-            </text>
-          </view>
+          ) : null}
           {children}
           {!error && (!children || !activeTab) ? (
             <view className="flex-1 flex flex-col items-center justify-center p-[24px]">

@@ -102,6 +102,20 @@ test('SFTP browser uses native directory APIs and keeps terminal ownership separ
   expect(await app.sessionExists(2)).toBe(true);
   expect(await app.sessionExists(3)).toBe(false);
   expect((await app.node('#terminal-surface'))!.nodeId).toBe(surface.nodeId);
+  expect(await app.node('#sftp-breadcrumb-ellipsis')).toBeDefined();
+  expect(await app.node('#sftp-breadcrumb-current')).toBeDefined();
+  expect(await app.node('#sftp-entry-1')).toBeDefined(); // docs, readme.txt
+  expect(await app.node('#sftp-entry-2')).toBeUndefined(); // .cache and .env are hidden
+  expect(await app.node('#session-label')).toBeUndefined();
+  expect(await app.node('#session-directory')).toBeUndefined();
+  await app.tap('#sftp-show-hidden');
+  await waitFor('hidden directory visible', () => app.node('#sftp-entry-3'));
+  await expectScreenshot('sftp-toolbar-hidden-directories', await app.screenshot('#sftp-toolbar'));
+  await app.tap('#sftp-show-hidden');
+  await waitFor('hidden directory removed', async () =>
+    !(await app.node('#sftp-entry-2')) ? true : undefined,
+  );
+  await expectScreenshot('sftp-toolbar', await app.screenshot('#sftp-toolbar'));
   await expectScreenshot('sftp-directory', await app.screenshot('#sftp-list'));
   await app.tap('#sftp-entry-0'); // Directories sort before files.
   await waitFor('empty docs directory', () => app.node('#sftp-empty'));

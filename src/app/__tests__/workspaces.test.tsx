@@ -374,16 +374,22 @@ test('terminal forwards control keys to the native PTY and keeps macOS shortcuts
 test('SSH has separate terminal and SFTP buttons; directory navigation preserves the native view', async () => {
   const fs = {
     realpath: rstest.fn(async (path: string) =>
-      path === '.' ? '/home/test' : path.endsWith('/..') ? '/home/test' : path,
+      path === '.' ? '/srv/users/home/test' : path.endsWith('/..') ? '/srv/users/home/test' : path,
     ),
     readdir: rstest.fn(async (path: string) =>
       path.endsWith('/docs')
         ? []
         : [
             {
-              name: 'readme.txt',
+              name: '.env',
               isDirectory: () => false,
               isFile: () => true,
+              isSymbolicLink: () => false,
+            },
+            {
+              name: '.cache',
+              isDirectory: () => true,
+              isFile: () => false,
               isSymbolicLink: () => false,
             },
             {
@@ -419,13 +425,34 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   await rstest.waitFor(() =>
     expect(root.querySelector('#sftp-entry-0')?.textContent).toContain('docs'),
   );
+  expect(root.querySelector('#sftp-path')?.textContent).toBe('…›users›home›test');
+  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.env');
+  expect(root.querySelector('#session-label')).toBeNull();
+  expect(root.querySelector('#session-directory')).toBeNull();
+  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.cache');
+  fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#sftp-list')?.textContent).toContain('.cache'),
+  );
+  expect(root.querySelector('#sftp-list')?.textContent).toContain('.env');
+  fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.cache'),
+  );
+  expect(root.querySelector('#sftp-list')?.textContent).not.toContain('.env');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(0);
   fireEvent.tap(root.querySelector('#sftp-entry-0')!);
   await rstest.waitFor(() => expect(root.querySelector('#sftp-empty')).not.toBeNull());
-  expect(fs.readdir).toHaveBeenLastCalledWith('/home/test/docs', { withFileTypes: true });
+  expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users/home/test/docs', { withFileTypes: true });
   fireEvent.tap(root.querySelector('#sftp-up')!);
   await rstest.waitFor(() => expect(root.querySelector('#sftp-entry-0')).not.toBeNull());
+  fireEvent.tap(root.querySelector('#sftp-breadcrumb-0')!);
+  await rstest.waitFor(() =>
+    expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users', { withFileTypes: true }),
+  );
+  expect(root.querySelector('#sftp-breadcrumb-ellipsis')).toBeNull();
+  expect(root.querySelector('#sftp-breadcrumb-current')?.textContent).toBe('users');
   fireEvent.tap(root.querySelector('#tab-1')!);
   expect(root.querySelector('#terminal-surface')).toBe(surface);
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(1);
