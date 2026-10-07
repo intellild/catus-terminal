@@ -4,7 +4,7 @@ import { cva } from 'class-variance-authority';
 import { Children, createContext, useContext, useState } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { TextProps, ViewProps } from '@lynx-js/types';
-import { Popover, PopoverContent, PopoverTrigger, usePopover } from './Popover';
+import { Popover, PopoverAnchor, PopoverContent, usePopoverTrigger, usePopover } from './Popover';
 import type { PopoverContentProps } from './Popover';
 
 export const selectTriggerVariants = cva(
@@ -58,7 +58,7 @@ export function Select({
   return (
     <SelectContext.Provider value={{ value, onValueChange, disabled, width, setWidth }}>
       <Popover open={open && !disabled} onOpenChange={setOpen}>
-        {children}
+        <PopoverAnchor className="w-full overflow-visible">{children}</PopoverAnchor>
       </Popover>
     </SelectContext.Provider>
   );
@@ -71,16 +71,27 @@ export function SelectTrigger({
 }: ViewProps & { children?: ReactNode }) {
   const { disabled, setWidth } = useSelect();
   const { open } = usePopover();
+  const trigger = usePopoverTrigger({ disabled });
   return (
-    <PopoverTrigger
+    <Button
+      variant="ghost"
+      ref={trigger.ref}
       {...props}
       disabled={disabled}
       className={cn(selectTriggerVariants({ disabled }), className)}
-      bindlayoutchange={(event) => setWidth(event.detail.width)}
+      bindtap={(event) => {
+        props.bindtap?.(event);
+        trigger.onTap();
+      }}
+      bindlayoutchange={(event) => {
+        props.bindlayoutchange?.(event);
+        setWidth(event.detail.width);
+        trigger.onLayoutChange();
+      }}
     >
       {children}
       <text className="text-[12px] text-[#9ca6b2]">{open ? '▴' : '▾'}</text>
-    </PopoverTrigger>
+    </Button>
   );
 }
 

@@ -232,10 +232,13 @@ export class LynxApp {
 
   private async nodePath(selector: string) {
     const { root } = await this.cdp<{ root: NodeInfo }>('DOM.getDocument', { depth: -1 });
-    const id = selector.slice(1);
+    const value = selector.slice(1);
     const find = (node: NodeInfo, ancestors: NodeInfo[]): NodeInfo[] | undefined => {
       const nodes = [...ancestors, node];
-      if (this.attribute(node, 'idSelector') === id) {
+      const matches = selector.startsWith('.')
+        ? this.attribute(node, 'class')?.split(/\s+/).includes(value)
+        : this.attribute(node, 'idSelector') === value;
+      if (matches) {
         return nodes;
       }
       for (const child of node.children ?? []) {

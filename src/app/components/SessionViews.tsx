@@ -11,6 +11,7 @@ import {
 } from '../state/sessionViews';
 import { TabList, TabActions } from './TabBar';
 import { TabItem } from './TabBar/TabItem';
+import { WorkspaceItem } from './Workspace/WorkspaceItem';
 import { WorkspaceList } from './Workspace/WorkspaceList';
 import { StatusBar } from './StatusBar';
 import { WorkspaceSettings } from './Workspace/WorkspaceSettings';
@@ -53,20 +54,16 @@ export function SessionWorkspaces() {
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
     <WorkspaceList
-      {...view}
+      loading={view.loading && !view.workspaceIds.length}
       onAdd={() => {
         'background only';
         dispatch({ type: 'addWorkspace' });
       }}
-      onSelect={(id) => {
-        'background only';
-        dispatch({ type: 'openWorkspace', id });
-      }}
-      onContextMenu={(id, x, y) => {
-        'background only';
-        dispatch({ type: 'openMenu', id, x, y });
-      }}
-    />
+    >
+      {view.workspaceIds.map((id) => (
+        <WorkspaceItem key={id} id={id} />
+      ))}
+    </WorkspaceList>
   );
 }
 

@@ -1,13 +1,6 @@
-import { Button } from './Button';
+import { delayPopover } from './popoverDelay';
 import { cn } from '../../lib/utils';
-import {
-  createContext,
-  createPortal,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from '@lynx-js/react';
+import { createContext, useContext, useEffect, useRef, useState } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { CSSProperties, NodesRef, ViewProps } from '@lynx-js/types';
 import {
@@ -15,45 +8,15 @@ import {
   PopoverContext as LynxPopoverContext,
   PopoverAnchor,
   PopoverPositioner,
+  PopoverBackdrop,
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
 
-const PortalContext = createContext<{
-  host: NodesRef | null;
-  setActive: (update: (count: number) => number) => void;
+const PopoverContext = createContext<{
+  open: boolean;
+  visible: boolean;
+  setOpen(open: boolean): void;
 } | null>(null);
-const PopoverContext = createContext<{ open: boolean; setOpen(open: boolean): void } | null>(null);
-
-// Portals preserve React context and escape the editor's scroll-view clipping.
-// The host stays in this Lynx page; no native overlay window is required.
-export function PopoverProvider({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  const ref = useRef<NodesRef>(null);
-  const [host, setHost] = useState<NodesRef | null>(null);
-  const [active, setActive] = useState(0);
-  useEffect(() => setHost(ref.current), []);
-  return (
-    <PortalContext.Provider value={{ host, setActive }}>
-      {children}
-      <view
-        ref={ref}
-        flatten={false}
-        id="popover-host"
-        className={cn(
-          active
-            ? 'absolute inset-0 overflow-visible'
-            : 'absolute left-0 top-0 w-0 h-0 overflow-visible',
-          className,
-        )}
-      />
-    </PortalContext.Provider>
-  );
-}
 
 export function usePopover() {
   const context = useContext(PopoverContext);
@@ -67,15 +30,27 @@ export function Popover({
   children,
   open,
   defaultOpen = false,
+  delay = 100,
   onOpenChange,
 }: {
   children: ReactNode;
   open?: boolean;
   defaultOpen?: boolean;
+  delay?: number;
   onOpenChange?(open: boolean): void;
 }) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const actualOpen = open ?? internalOpen;
+  const [delayedOpen, setDelayedOpen] = useState(false);
+  const wait = Math.max(0, delay);
+  const visible = wait === 0 ? actualOpen : delayedOpen;
+  useEffect(() => {
+    if (actualOpen === delayedOpen) {
+      return;
+    }
+    // Interrupt the previous Effect on direction changes or unmount.
+    return delayPopover(wait, () => setDelayedOpen(actualOpen));
+  }, [actualOpen, delayedOpen, wait]);
   const setOpen = (next: boolean) => {
     if (open === undefined) {
       setInternalOpen(next);
@@ -83,8 +58,8 @@ export function Popover({
     onOpenChange?.(next);
   };
   return (
-    <PopoverContext.Provider value={{ open: actualOpen, setOpen }}>
-      <PopoverRoot show={actualOpen} onVisibleChange={setOpen}>
+    <PopoverContext.Provider value={{ open: actualOpen, visible, setOpen }}>
+      <PopoverRoot show={visible} onVisibleChange={setOpen}>
         {children}
       </PopoverRoot>
     </PopoverContext.Provider>
@@ -93,114 +68,107 @@ export function Popover({
 
 export { PopoverAnchor };
 
-export function PopoverTrigger({
-  disabled = false,
-  children,
-  ...props
-}: ViewProps & { disabled?: boolean; children?: ReactNode }) {
-  const { open, setOpen } = usePopover();
+function usePopoverReference() {
   const { updateRects } = useContext(LynxPopoverContext);
   const ref = useRef<NodesRef>(null);
-  const measure = (onMeasured?: () => void) => {
-    // layoutchange's left/top are parent-relative in Clay. The portal uses
-    // page coordinates, so query the trigger in the same coordinate space.
+  const measure = (isCurrent: () => boolean, onMeasured: () => void) => {
+    // Viewport coordinates are used by Lynx UI when checking available space.
     ref.current
       ?.invoke({
         method: 'boundingClientRect',
-        params: { relativeTo: 'screen' },
+        params: {},
         success(result) {
+          if (!isCurrent()) {
+            return;
+          }
           const rect = result as { left: number; top: number; width: number; height: number };
           updateRects({
             type: 'updateReference',
             rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
           });
-          onMeasured?.();
+          onMeasured();
         },
       })
       .exec();
   };
-  return (
-    <Button
-      variant="ghost"
-      disabled={disabled}
-      {...props}
-      ref={ref}
-      bindlayoutchange={(event) => {
-        props.bindlayoutchange?.(event);
-        if (open) {
-          measure();
-        }
-      }}
-      bindtap={() => {
-        if (disabled) {
-          return;
-        }
-        if (open) {
-          setOpen(false);
-        }
-        // Measure before mounting Positioner: it computes on entering, so a
-        // later native response would otherwise leave the original coordinates.
-        else {
-          measure(() => setOpen(true));
-        }
-      }}
-    >
-      {children}
-    </Button>
-  );
+  return { ref, measure };
 }
 
-// Hover details use a measured page-space reference, without a click trigger.
-export function PopoverHoverTrigger({
-  children,
-  className,
-  ...props
-}: ViewProps & { children?: ReactNode }) {
-  const { setOpen } = usePopover();
-  const { updateRects } = useContext(LynxPopoverContext);
-  const ref = useRef<NodesRef>(null);
-  const hovering = useRef(false);
+export function usePopoverTrigger({ disabled = false }: { disabled?: boolean } = {}) {
+  const { open, setOpen } = usePopover();
+  const { ref, measure } = usePopoverReference();
+  const pending = useRef<object | null>(null);
   useEffect(
     () => () => {
-      hovering.current = false;
+      pending.current = null;
     },
     [],
   );
-  return (
-    <view
-      {...props}
-      ref={ref}
-      className={cn('shrink-0', className)}
-      bindmouseenter={(event) => {
-        props.bindmouseenter?.(event);
-        hovering.current = true;
-        ref.current
-          ?.invoke({
-            method: 'boundingClientRect',
-            params: { relativeTo: 'screen' },
-            success(result) {
-              if (!hovering.current) {
-                return;
-              }
-              const rect = result as { left: number; top: number; width: number; height: number };
-              updateRects({
-                type: 'updateReference',
-                rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-              });
-              setOpen(true);
-            },
-          })
-          .exec();
-      }}
-      bindmouseleave={(event) => {
-        props.bindmouseleave?.(event);
-        hovering.current = false;
-        setOpen(false);
-      }}
-    >
-      {children}
-    </view>
+  const close = () => {
+    pending.current = null;
+    setOpen(false);
+  };
+  const onTap = () => {
+    if (disabled) {
+      return;
+    }
+    if (open || pending.current) {
+      close();
+      return;
+    }
+    const request = {};
+    pending.current = request;
+    measure(
+      () => pending.current === request,
+      () => {
+        pending.current = null;
+        setOpen(true);
+      },
+    );
+  };
+  const onLayoutChange = () => {
+    if (!open || disabled || pending.current) {
+      return;
+    }
+    const request = {};
+    pending.current = request;
+    measure(
+      () => pending.current === request,
+      () => {
+        pending.current = null;
+      },
+    );
+  };
+  return { ref, onTap, onLayoutChange, close };
+}
+
+export function usePopoverHoverTrigger() {
+  const { setOpen } = usePopover();
+  const { ref, measure } = usePopoverReference();
+  const visit = useRef<object | null>(null);
+  useEffect(
+    () => () => {
+      visit.current = null;
+    },
+    [],
   );
+  const close = () => {
+    visit.current = null;
+    setOpen(false);
+  };
+  const onMouseEnter = () => {
+    // One measurement per visit; delayed results cannot reopen a closed popover.
+    if (visit.current) {
+      return;
+    }
+    const request = {};
+    visit.current = request;
+    measure(
+      () => visit.current === request,
+      () => setOpen(true),
+    );
+  };
+  return { ref, onMouseEnter, onMouseLeave: close, close };
 }
 
 export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
@@ -209,8 +177,9 @@ export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
   side?: 'top' | 'right' | 'bottom' | 'left';
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
-  dismissId?: string;
+  dismissClassName?: string;
   modal?: boolean;
+  interactive?: boolean;
 }
 
 export function PopoverContent({
@@ -218,63 +187,46 @@ export function PopoverContent({
   side = 'bottom',
   align = 'start',
   sideOffset = 4,
-  dismissId,
+  dismissClassName,
   modal = true,
+  interactive = true,
   className = '',
   style,
   ...props
 }: PopoverContentProps) {
-  const { sharedInfo } = useContext(LynxPopoverContext);
-  const anchor = sharedInfo.alternativeReference ?? sharedInfo.reference;
-  const portal = useContext(PortalContext);
-  const { open, setOpen } = usePopover();
-  const setActive = portal?.setActive;
-  useEffect(() => {
-    if (!open || !modal || !setActive) {
-      return;
-    }
-    setActive((count) => count + 1);
-    return () => setActive((count) => count - 1);
-  }, [open, modal, setActive]);
-  if (!portal?.host) {
-    return null;
-  }
-  return createPortal(
-    <view
-      className={
-        modal
-          ? 'absolute inset-0 [-x-app-region:no-drag]'
-          : 'absolute left-0 top-0 w-0 h-0 overflow-visible [-x-app-region:no-drag]'
-      }
-      style={{ display: open ? 'flex' : 'none' }}
-    >
-      {open && modal ? (
-        <view id={dismissId} className="absolute inset-0" bindtap={() => setOpen(false)} />
+  const { visible } = usePopover();
+  return (
+    <>
+      {modal && visible ? (
+        <PopoverBackdrop
+          className={cn('fixed inset-0 [-x-app-region:no-drag]', dismissClassName)}
+        />
       ) : null}
-      {/* Lynx UI positions relative to its anchor. Translate that origin into
-          page coordinates when rendering in the page-level portal. */}
-      <view
-        className="absolute w-0 h-0 overflow-visible"
-        style={{ left: `${anchor.x}px`, top: `${anchor.y}px` }}
+      <PopoverPositioner
+        placement={align === 'center' ? side : `${side}-${align}`}
+        placementOffset={sideOffset}
+        autoAdjust="shift"
+        popoverPositionerProps={{
+          className: cn('z-50', !interactive && 'pointer-events-none'),
+          ...(!interactive && { 'event-through': true }),
+        }}
       >
-        <PopoverPositioner
-          placement={align === 'center' ? side : `${side}-${align}`}
-          placementOffset={sideOffset}
-          autoAdjust="shift"
+        <LynxPopoverContent
+          className={cn(
+            'p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px] [-x-app-region:no-drag]',
+            className,
+            !interactive && 'pointer-events-none',
+          )}
+          style={style}
+          popoverContentProps={{
+            flatten: false,
+            ...props,
+            ...(!interactive && { 'event-through': true }),
+          }}
         >
-          <LynxPopoverContent
-            className={cn(
-              'p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px]',
-              className,
-            )}
-            style={style}
-            popoverContentProps={{ flatten: false, ...props }}
-          >
-            {children}
-          </LynxPopoverContent>
-        </PopoverPositioner>
-      </view>
-    </view>,
-    portal.host,
+          {children}
+        </LynxPopoverContent>
+      </PopoverPositioner>
+    </>
   );
 }

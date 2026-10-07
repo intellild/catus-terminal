@@ -205,7 +205,7 @@ test('Popover anchors the Select, escapes the form scroll view and dismisses on 
   const contentScreenshot = await app.screenshot('#profile-shell-content');
   await writeFile('.tmp/e2e/artifacts/shell-popover.actual.png', pageScreenshot);
   await writeFile('.tmp/e2e/artifacts/shell-popover-content.actual.png', contentScreenshot);
-  // A cropped node can render even when its portal is missing from the page.
+  // A cropped node can render even when it is clipped in the page.
   // Compare its interior with the composited page to catch that regression.
   const page = PNG.sync.read(pageScreenshot);
   const popup = PNG.sync.read(contentScreenshot);
@@ -230,7 +230,7 @@ test('Popover anchors the Select, escapes the form scroll view and dismisses on 
     0,
   );
   expect(comparePng(PNG.sync.write(interior), PNG.sync.write(composited)).changed).toBe(0);
-  await app.tap('#profile-shell-dismiss');
+  await app.tap('.profile-shell-dismiss');
   await waitFor('closed Select', async () =>
     !(await app.node('#profile-shell-content')) ? true : undefined,
   );
@@ -238,7 +238,7 @@ test('Popover anchors the Select, escapes the form scroll view and dismisses on 
   await app.tap('#close-settings');
   await app.rightClick('#workspace-other');
   await app.visibleTarget('#workspace-menu-edit');
-  await app.tap('#workspace-menu-dismiss');
+  await app.tap('.workspace-menu-dismiss');
   await waitFor('closed context menu', async () =>
     !(await app.node('#workspace-context-menu')) ? true : undefined,
   );

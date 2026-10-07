@@ -20,57 +20,51 @@ import {
 } from './components/SessionViews';
 import { SessionProvider } from './state/SessionProvider';
 import { useFrameDriver } from './frameDriver';
-import { PopoverProvider } from './components/ui/Popover';
 import './tailwind.css';
 
 export function App() {
   useFrameDriver();
   return (
     <SessionProvider>
-      <PopoverProvider>
-        <AppLayout>
-          <AppLayoutHeader>
-            <view
-              id="window-controls-space"
-              className="w-24 h-full shrink-0 [-x-app-region:drag]"
-            />
+      <AppLayout>
+        <AppLayoutHeader>
+          <view id="window-controls-space" className="w-24 h-full shrink-0 [-x-app-region:drag]" />
 
-            <TabBar>
-              <background-only>
-                <SessionTabs />
-              </background-only>
-            </TabBar>
+          <TabBar>
             <background-only>
-              <SessionTabActions />
+              <SessionTabs />
             </background-only>
-            <view className="flex-1 min-w-[32px] h-full [-x-app-region:drag]" />
-            <view className="w-[1px] h-[18px] ml-[12px] mr-[16px] bg-[#363b42]" />
-            <text className="text-[11px] text-[#717b88] shrink-0">Catus Terminal</text>
-          </AppLayoutHeader>
-          <AppLayoutBody>
-            <AppLayoutSidebar>
-              <background-only>
-                <SessionWorkspaces />
-              </background-only>
-            </AppLayoutSidebar>
-            <AppLayoutMain>
-              <AppLayoutContent>
-                <background-only fallback={<TerminalContent loading />}>
-                  <SessionContent />
-                </background-only>
-              </AppLayoutContent>
-              <AppLayoutFooter>
-                <background-only fallback={<StatusBar />}>
-                  <SessionStatus />
-                </background-only>
-              </AppLayoutFooter>
-            </AppLayoutMain>
-          </AppLayoutBody>
+          </TabBar>
           <background-only>
-            <SessionSettings />
+            <SessionTabActions />
           </background-only>
-        </AppLayout>
-      </PopoverProvider>
+          <view className="flex-1 min-w-[32px] h-full [-x-app-region:drag]" />
+          <view className="w-[1px] h-[18px] ml-[12px] mr-[16px] bg-[#363b42]" />
+          <text className="text-[11px] text-[#717b88] shrink-0">Catus Terminal</text>
+        </AppLayoutHeader>
+        <AppLayoutBody>
+          <AppLayoutSidebar>
+            <background-only>
+              <SessionWorkspaces />
+            </background-only>
+          </AppLayoutSidebar>
+          <AppLayoutMain>
+            <AppLayoutContent>
+              <background-only fallback={<TerminalContent loading />}>
+                <SessionContent />
+              </background-only>
+            </AppLayoutContent>
+            <AppLayoutFooter>
+              <background-only fallback={<StatusBar />}>
+                <SessionStatus />
+              </background-only>
+            </AppLayoutFooter>
+          </AppLayoutMain>
+        </AppLayoutBody>
+        <background-only>
+          <SessionSettings />
+        </background-only>
+      </AppLayout>
     </SessionProvider>
   );
 }
