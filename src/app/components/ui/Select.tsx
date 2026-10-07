@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
 import { Children, createContext, useContext, useState } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
-import type { ViewProps } from '@lynx-js/types';
+import type { TextProps, ViewProps } from '@lynx-js/types';
 import { Popover, PopoverContent, PopoverTrigger, usePopover } from './Popover';
 import type { PopoverContentProps } from './Popover';
 
@@ -85,13 +85,21 @@ export function SelectTrigger({
 export function SelectValue({
   children,
   placeholder,
-}: {
+  className,
+  ...props
+}: TextProps & {
   children?: ReactNode;
   placeholder?: string;
 }) {
   const { value } = useSelect();
   return (
-    <text className="text-[13px] text-[#e2e8ed] flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+    <text
+      {...props}
+      className={cn(
+        'text-[13px] text-[#e2e8ed] flex-1 overflow-hidden text-ellipsis whitespace-nowrap',
+        className,
+      )}
+    >
       {children ?? (value || placeholder)}
     </text>
   );

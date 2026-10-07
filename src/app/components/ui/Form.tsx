@@ -1,6 +1,9 @@
 import { Button } from './Button';
+import type { ButtonProps } from './Button';
+import { cn } from '../../lib/utils';
 import { createContext, useContext } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
+import type { TextProps, ViewProps } from '@lynx-js/types';
 
 // RHF-style field bindings without DOM refs or browser submit events.
 export interface FormControl {
@@ -45,29 +48,64 @@ export function FormField({
     </FieldContext.Provider>
   );
 }
-export function FormItem({ children }: { children: ReactNode }) {
-  return <view className="flex flex-col mb-[16px] min-w-0">{children}</view>;
+export function FormItem({ children, className, ...props }: ViewProps & { children?: ReactNode }) {
+  return (
+    <view {...props} className={cn('flex flex-col mb-[16px] min-w-0', className)}>
+      {children}
+    </view>
+  );
 }
-export function FormLabel({ children }: { children: ReactNode }) {
-  return <text className="text-[12px] text-[#c3cdd6] mb-[8px]">{children}</text>;
+export function FormLabel({ children, className, ...props }: TextProps & { children?: ReactNode }) {
+  return (
+    <text {...props} className={cn('text-[12px] text-[#c3cdd6] mb-[8px]', className)}>
+      {children}
+    </text>
+  );
 }
-export function FormControl({ children }: { children: ReactNode }) {
-  return <view className="w-full">{children}</view>;
+export function FormControl({
+  children,
+  className,
+  ...props
+}: ViewProps & { children?: ReactNode }) {
+  return (
+    <view {...props} className={cn('w-full', className)}>
+      {children}
+    </view>
+  );
 }
-export function FormDescription({ children }: { children: ReactNode }) {
-  return <text className="text-[10px] text-[#8c99a7] leading-[17px] mt-[6px]">{children}</text>;
+export function FormDescription({
+  children,
+  className,
+  ...props
+}: TextProps & { children?: ReactNode }) {
+  return (
+    <text
+      {...props}
+      className={cn('text-[10px] text-[#8c99a7] leading-[17px] mt-[6px]', className)}
+    >
+      {children}
+    </text>
+  );
 }
-export function FormMessage() {
+export function FormMessage({ className, ...props }: TextProps = {}) {
   const { error } = useContext(FieldContext);
-  return error ? <text className="text-[11px] text-[#e4a4a4] mt-[6px]">{error}</text> : null;
+  return error ? (
+    <text {...props} className={cn('text-[11px] text-[#e4a4a4] mt-[6px]', className)}>
+      {error}
+    </text>
+  ) : null;
 }
-export function FormSubmit({ id, children }: { id: string; children: ReactNode }) {
+export function FormSubmit({
+  children,
+  className,
+  ...props
+}: Omit<ButtonProps, 'disabled' | 'bindtap'>) {
   const control = useContext(FormContext);
   return (
     <Button
-      id={id}
+      {...props}
       disabled={control?.disabled}
-      className="h-auto py-[10px] rounded-[7px] font-bold"
+      className={cn('h-auto py-[10px] rounded-[7px] font-bold', className)}
       bindtap={() => {
         'background only';
         if (!control?.disabled) control?.onSubmit();

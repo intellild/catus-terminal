@@ -26,7 +26,13 @@ const PopoverContext = createContext<{ open: boolean; setOpen(open: boolean): vo
 
 // Portals preserve React context and escape the editor's scroll-view clipping.
 // The host stays in this Lynx page; no native overlay window is required.
-export function PopoverProvider({ children }: { children: ReactNode }) {
+export function PopoverProvider({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<NodesRef>(null);
   const [host, setHost] = useState<NodesRef | null>(null);
   const [active, setActive] = useState(0);
@@ -38,11 +44,12 @@ export function PopoverProvider({ children }: { children: ReactNode }) {
         ref={ref}
         flatten={false}
         id="popover-host"
-        className={
+        className={cn(
           active
             ? 'absolute inset-0 overflow-visible'
-            : 'absolute left-0 top-0 w-0 h-0 overflow-visible'
-        }
+            : 'absolute left-0 top-0 w-0 h-0 overflow-visible',
+          className,
+        )}
       />
     </PortalContext.Provider>
   );

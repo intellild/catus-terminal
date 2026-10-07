@@ -43,6 +43,9 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 选中状态使用完整的条件类名，避免动态拼接造成漏生成。
 参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
 
+`components/ui/` 中渲染元素的组件都支持 `className`，使用 `cn` 合并默认样式和自定义样式。
+纯上下文组件（如 Form、FormField、Select、Popover）由可视子组件承接样式。
+
 按钮统一使用 `components/ui/Button.tsx`，提供 shadcn 风格的 `variant` / `size`，
 通过 `cva` 和 `cn` 合并 Tailwind 样式。Hover 使用 Lynx `mouseenter` / `mouseleave`
 事件；`disabled` 同时阻止点击和 hover。普通文字 children 自动包进 `<text>`，

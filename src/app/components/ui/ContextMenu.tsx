@@ -81,11 +81,17 @@ export function ContextMenuTrigger({
   );
 }
 
-export function ContextMenuAnchor({ point }: { point: { x: number; y: number } }) {
+export function ContextMenuAnchor({
+  point,
+  className,
+  style,
+  ...props
+}: ComponentProps<typeof PopoverAnchor> & { point: { x: number; y: number } }) {
   return (
     <PopoverAnchor
-      className="fixed w-[1px] h-[1px]"
-      style={{ left: `${point.x}px`, top: `${point.y}px` }}
+      {...props}
+      className={cn('fixed w-[1px] h-[1px]', className)}
+      style={{ left: `${point.x}px`, top: `${point.y}px`, ...style }}
     />
   );
 }
@@ -148,6 +154,6 @@ export function ContextMenuItem({
   );
 }
 
-export function ContextMenuSeparator() {
-  return <view className="h-[1px] bg-[#39444e] my-[4px]" />;
+export function ContextMenuSeparator({ className, ...props }: ViewProps = {}) {
+  return <view {...props} className={cn('h-[1px] bg-[#39444e] my-[4px]', className)} />;
 }
