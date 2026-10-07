@@ -1,8 +1,7 @@
 import type { TerminalTab } from './session';
 import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
 import type { RemoteFs, SftpHost } from '../../shared/sftp';
-import type { SftpReply } from '../../shared/sftpBridge';
-import { createSftpBridgeHost, SFTP_CHANNEL } from '../../shared/sftpBridge';
+import { sftpClient } from '../api/sftp';
 import * as Atom from 'effect/reactivity/Atom';
 
 export interface TerminalHost {
@@ -20,12 +19,6 @@ export const terminalSessionsAtom = Atom.make((get) => {
   let host: TerminalHost | undefined;
   const nativeHost = () =>
     (host ??= configuredHost ?? (NativeModules.nodejs.exposed as TerminalHost));
-  const sftpHost = createSftpBridgeHost(
-    (request) =>
-      new Promise((resolve) =>
-        NativeModules.bridge.call(SFTP_CHANNEL, request, (reply) => resolve(reply as SftpReply)),
-      ),
-  );
   const sessions = new Set<number>();
   const remote = new Map<number, { connection: Promise<RemoteFs>; released: boolean }>();
   const releaseRemote = (id: number) => {
@@ -71,11 +64,12 @@ export const terminalSessionsAtom = Atom.make((get) => {
         if (tab.kind !== 'sftp' || remote.has(tab.id)) {
           continue;
         }
-        const connection = Promise.resolve().then(() =>
-          ((nativeHost() as TerminalHost & Partial<SftpHost>).connectSftp ?? sftpHost.connectSftp)({
+        const connection = Promise.resolve().then(() => {
+          const host = nativeHost() as TerminalHost & Partial<SftpHost>;
+          return (host.connectSftp ? (host as SftpHost) : sftpClient).connectSftp({
             destination: tab.profile.host!,
-          }),
-        );
+          });
+        });
         remote.set(tab.id, { connection, released: false });
         // The content observer displays failures; always attach a handler even for hidden tabs.
         void connection.catch(() => {});

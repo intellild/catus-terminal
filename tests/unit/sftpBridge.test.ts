@@ -1,5 +1,5 @@
 import { expect, rstest, test } from '@rstest/core';
-import { createSftpBridgeHost } from '../../src/shared/sftpBridge';
+import { SftpClient } from '../../src/app/api/SftpClient';
 import { createSftpService } from '../../src/main/desktop/sftpService';
 import type { RemoteFs } from '../../src/shared/sftp';
 
@@ -23,7 +23,7 @@ test('SFTP bridge round trip preserves file predicates and bigint through JSON',
   const fs = fixture();
   const connect = rstest.fn(async () => fs);
   const service = createSftpService(connect);
-  const host = createSftpBridgeHost(async (request) =>
+  const host = new SftpClient(async (request) =>
     JSON.parse(JSON.stringify(await service.handle(JSON.parse(JSON.stringify(request))))),
   );
   const remote = await host.connectSftp({ destination: 'test-host' });
@@ -45,7 +45,7 @@ test('SFTP failures are replies rather than unhandled bridge rejections', async 
   const service = createSftpService(async () => {
     throw new Error('SSH failed');
   });
-  const host = createSftpBridgeHost((request) => service.handle(request));
+  const host = new SftpClient((request) => service.handle(request));
   await expect(host.connectSftp({ destination: 'invalid' })).rejects.toThrow('SSH failed');
 });
 

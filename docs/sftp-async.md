@@ -25,7 +25,7 @@ native/src/sftp/mod.rs / transport.rs
 [Lynxtron 官方通信文档](https://lynxjs.org/next/lynxtron/learn/Communication-Between-Node-And-Lynx.html)
 提供 `lynxBridge.handle` / `NativeModules.bridge.call` 请求与回调通道。
 本项目将 SFTP N-API 对象和 Promise 完成处理保留在 Node main 环境；BTS 只发送 JSON 请求。
-`bridge.call` 返回 void，`src/shared/sftpBridge.ts` 和 session adapter 将回调包装为 Promise。
+`bridge.call` 返回 void，`src/app/api/sftp.ts` 将回调包装为 Promise，`SftpClient` 封装文件接口。
 连接 ID、字符串化的 bigint 元数据和文件类型跨线程传递，UI 再还原 `RemoteFs` 接口。
 main 捕获错误并返回明确的成功/错误数据，因为当前 `lynxBridge.handle` 不会自动回复
 handler 拒绝的 Promise。所有窗口关闭时释放连接，尚在连接中的请求完成后也会关闭。
@@ -48,8 +48,8 @@ AsyncRead/AsyncWrite。仅转换 IO trait 或换 N-API executor 无法移除其 
 以下代码运行在 BTS 事件处理或 effect 中：
 
 ```ts
-// session 使用 createSftpBridgeHost 创建此 host。
-const sftp = await host.connectSftp({
+// Renderer 状态层调用 facade，不需要访问 bridge。
+const sftp = await sftpClient.connectSftp({
   destination: 'my-server', // 可以是 ~/.ssh/config 中的 Host 别名
 });
 try {

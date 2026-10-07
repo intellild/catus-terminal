@@ -17,6 +17,7 @@
     "./tests/**/*.ts",
     "./src/shared/sftp.ts",
     "./src/shared/sftpBridge.ts",
+    "./src/app/api/SftpClient.ts",
     "./src/main/desktop/sftpService.ts",
     "./rsbuild.config.ts",
     "./tailwind.config.ts",
