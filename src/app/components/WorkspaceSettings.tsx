@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/Select';
 import { Input } from './ui/Input';
@@ -35,17 +36,18 @@ export function WorkspaceSettings({
   onChange(field: keyof WorkspaceDraft, value: string): void;
   onSave(): void;
 }) {
+  const { t } = useTranslation();
   const draft = editor.draft;
   if (!editor.open || !draft) return null;
   const shellOptions = [
-    { value: '$SHELL', label: 'Default shell' },
+    { value: '$SHELL', label: t('workspace.defaultShell') },
     ...shells.options,
     ...(draft.shell !== '$SHELL' &&
     draft.shell !== 'custom' &&
     !shells.options.some((option) => option.value === draft.shell)
       ? [{ value: draft.shell, label: draft.shell }]
       : []),
-    { value: 'custom', label: 'Custom command' },
+    { value: 'custom', label: t('workspace.customCommand') },
   ];
   const preview =
     draft.type === 'ssh' && draft.host.trim() && environment
@@ -57,7 +59,7 @@ export function WorkspaceSettings({
       <view className="w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]">
         <view className="flex flex-row justify-between items-center mb-[18px]">
           <text className="text-[21px] text-[#e2e8ed]">
-            {draft.isNew ? 'Add workspace' : 'Edit workspace'}
+            {draft.isNew ? t('workspace.add') : t('workspace.edit')}
           </text>
           <view id="close-settings" bindtap={onClose}>
             <text className="text-[22px] text-[#9ca6b2]">×</text>
@@ -74,7 +76,7 @@ export function WorkspaceSettings({
                 onSubmit: onSave,
               }}
             >
-              <Field name="name" label="Name" />
+              <Field name="name" label={t('workspace.name')} />
               <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
                 {(['local', 'ssh'] as const).map((type) => (
                   <view
@@ -89,7 +91,7 @@ export function WorkspaceSettings({
                     }}
                   >
                     <text className="text-[12px] text-[#dce4e9]">
-                      {type === 'local' ? 'Local' : 'SSH'}
+                      {t(type === 'local' ? 'common.local' : 'common.ssh')}
                     </text>
                   </view>
                 ))}
@@ -97,15 +99,15 @@ export function WorkspaceSettings({
               {draft.type === 'ssh' ? (
                 <Field
                   name="host"
-                  label="Host"
-                  description="Hostname, user@host or an alias in ~/.ssh/config."
+                  label={t('workspace.host')}
+                  description={t('workspace.hostDescription')}
                 />
               ) : null}
               <FormField
                 name="shell"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Shell</FormLabel>
+                    <FormLabel>{t('workspace.shell')}</FormLabel>
                     <FormControl>
                       <Select
                         value={field.value}
@@ -132,10 +134,10 @@ export function WorkspaceSettings({
                     </FormControl>
                     <FormDescription>
                       {shells.loading
-                        ? 'Detecting shells…'
+                        ? t('workspace.detectingShells')
                         : draft.type === 'ssh'
-                          ? 'Shells detected on the remote host. Default shell uses the remote account default.'
-                          : 'Shells installed on this computer.'}
+                          ? t('workspace.remoteShells')
+                          : t('workspace.localShells')}
                     </FormDescription>
                     {shells.error ? (
                       <view>
@@ -146,7 +148,7 @@ export function WorkspaceSettings({
                           {shells.error}
                         </text>
                         <view id="retry-shells" bindtap={onRetryShells}>
-                          <text className="text-[12px] text-[#a8e6cf]">Retry</text>
+                          <text className="text-[12px] text-[#a8e6cf]">{t('common.retry')}</text>
                         </view>
                       </view>
                     ) : null}
@@ -157,40 +159,38 @@ export function WorkspaceSettings({
               {draft.shell === 'custom' ? (
                 <Field
                   name="command"
-                  label="Custom command"
-                  description="Enter the shell or command to start."
+                  label={t('workspace.customCommand')}
+                  description={t('workspace.customDescription')}
                 />
               ) : null}
               {draft.type === 'ssh' ? (
                 <>
                   <Field
                     name="remoteCommand"
-                    label="Extra command (optional)"
-                    description="Runs before the selected shell. Leave blank to start the shell directly."
+                    label={t('workspace.extraCommand')}
+                    description={t('workspace.extraDescription')}
                   />
                   <FormItem>
-                    <FormLabel>Command preview</FormLabel>
+                    <FormLabel>{t('workspace.commandPreview')}</FormLabel>
                     <text
                       id="ssh-command-preview"
                       className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
                     >
-                      {preview || 'Enter an SSH host'}
+                      {preview || t('workspace.enterHost')}
                     </text>
                   </FormItem>
                 </>
               ) : null}
-              <Field name="cwd" label="Working directory" />
+              <Field name="cwd" label={t('workspace.cwd')} />
               <view className="flex flex-row gap-[14px]">
                 <view className="flex-1">
-                  <Field name="icon" label="Icon text" />
+                  <Field name="icon" label={t('workspace.icon')} />
                 </view>
                 <view className="flex-1">
-                  <Field name="color" label="Color · hex" />
+                  <Field name="color" label={t('workspace.color')} />
                 </view>
               </view>
-              <FormDescription>
-                Changes apply to new tabs. SFTP uses the host's SSH configuration.
-              </FormDescription>
+              <FormDescription>{t('workspace.changes')}</FormDescription>
               {editor.error ? (
                 <text
                   id="editor-error"
@@ -201,7 +201,11 @@ export function WorkspaceSettings({
               ) : null}
               <view className="flex flex-row items-center gap-[14px] mt-[20px]">
                 <FormSubmit id="save-workspace">
-                  {editor.saving ? 'Saving…' : draft.isNew ? 'Add workspace' : 'Save workspace'}
+                  {editor.saving
+                    ? t('common.saving')
+                    : draft.isNew
+                      ? t('workspace.add')
+                      : t('workspace.save')}
                 </FormSubmit>
               </view>
             </Form>

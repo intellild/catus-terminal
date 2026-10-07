@@ -12,12 +12,17 @@ import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
 import { pluginRspeedyDevReady } from '@lynx-js/lynxtron-dev-plugins/rspeedy';
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
+import { parse as parseToml } from 'smol-toml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootPath = process.cwd();
 console.log('rootPath: ', path.resolve(rootPath, './src/assets'));
 export default defineConfig({
+  source: {
+    // FormatJS publishes modern JS that Lynx's main VM needs downleveled.
+    include: [/node_modules[\\/]@formatjs[\\/]/],
+  },
   server: {
     port: 5969,
   },
@@ -34,6 +39,8 @@ export default defineConfig({
     rspack(config, { rspack }) {
       config.module ??= {};
       config.module.rules ??= [];
+      // Compile translation files into resource objects; no TOML parser in Lynx.
+      config.module.rules.push({ test: /\.toml$/, type: 'json', parser: { parse: parseToml } });
       // Lynx UI publishes JSX with sideEffects:false. Preserve generated
       // MTS snapshot registrations even for components only mounted in BTS.
       config.module.rules.push({

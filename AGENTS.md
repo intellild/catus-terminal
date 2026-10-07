@@ -16,6 +16,7 @@
 - `src/app/`: ReactLynx UI, shared UI components and Effect atom state.
 - `src/main/desktop/`: Node.js host, preload and configuration persistence.
 - `src/shared/` and `config/`: Shared schemas and bundled workspace defaults.
+- `locales/`: TOML translation resources; currently English only.
 - `native/`: Project-specific Rust/napi-rs crate with statically linked C++.
   Terminal computation, text rendering and platform adapters are separate modules;
   C++ follows the same shared/platform split. Native views currently support macOS.
@@ -46,6 +47,10 @@
   elements inside draggable regions must use `[-x-app-region:no-drag]`.
 - Validate workspace configuration and save atomically. Never overwrite an
   invalid existing configuration file.
+- Put UI copy in `locales/en.toml` and use i18next interpolation/plurals. Resources
+  are compiled and initialized synchronously for both Lynx runtimes. Use
+  `useTranslation()` in components so language changes rerender them; direct
+  `i18n.t()` is for non-React logic. i18next v24 needs the Intl polyfill.
 
 ### Native Code
 

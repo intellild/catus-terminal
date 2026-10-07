@@ -57,6 +57,7 @@
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "rstack": "^0.8.0",
+    "smol-toml": "^1.9.0",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3"
   },
@@ -66,13 +67,18 @@
   "dependencies": {
     "@catus/native": "workspace:*",
     "@effect/atom-react": "4.0.0",
+    "@formatjs/intl-getcanonicallocales": "^2.5.6",
+    "@formatjs/intl-locale": "^4.2.13",
+    "@formatjs/intl-pluralrules": "^5.4.6",
     "@lynx-js/lynx-ui-input": "^3.139.0",
     "@lynx-js/lynx-ui-popover": "^3.139.0",
     "background-only": "0.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "effect": "4.0.0",
+    "i18next": "^24.2.3",
     "react": "19.2.4",
+    "react-i18next": "~15.4.1",
     "scheduler": "0.27.0",
     "tailwind-merge": "^2.6.1"
   },

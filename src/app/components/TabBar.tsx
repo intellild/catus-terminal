@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import type { TerminalTab } from '../state/session';
 
@@ -20,6 +21,7 @@ export function TabBar({
   onAddSftp?(): void;
   onLayout?(): void;
 }) {
+  const { t } = useTranslation();
   const width = Math.max(tabs.length * 198 + 10, 198);
   return (
     <>
@@ -57,7 +59,12 @@ export function TabBar({
                     'text-[12px] whitespace-nowrap overflow-hidden text-ellipsis',
                     activeTabId === tab.id ? 'text-[#e1e8e5]' : 'text-[#959eaa]',
                   )}
-                >{`${tab.kind === 'sftp' ? 'SFTP · ' : ''}${tab.profile.name} ${tab.number}`}</text>
+                >
+                  {t(tab.kind === 'sftp' ? 'tabs.sftpTitle' : 'tabs.title', {
+                    name: tab.profile.name,
+                    number: tab.number,
+                  })}
+                </text>
               </view>
               <view
                 id={`close-tab-${tab.number}`}
@@ -70,7 +77,7 @@ export function TabBar({
           ))}
           {!tabs.length && (
             <text className="py-[16px] px-[12px] text-[12px] text-[#7f8996]">
-              {loading ? 'Opening workspace…' : 'No open tabs'}
+              {t(loading ? 'tabs.opening' : 'tabs.empty')}
             </text>
           )}
         </view>
@@ -88,7 +95,7 @@ export function TabBar({
           className="h-[36px] px-[9px] rounded-[9px] flex justify-center items-center shrink-0 [-x-app-region:no-drag]"
           bindtap={onAddSftp}
         >
-          <text className="text-[12px] text-[#a8e6cf]">+ SFTP</text>
+          <text className="text-[12px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
         </view>
       ) : null}
     </>

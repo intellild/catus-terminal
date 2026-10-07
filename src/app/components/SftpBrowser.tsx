@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import 'background-only';
 import { useEffect, useState } from '@lynx-js/react';
@@ -17,6 +18,7 @@ interface Listing {
   error: string;
 }
 export function SftpBrowser({ id, host }: { id: number; host: string }) {
+  const { t } = useTranslation();
   const sessions = useAtomValue(terminalSessionsAtom);
   const [path, setPath] = useState('.');
   const [refresh, setRefresh] = useState(0);
@@ -94,7 +96,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             if (!listing.loading && listing.path) setPath(joinPath(listing.path, '..'));
           }}
         >
-          <text className="text-[12px] text-[#a8e6cf]">↑ Up</text>
+          <text className="text-[12px] text-[#a8e6cf]">{t('sftp.up')}</text>
         </view>
         <text id="sftp-path" className="flex-1 text-[12px] text-[#c3cdd6] break-all">
           {host}: {listing.path || '.'}
@@ -105,7 +107,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             if (!listing.loading) setRefresh((value) => value + 1);
           }}
         >
-          <text className="text-[12px] text-[#a8e6cf]">Refresh</text>
+          <text className="text-[12px] text-[#a8e6cf]">{t('sftp.refresh')}</text>
         </view>
       </view>
       {listing.error ? (
@@ -118,13 +120,13 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       ) : null}
       {listing.loading ? (
         <text id="sftp-loading" className="text-[12px] text-[#8c99a7]">
-          Loading directory…
+          {t('sftp.loading')}
         </text>
       ) : null}
       <scroll-view id="sftp-list" scroll-y className="flex-1 min-h-0">
         {!listing.loading && !listing.error && !listing.entries.length ? (
           <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
-            Empty directory
+            {t('sftp.empty')}
           </text>
         ) : null}
         {listing.entries.map((entry, index) => (
@@ -144,7 +146,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             </text>
             <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
             <text className="text-[10px] text-[#8c99a7]">
-              {entry.directory ? 'Directory' : entry.symlink ? 'Link' : 'File'}
+              {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
             </text>
           </view>
         ))}

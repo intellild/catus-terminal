@@ -43,6 +43,18 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 选中状态使用完整的条件类名，避免动态拼接造成漏生成。
 参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
 
+界面翻译使用 i18next，资源独立放在 `locales/`，目前只提供 `en.toml`。
+TOML 按界面区域分组，变量使用 `{{name}}`，数量使用 `_one` / `_other` 复数键。
+Rspeedy 和 Rstest 在构建时将 TOML 解析成对象，解析器不会进入应用运行时。
+`src/app/i18n.ts` 同步初始化英文资源，主线程首屏与 BTS 使用同一份文案，
+无需网络加载或浏览器语言检测。用户自定义名称、命令和底层错误保留原文。
+Lynx 缺少 Intl，初始化前使用 FormatJS 条件 polyfill 补齐 PluralRules 及其依赖，
+只加载英文复数数据；Node 的原生 Intl 实现保持使用。
+按[官方文档](https://lynxjs.org/guide/inclusion/internationalization)使用 i18next v24 + Intl polyfill。
+组件通过 `useTranslation()` 获取 `t`，订阅 `languageChanged` 并在卸载时取消订阅；
+`i18n.t()` 本身不触发 React 更新，仅在 action atom 等非 React 逻辑里直接调用。
+React 绑定通过现有 alias 使用 ReactLynx，关闭 Suspense；同步资源保证主线程首屏可渲染。
+
 JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
 `pnpm format` 格式化所有 JS/TS 文件（含 JSX/TSX、MJS/CJS 和声明文件），
 `pnpm format:check` 检查格式，`pnpm lint` 运行 JavaScript / TypeScript 推荐规则，

@@ -1,0 +1,78 @@
+[common]
+local = "Local"
+ssh = "SSH"
+sftp = "SFTP"
+retry = "Retry"
+saving = "Saving…"
+
+[tabs]
+opening = "Opening workspace…"
+empty = "No open tabs"
+title = "{{name}} {{number}}"
+sftpTitle = "SFTP · {{name}} {{number}}"
+newSftp = "+ SFTP"
+count_one = "{{count}} tab"
+count_other = "{{count}} tabs"
+
+[status]
+workspaces_one = "{{count}} workspace open"
+workspaces_other = "{{count}} workspaces open"
+summary = "{{workspaces}} · {{tabs}}"
+localSession = "Local session"
+ready = "Ready"
+
+[terminal]
+workspaces = "Workspaces"
+loadError = "Could not load workspaces"
+retry = "Try again"
+sftpBrowser = "SFTP file browser"
+sshHost = "SSH · {{host}}"
+chooseWorkspace = "Choose a workspace"
+session = "SESSION {{number}}"
+noSession = "NO SESSION"
+loading = "Getting things ready."
+empty = "Open a terminal tab in this workspace."
+new = "+ New terminal"
+tab = "Tab {{number}}"
+summary = "{{name}} · {{tab}}"
+
+[workspace]
+add = "Add workspace"
+edit = "Edit workspace"
+delete = "Delete workspace"
+save = "Save workspace"
+newName = "New workspace"
+name = "Name"
+host = "Host"
+hostDescription = "Hostname, user@host or an alias in ~/.ssh/config."
+shell = "Shell"
+defaultShell = "Default shell"
+customCommand = "Custom command"
+customDescription = "Enter the shell or command to start."
+detectingShells = "Detecting shells…"
+remoteShells = "Shells detected on the remote host. Default shell uses the remote account default."
+localShells = "Shells installed on this computer."
+extraCommand = "Extra command (optional)"
+extraDescription = "Runs before the selected shell. Leave blank to start the shell directly."
+commandPreview = "Command preview"
+enterHost = "Enter an SSH host"
+cwd = "Working directory"
+icon = "Icon text"
+color = "Color · hex"
+changes = "Changes apply to new tabs. SFTP uses the host's SSH configuration."
+
+[validation]
+required = "Required"
+color = "Use a six-digit hex color"
+host = "Enter a hostname, user@host or SSH config alias"
+fields = "Check the highlighted fields."
+arguments = 'Arguments must be a JSON array of strings, for example ["-l"].'
+
+[sftp]
+up = "↑ Up"
+refresh = "Refresh"
+loading = "Loading directory…"
+empty = "Empty directory"
+directory = "Directory"
+link = "Link"
+file = "File"

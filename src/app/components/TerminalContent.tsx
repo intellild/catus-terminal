@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import type { ReactNode } from '@lynx-js/react';
 import type { Workspace } from '../../shared/workspaces';
 import type { TerminalTab } from '../state/session';
@@ -21,6 +22,7 @@ export function TerminalContent({
   onRetry?(): void;
   onAdd?(): void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <view className="h-[57px] flex flex-row items-center justify-between py-0 px-[25px] border-b border-solid border-[#272c32] shrink-0">
@@ -32,12 +34,10 @@ export function TerminalContent({
             {workspace?.icon ?? '>_'}
           </text>
           <text id="active-workspace" className="text-[13px] font-bold text-[#d8dee5]">
-            {workspace?.name ?? 'Workspaces'}
+            {workspace?.name ?? t('terminal.workspaces')}
           </text>
           <text className="text-[14px] text-[#515c6a]">/</text>
-          <text className="text-[12px] text-[#8993a1]">
-            {tabCount} {tabCount === 1 ? 'tab' : 'tabs'}
-          </text>
+          <text className="text-[12px] text-[#8993a1]">{t('tabs.count', { count: tabCount })}</text>
         </view>
       </view>
 
@@ -45,7 +45,7 @@ export function TerminalContent({
         {error ? (
           <view className="flex-1 flex flex-col items-center justify-center py-[18px] px-[30px]">
             <text className="text-[27px] font-medium text-[#dce3e7] text-center mb-[12px]">
-              Could not load workspaces
+              {t('terminal.loadError')}
             </text>
             <text
               id="config-error"
@@ -58,7 +58,7 @@ export function TerminalContent({
               className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
               bindtap={onRetry}
             >
-              <text className="text-[12px] font-bold text-[#20392f]">Try again</text>
+              <text className="text-[12px] font-bold text-[#20392f]">{t('terminal.retry')}</text>
             </view>
           </view>
         ) : null}
@@ -78,22 +78,24 @@ export function TerminalContent({
               >
                 {activeTab
                   ? activeTab.kind === 'sftp'
-                    ? 'SFTP file browser'
+                    ? t('terminal.sftpBrowser')
                     : activeTab.profile.type === 'ssh'
-                      ? `SSH · ${activeTab.profile.host}`
+                      ? t('terminal.sshHost', { host: activeTab.profile.host })
                       : activeTab.profile.command
-                  : 'Choose a workspace'}
+                  : t('terminal.chooseWorkspace')}
               </text>
             </view>
             <text id="session-label" className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]">
-              {activeTab ? `SESSION ${String(activeTab.number).padStart(2, '0')}` : 'NO SESSION'}
+              {activeTab
+                ? t('terminal.session', { number: String(activeTab.number).padStart(2, '0') })
+                : t('terminal.noSession')}
             </text>
           </view>
           {children}
           {!error && (!children || !activeTab) ? (
             <view className="flex-1 flex flex-col items-center justify-center p-[24px]">
               <text id="terminal-placeholder" className="text-[18px] text-[#7c8998]">
-                {loading ? 'Getting things ready.' : 'Open a terminal tab in this workspace.'}
+                {t(loading ? 'terminal.loading' : 'terminal.empty')}
               </text>
               {!loading && !activeTab ? (
                 <view
@@ -101,7 +103,7 @@ export function TerminalContent({
                   className="p-[12px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
                   bindtap={onAdd}
                 >
-                  <text className="text-[12px] text-[#20392f]">+ New terminal</text>
+                  <text className="text-[12px] text-[#20392f]">{t('terminal.new')}</text>
                 </view>
               ) : null}
             </view>
@@ -112,11 +114,19 @@ export function TerminalContent({
             }
           >
             <text className="text-[9px] text-[#596574]">
-              {workspace?.name ?? 'Catus'} ·{' '}
-              {activeTab ? `Tab ${activeTab.number}` : 'No open tabs'}
+              {t('terminal.summary', {
+                name: workspace?.name ?? 'Catus',
+                tab: activeTab ? t('terminal.tab', { number: activeTab.number }) : t('tabs.empty'),
+              })}
             </text>
             <text className="text-[9px] text-[#596574]">
-              {activeTab?.kind === 'sftp' ? 'SFTP' : workspace?.type === 'ssh' ? 'SSH' : 'Local'}
+              {t(
+                activeTab?.kind === 'sftp'
+                  ? 'common.sftp'
+                  : workspace?.type === 'ssh'
+                    ? 'common.ssh'
+                    : 'common.local',
+              )}
             </text>
           </view>
         </>

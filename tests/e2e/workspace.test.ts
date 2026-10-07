@@ -13,6 +13,27 @@ afterEach(async () => {
   await app.close();
 });
 
+test('English TOML translations render with correct plurals in Lynx', async () => {
+  const summary = async () => {
+    const node = await app.node('#session-summary');
+    if (!node) return undefined;
+    const { rawTextValues } = await app.cdp<{ rawTextValues: { text: string }[] }>(
+      'DOM.innerText',
+      { nodeId: node.nodeId },
+    );
+    return rawTextValues.map((value) => value.text).join('');
+  };
+  const expectSummary = (expected: string) =>
+    waitFor(expected, async () => ((await summary()) === expected ? true : undefined));
+  await expectSummary('1 workspace open · 1 tab');
+  await app.tap('#new-tab');
+  await expectSummary('1 workspace open · 2 tabs');
+  await app.tap('#close-tab-2');
+  await expectSummary('1 workspace open · 1 tab');
+  await app.tap('#close-tab-1');
+  await expectSummary('0 workspaces open · 0 tabs');
+});
+
 test('workspace modal switches local and SSH fields with a command preview', async () => {
   await app.rightClick('#workspace-test');
   await app.tap('#workspace-menu-edit');

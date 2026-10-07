@@ -1,3 +1,4 @@
+import { i18n } from '../i18n';
 import 'background-only';
 import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
@@ -178,25 +179,25 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       if (!editor.draft || !state.payload || editor.saving) return;
       const fieldErrors: Record<string, string> = {};
       for (const field of ['name', 'command', 'cwd', 'icon'] as const) {
-        if (!editor.draft[field].trim()) fieldErrors[field] = 'Required';
+        if (!editor.draft[field].trim()) fieldErrors[field] = i18n.t('validation.required');
       }
       if (!/^#[0-9a-fA-F]{6}$/.test(editor.draft.color))
-        fieldErrors.color = 'Use a six-digit hex color';
+        fieldErrors.color = i18n.t('validation.color');
       if (
         editor.draft.type === 'ssh' &&
         (!editor.draft.host.trim() || /^[\s-]|[\r\n\0]/.test(editor.draft.host))
       ) {
-        fieldErrors.host = 'Enter a hostname, user@host or SSH config alias';
+        fieldErrors.host = i18n.t('validation.host');
       }
       if (Object.keys(fieldErrors).length) {
-        get.set(editorAtom, { ...editor, fieldErrors, error: 'Check the highlighted fields.' });
+        get.set(editorAtom, { ...editor, fieldErrors, error: i18n.t('validation.fields') });
         return;
       }
       try {
         const { isNew, args: inputArgs, ...fields } = editor.draft;
         const args: unknown = JSON.parse(inputArgs);
         if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) {
-          throw new Error('Arguments must be a JSON array of strings, for example ["-l"].');
+          throw new Error(i18n.t('validation.arguments'));
         }
         const profile = {
           ...fields,

@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n';
 import {
   ContextMenu,
   ContextMenuAnchor,
@@ -22,6 +23,7 @@ export function WorkspaceContextMenu({
   onEdit(id: string): void;
   onDelete(id: string): void;
 }) {
+  const { t } = useTranslation();
   if (!menu) return null;
   return (
     <ContextMenu
@@ -33,7 +35,7 @@ export function WorkspaceContextMenu({
       <ContextMenuAnchor point={menu} />
       <ContextMenuContent id="workspace-context-menu" dismissId="workspace-menu-dismiss">
         <ContextMenuItem id="workspace-menu-edit" disabled={busy} onSelect={() => onEdit(menu.id)}>
-          Edit workspace
+          {t('workspace.edit')}
         </ContextMenuItem>
         <ContextMenuItem
           id="workspace-menu-delete"
@@ -42,7 +44,7 @@ export function WorkspaceContextMenu({
           closeOnSelect={false}
           onSelect={() => onDelete(menu.id)}
         >
-          {busy ? 'Saving…' : 'Delete workspace'}
+          {busy ? t('common.saving') : t('workspace.delete')}
         </ContextMenuItem>
         {error ? (
           <text

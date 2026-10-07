@@ -1,3 +1,4 @@
+import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import { terminalSessionsAtom } from './terminalSessions';
 import type { Workspace, WorkspaceConfigPayload } from '../../shared/workspaces';
@@ -170,7 +171,7 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
     error: '',
     draft: {
       id: `workspace-${number}`,
-      name: 'New workspace',
+      name: i18n.t('workspace.newName'),
       type: 'local',
       host: '',
       remoteCommand: '',
