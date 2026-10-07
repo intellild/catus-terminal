@@ -198,16 +198,17 @@ release profile 显式使用 `strip = "none"`，避免当前 Rust 1.95 / LLVM �
 
 ## SFTP
 
-`connectSftp({ destination, port?, identityFile?, configFile? }, callback)` 同步返回 void。
-Rust 在 Tokio 中连接，通过 TSFN 调用 `callback(error, connection)`；preload
-使用 `util.promisify` 将 callback 包装为 `Promise<SftpConnection>` 后暴露给 Lynx BTS。
+`connectSftp({ destination, port?, identityFile?, configFile? })` 返回 Promise。
+Rust 使用 napi-rs async fn 在 Tokio 中执行，Node main 持有连接并接收 Promise 结果；
+Lynx BTS 通过 `lynxBridge` 请求文件操作。
 连接提供 `readDir`、`metadata`、`readFile`、`writeFile`、`createDir`、`rename`、
-`removeFile`、`removeDir` 和 `close`；所有操作同步返回 void，最后一个参数是
-error-first callback。JS 对实例方法使用 `promisify(method.bind(connection))`。
+`removeFile`、`removeDir` 和 `close`，均返回 Promise。
+`writeFile` 在 JS 调用线程复制输入，再通过 `Env::spawn_future` 执行异步写入。
 目录项包含 `name`、POSIX `path` 和 metadata；size 是可选 bigint，modified 是
 可选 Unix 秒时间，fileType 是 file/directory/symlink/other。
 
 调用链、运行时选择及限制见 [SFTP 异步实现](../docs/sftp-async.md)。
 
-当前普通 Node 的 callback/文件操作测试通过；Lynxtron 0.0.28 BTS 中仍会在
-TSFN 排队后、进入 JS callback 前触发 Node Environment 断言。此改动尚未绕过该问题。
+当前普通 Node 的 Promise/文件操作测试通过；Lynxtron 0.0.28 BTS 中仍会在
+TSFN 排队后、进入 JS callback 前触发 Node Environment 断言。改为 Node main
+创建 native 对象并接收异步结果后，windowless SFTP E2E 已通过；上游 BTS 根因仍待确认。

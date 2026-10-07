@@ -15,6 +15,9 @@
     "./rstest.e2e.config.ts",
     "./rstest.node.config.ts",
     "./tests/**/*.ts",
+    "./src/shared/sftp.ts",
+    "./src/shared/sftpBridge.ts",
+    "./src/main/desktop/sftpService.ts",
     "./rsbuild.config.ts",
     "./tailwind.config.ts",
     "./rstack.config.ts"

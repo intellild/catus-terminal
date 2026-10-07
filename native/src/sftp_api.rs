@@ -1,12 +1,12 @@
-//! Error-first TSFN boundary; Promise wrapping belongs to the JS host adapter.
+//! Promise-based SFTP API, called from the Node main environment.
 use crate::sftp::{Connection, Options};
 use napi::{
-    bindgen_prelude::{BigInt, ToNapiValue, Uint8Array},
-    threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
+    Env,
+    bindgen_prelude::{BigInt, PromiseRaw, Uint8Array},
 };
 use napi_derive::napi;
 use russh_sftp::client::fs::Metadata;
-use std::{future::Future, sync::Arc};
+use std::sync::Arc;
 
 #[napi(object)]
 pub struct SftpOptions {
@@ -49,122 +49,119 @@ pub struct SftpEntry {
 pub struct SftpConnection {
     connection: Arc<Connection>,
 }
-// TODO: Lynxtron 0.0.28 windowless/macOS aborts with
-// `Environment::GetCurrent(isolate) == env` after a successful TSFN enqueue.
-// Normal Node callback tests pass; synchronous noop passes in Lynx BTS.
-// Both native Promise and TSFN + JS Promise paths reproduce the assertion.
-// Investigate the Node/V8 context entered by the BTS libuv callback dispatch.
-// See docs/sftp-async.md; this callback boundary is not a confirmed workaround.
-fn dispatch<T: ToNapiValue + Send + 'static>(
-    callback: ThreadsafeFunction<T, ()>,
-    future: impl Future<Output = anyhow::Result<T>> + Send + 'static,
-) {
-    napi::bindgen_prelude::spawn(async move {
-        callback.call(
-            future.await.map_err(crate::napi_error),
-            ThreadsafeFunctionCallMode::NonBlocking,
-        );
-    });
-}
-
 #[napi]
-pub fn connect_sftp(options: SftpOptions, callback: ThreadsafeFunction<SftpConnection, ()>) {
-    dispatch(callback, async move {
-        let connection = Connection::connect(Options {
-            destination: options.destination,
-            port: options.port,
-            identity_file: options.identity_file,
-            config_file: options.config_file,
-        })
-        .await?;
-        Ok(SftpConnection {
-            connection: Arc::new(connection),
-        })
-    });
+pub async fn connect_sftp(options: SftpOptions) -> napi::Result<SftpConnection> {
+    let connection = Connection::connect(Options {
+        destination: options.destination,
+        port: options.port,
+        identity_file: options.identity_file,
+        config_file: options.config_file,
+    })
+    .await
+    .map_err(crate::napi_error)?;
+    Ok(SftpConnection {
+        connection: Arc::new(connection),
+    })
 }
 #[napi]
 impl SftpConnection {
     #[napi]
-    pub fn realpath(&self, path: String, callback: ThreadsafeFunction<String, ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.realpath(&path).await });
+    pub async fn realpath(&self, path: String) -> napi::Result<String> {
+        self.connection
+            .realpath(&path)
+            .await
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn stat(&self, path: String, callback: ThreadsafeFunction<SftpMetadata, ()>) {
-        let connection = self.connection.clone();
-        dispatch(
-            callback,
-            async move { Ok(connection.stat(&path).await?.into()) },
-        );
+    pub async fn stat(&self, path: String) -> napi::Result<SftpMetadata> {
+        self.connection
+            .stat(&path)
+            .await
+            .map(Into::into)
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn readdir(&self, path: String, callback: ThreadsafeFunction<Vec<SftpEntry>, ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move {
-            Ok(connection
-                .read_dir(&path)
-                .await?
-                .into_iter()
-                .map(|entry| SftpEntry {
-                    name: entry.file_name(),
-                    path: entry.path(),
-                    metadata: entry.metadata().into(),
-                })
-                .collect())
-        });
+    pub async fn readdir(&self, path: String) -> napi::Result<Vec<SftpEntry>> {
+        Ok(self
+            .connection
+            .read_dir(&path)
+            .await
+            .map_err(crate::napi_error)?
+            .into_iter()
+            .map(|entry| SftpEntry {
+                name: entry.file_name(),
+                path: entry.path(),
+                metadata: entry.metadata().into(),
+            })
+            .collect())
     }
     #[napi]
-    pub fn read_dir(&self, path: String, callback: ThreadsafeFunction<Vec<SftpEntry>, ()>) {
-        self.readdir(path, callback);
+    pub async fn read_dir(&self, path: String) -> napi::Result<Vec<SftpEntry>> {
+        self.readdir(path).await
     }
     #[napi]
-    pub fn metadata(&self, path: String, callback: ThreadsafeFunction<SftpMetadata, ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move {
-            Ok(connection.metadata(&path).await?.into())
-        });
+    pub async fn metadata(&self, path: String) -> napi::Result<SftpMetadata> {
+        self.connection
+            .metadata(&path)
+            .await
+            .map(Into::into)
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn read_file(&self, path: String, callback: ThreadsafeFunction<Uint8Array, ()>) {
-        let connection = self.connection.clone();
-        dispatch(
-            callback,
-            async move { Ok(connection.read(&path).await?.into()) },
-        );
+    pub async fn read_file(&self, path: String) -> napi::Result<Uint8Array> {
+        self.connection
+            .read(&path)
+            .await
+            .map(Into::into)
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn write_file(&self, path: String, data: Uint8Array, callback: ThreadsafeFunction<(), ()>) {
-        // Snapshot mutable JS bytes on the JS thread before scheduling native work.
+    pub fn write_file<'env>(
+        &self,
+        env: &'env Env,
+        path: String,
+        data: Uint8Array,
+    ) -> napi::Result<PromiseRaw<'env, ()>> {
+        // Copy on the JS thread before spawning the future; callers may mutate the array immediately.
         let data = data.to_vec();
         let connection = self.connection.clone();
-        dispatch(
-            callback,
-            async move { connection.write(&path, &data).await },
-        );
+        env.spawn_future(async move {
+            connection
+                .write(&path, &data)
+                .await
+                .map_err(crate::napi_error)
+        })
     }
     #[napi]
-    pub fn create_dir(&self, path: String, callback: ThreadsafeFunction<(), ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.create_dir(&path).await });
+    pub async fn create_dir(&self, path: String) -> napi::Result<()> {
+        self.connection
+            .create_dir(&path)
+            .await
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn rename(&self, from: String, to: String, callback: ThreadsafeFunction<(), ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.rename(&from, &to).await });
+    pub async fn rename(&self, from: String, to: String) -> napi::Result<()> {
+        self.connection
+            .rename(&from, &to)
+            .await
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn remove_file(&self, path: String, callback: ThreadsafeFunction<(), ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.remove_file(&path).await });
+    pub async fn remove_file(&self, path: String) -> napi::Result<()> {
+        self.connection
+            .remove_file(&path)
+            .await
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn remove_dir(&self, path: String, callback: ThreadsafeFunction<(), ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.remove_dir(&path).await });
+    pub async fn remove_dir(&self, path: String) -> napi::Result<()> {
+        self.connection
+            .remove_dir(&path)
+            .await
+            .map_err(crate::napi_error)
     }
     #[napi]
-    pub fn close(&self, callback: ThreadsafeFunction<(), ()>) {
-        let connection = self.connection.clone();
-        dispatch(callback, async move { connection.close().await });
+    pub async fn close(&self) -> napi::Result<()> {
+        self.connection.close().await.map_err(crate::napi_error)
     }
 }

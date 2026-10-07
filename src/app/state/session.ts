@@ -296,7 +296,3 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
     },
   };
 }
-
-export const workspaceMenuAtom = Atom.make<{ id: string; x: number; y: number } | null>(null).pipe(
-  Atom.keepAlive,
-);

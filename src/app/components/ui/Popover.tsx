@@ -1,4 +1,5 @@
 import { delayPopover } from './popoverDelay';
+import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { createContext, useContext, useEffect, useRef, useState } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
@@ -8,7 +9,6 @@ import {
   PopoverContext as LynxPopoverContext,
   PopoverAnchor,
   PopoverPositioner,
-  PopoverBackdrop,
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
 
@@ -194,12 +194,16 @@ export function PopoverContent({
   style,
   ...props
 }: PopoverContentProps) {
-  const { visible } = usePopover();
+  const { visible, setOpen } = usePopover();
   return (
     <>
       {modal && visible ? (
-        <PopoverBackdrop
-          className={cn('fixed inset-0 [-x-app-region:no-drag]', dismissClassName)}
+        <Button
+          className={cn(
+            'fixed inset-0 w-full h-full p-0 rounded-none bg-transparent hover:bg-transparent [-x-app-region:no-drag]',
+            dismissClassName,
+          )}
+          bindtap={() => setOpen(false)}
         />
       ) : null}
       <PopoverPositioner

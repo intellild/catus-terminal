@@ -602,3 +602,23 @@ test('leaving hover preserves styles during the delay and then removes the conte
     expect(details.className).toBe(classes);
   }
 });
+
+test('each workspace owns its menu and outside taps close the current instance', async () => {
+  renderApp();
+  await waitForTerminal();
+  const root = elementTree.root!;
+  for (const id of ['local', 'shell', 'local']) {
+    await contextMenu(root, id);
+    fireEvent.tap(root.querySelector('.workspace-menu-dismiss')!);
+    await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).toBeNull());
+    expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
+  }
+  await contextMenu(root, 'local');
+  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
+  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Local');
+  fireEvent.tap(root.querySelector('#close-settings')!);
+  await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).toBeNull());
+  await contextMenu(root, 'shell');
+  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
+  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Shell');
+});

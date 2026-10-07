@@ -4,13 +4,13 @@
 
 ```text
 Lynx BTS / 事件处理或 effect
-  await NativeModules.nodejs.exposed.connectSftp(options)
+  bridge.call('catus:sftp', request, callback) → Promise
        ↓
-src/main/desktop/preload.ts
-  调用同步 Rust N-API callback 工厂，用 util.promisify 返回 Promise / SftpConnection 对象
+src/main/desktop/main.ts / sftpService.ts
+  lynxBridge.handle 接收请求，main 持有连接并通过 sftp.ts 调用 native Promise
        ↓
 native/src/sftp_api.rs
-  同步 N-API fn 注册 TSFN → napi-rs 管理的 Tokio runtime
+  N-API async fn → napi-rs 管理的 Tokio runtime → native Promise
        ↓
 native/src/sftp/mod.rs / transport.rs
   ssh -T -o BatchMode=yes [-p port] [-i identity] [-F config] -s -- destination sftp
@@ -23,10 +23,12 @@ native/src/sftp/mod.rs / transport.rs
 ## 官方异步建议与运行时选择
 
 [Lynxtron 官方通信文档](https://lynxjs.org/next/lynxtron/learn/Communication-Between-Node-And-Lynx.html)
-推荐用 preload 暴露 Node 对象给 BTS；暴露的方法可以返回 Promise。
-`bridge.call` 本身返回 void，使用该通道时需将回调包装为 Promise。
-本项目已有 preload 对象通道，所以沿用它。在事件处理或 effect 中 await；
-不在组件 render 或主线程脚本中调用 Node 能力。
+提供 `lynxBridge.handle` / `NativeModules.bridge.call` 请求与回调通道。
+本项目将 SFTP N-API 对象和 Promise 完成处理保留在 Node main 环境；BTS 只发送 JSON 请求。
+`bridge.call` 返回 void，`src/shared/sftpBridge.ts` 和 session adapter 将回调包装为 Promise。
+连接 ID、字符串化的 bigint 元数据和文件类型跨线程传递，UI 再还原 `RemoteFs` 接口。
+main 捕获错误并返回明确的成功/错误数据，因为当前 `lynxBridge.handle` 不会自动回复
+handler 拒绝的 Promise。所有窗口关闭时释放连接，尚在连接中的请求完成后也会关闭。
 
 [napi-rs async fn](https://napi.rs/docs/concepts/async-fn) 的 `async` feature
 提供 Tokio runtime，自动将异步结果转换为 Promise。
@@ -46,7 +48,8 @@ AsyncRead/AsyncWrite。仅转换 IO trait 或换 N-API executor 无法移除其 
 以下代码运行在 BTS 事件处理或 effect 中：
 
 ```ts
-const sftp = await NativeModules.nodejs.exposed.connectSftp({
+// session 使用 createSftpBridgeHost 创建此 host。
+const sftp = await host.connectSftp({
   destination: 'my-server', // 可以是 ~/.ssh/config 中的 Host 别名
 });
 try {
@@ -72,20 +75,25 @@ try {
   二进制/Unicode 文件、覆盖截断、目录、元数据、重命名、删除、隔离、错误和关闭。
 - `pnpm run test:napi` 中的 `tests/native/sftp.mjs` 使用临时 SSH shim，验证 SSH 参数、
   N-API Promise、256 KiB 二进制数据、字节复制和连接回收。不会连接远端服务器。
-- 已验证的是本地协议与 Node-API。真实远程 SSH 认证及 Lynx BTS 中的 SFTP 调用尚未实测。
+- 已验证的是本地协议与 Node-API。真实远程 SSH 认证尚未实测。windowless E2E 使用 SSH shim 和真实 sftp-server 验证主线程桥接。
 
-## TSFN 对照验证
+## BTS 崩溃记录与 async 接口
 
-所有 N-API 入口都是同步函数，最后一个参数是 error-first callback。Rust 在
-Tokio 中执行连接和文件操作，通过共享的 `dispatch` helper 用 TSFN 返回结果。
-`src/main/desktop/sftp.ts` 使用 Node `util.promisify` 包装 Promise，实例方法必须先
-`bind(connection)` 保留 receiver；Lynx 侧的 RemoteFs Promise 接口保持不变。
-没有 Rust Future → native Promise 的转换。派发 helper 上保留了崩溃 TODO。
+此前为排除 native Promise 路径，曾将所有 N-API 操作改成同步 callback 入口，
+Tokio 完成后通过 TSFN 返回，JS 使用 `util.promisify` 包装。普通 Node 测试通过，
+但 Lynxtron 0.0.28 的 windowless/macOS 和最小 CommonJS preload 仍复现
+`Environment::GetCurrent(isolate) == env` 断言。日志确认 TSFN 排队返回 `Ok`，
+JS callback 的第一条语句尚未执行。native Promise 路径同样崩溃，同步 noop 正常。
 
-普通 Node 的成功/失败连接回调与文件操作测试通过。Lynxtron 0.0.28 的
-windowless E2E 和最小 CommonJS preload 都仍复现相同的 Node Environment
-断言。诊断日志确认连接成功，TSFN 排队返回 `Ok`，但 JS callback 的第一条
-语句尚未执行。问题发生在进入回调之前，不能归因于后续目录读取。
+现在恢复 napi-rs `async fn` → native Promise，不再使用 TSFN 或 promisify 包装。
+`writeFile` 在 JS 调用线程先复制 Uint8Array，再用 `Env::spawn_future` 返回 Promise，
+保证调用后立即修改输入数组不会影响写入数据。所有内部错误在 N-API 边界转换。
+崩溃 TODO 位于 `src/main/desktop/main.ts` 的服务注册处；native 对象与异步完成
+保留在 main，BTS 通过 JSON 消息操作连接，避免重新进入有问题的 BTS Node 环境。
 
-连接 callback 的对照测试已复现断言。所有文件方法也已改为 callback，以继续
-排除 native Promise 路径；尚不能将这次转换当作已验证的 BTS 崩溃修复。
+## Main 环境对照验证
+
+SFTP 不再由 preload 调用。`main.ts` 注册服务，native 连接和文件操作均在 main 的
+Node Environment 中创建与完成，UI 通过消息桥接读取目录。原来会崩溃的 windowless
+SFTP E2E 已恢复运行并通过，覆盖读取、进入子目录、返回、刷新和关闭 tab。
+这验证了 main 路径可绕过已复现的 BTS 回调断言，不代表上游内部根因已确定。
