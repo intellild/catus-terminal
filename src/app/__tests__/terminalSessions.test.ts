@@ -29,7 +29,9 @@ beforeEach(() => {
   live = new Set();
   host = {
     createTerminalSession: rstest.fn((id: number) => {
-      if (live.has(id)) throw new Error(`Duplicate ID: ${id}`);
+      if (live.has(id)) {
+        throw new Error(`Duplicate ID: ${id}`);
+      }
       live.add(id);
     }),
     closeTerminalSession: rstest.fn((id: number) => {

@@ -46,7 +46,9 @@ export const loadWorkspacesAtom = Atom.fn<void>()((_, get) =>
 
 const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
   Effect.gen(function* () {
-    if (get(editorAtom).saving) return;
+    if (get(editorAtom).saving) {
+      return;
+    }
     get.set(editorAtom, { ...get(editorAtom), saving: true, error: '' });
     const checked = yield* Effect.try({
       try: () => parseWorkspaceConfig(config),
@@ -120,10 +122,14 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       get.refresh(shellsAtom);
       return;
     case 'editWorkspace': {
-      if (editor.saving) return;
+      if (editor.saving) {
+        return;
+      }
       const target = workspaces.find((item) => item.id === (action.id ?? state.activeWorkspaceId));
       get.set(workspaceMenuAtom, null);
-      if (target) get.set(editorAtom, editWorkspace(target));
+      if (target) {
+        get.set(editorAtom, editWorkspace(target));
+      }
       return;
     }
     case 'addWorkspace':
@@ -133,7 +139,9 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       }
       return;
     case 'closeSettings':
-      if (!editor.saving) get.set(editorAtom, { ...editor, open: false });
+      if (!editor.saving) {
+        get.set(editorAtom, { ...editor, open: false });
+      }
       return;
     case 'openMenu':
       if (!editor.saving && workspaces.some((item) => item.id === action.id)) {
@@ -142,10 +150,14 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       }
       return;
     case 'closeMenu':
-      if (!editor.saving) get.set(workspaceMenuAtom, null);
+      if (!editor.saving) {
+        get.set(workspaceMenuAtom, null);
+      }
       return;
     case 'updateDraft': {
-      if (!editor.draft || editor.saving) return;
+      if (!editor.draft || editor.saving) {
+        return;
+      }
       const { field, value } = action;
       get.set(editorAtom, {
         ...editor,
@@ -170,21 +182,27 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
         editor.saving ||
         workspaces.length <= 1 ||
         !workspaces.some((item) => item.id === action.id)
-      )
+      ) {
         return;
+      }
       get.set(persistWorkspacesAtom, {
         version: 1,
         workspaces: workspaces.filter((item) => item.id !== action.id),
       });
       return;
     case 'saveDraft': {
-      if (!editor.draft || !state.payload || editor.saving) return;
+      if (!editor.draft || !state.payload || editor.saving) {
+        return;
+      }
       const fieldErrors: Record<string, string> = {};
       for (const field of ['name', 'command', 'cwd', 'icon'] as const) {
-        if (!editor.draft[field].trim()) fieldErrors[field] = i18n.t('validation.required');
+        if (!editor.draft[field].trim()) {
+          fieldErrors[field] = i18n.t('validation.required');
+        }
       }
-      if (!/^#[0-9a-fA-F]{6}$/.test(editor.draft.color))
+      if (!/^#[0-9a-fA-F]{6}$/.test(editor.draft.color)) {
         fieldErrors.color = i18n.t('validation.color');
+      }
       if (
         editor.draft.type === 'ssh' &&
         (!editor.draft.host.trim() || /^[\s-]|[\r\n\0]/.test(editor.draft.host))

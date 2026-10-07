@@ -50,7 +50,9 @@ test('Button hover changes pixels without activating and restores them on leave'
 test('English TOML translations render with correct plurals in Lynx', async () => {
   const summary = async () => {
     const node = await app.node('#session-summary');
-    if (!node) return undefined;
+    if (!node) {
+      return undefined;
+    }
     const { rawTextValues } = await app.cdp<{ rawTextValues: { text: string }[] }>(
       'DOM.innerText',
       { nodeId: node.nodeId },

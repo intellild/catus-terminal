@@ -27,7 +27,9 @@ export async function waitFor<T>(
   const deadline = Date.now() + timeout;
   do {
     const value = await read();
-    if (value !== undefined) return value;
+    if (value !== undefined) {
+      return value;
+    }
     await setTimeout(50);
   } while (Date.now() < deadline);
   throw new Error(`Timed out waiting for ${description}`);
@@ -42,8 +44,9 @@ export class LynxApp {
   private operation = 0;
 
   async start(options: { ssh?: boolean } = {}) {
-    if (process.platform !== 'darwin')
+    if (process.platform !== 'darwin') {
       throw new Error('Native terminal E2E requires macOS + Metal.');
+    }
     await mkdir('.tmp/e2e/artifacts', { recursive: true });
     this.temporary = await mkdtemp(path.join(tmpdir(), 'catus-e2e-'));
     const configuration = path.join(this.temporary, 'workspaces.json');
@@ -126,8 +129,9 @@ export class LynxApp {
     this.client = await waitFor(
       'Lynxtron DevTool client',
       async () => {
-        if (this.child?.exitCode !== null)
+        if (this.child?.exitCode !== null) {
           throw new Error('Lynxtron exited; see .tmp/e2e/artifacts/lynxtron.log');
+        }
         const clients = await this.connector.listClients();
         return clients.find((client) => client.info?.App === 'catus-terminal')?.id;
       },
@@ -138,8 +142,9 @@ export class LynxApp {
         return await this.connector.sendListSessionMessage(this.client);
       } catch (error) {
         // Discovery can advertise the client before its CDP subscription is ready.
-        if (error instanceof Error && error.message.includes('Failed to subscribe'))
+        if (error instanceof Error && error.message.includes('Failed to subscribe')) {
           return undefined;
+        }
         throw error;
       }
     };
@@ -167,12 +172,15 @@ export class LynxApp {
 
   async stopProcess() {
     const child = this.child;
-    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) {
+      return;
+    }
     const closed = once(child, 'close');
     process.kill(-child.pid, 'SIGTERM');
     const timer = globalThis.setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null)
+      if (child.exitCode === null && child.signalCode === null) {
         process.kill(-child.pid!, 'SIGKILL');
+      }
     }, 3_000);
     try {
       await closed;
@@ -190,7 +198,9 @@ export class LynxApp {
       }
     } finally {
       await this.stopProcess();
-      if (this.temporary) await rm(this.temporary, { recursive: true, force: true });
+      if (this.temporary) {
+        await rm(this.temporary, { recursive: true, force: true });
+      }
     }
   }
 
@@ -210,7 +220,9 @@ export class LynxApp {
       this.session,
       expression,
     )) as Evaluation;
-    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+    if (result.exceptionDetails) {
+      throw new Error(JSON.stringify(result.exceptionDetails));
+    }
     return result.result?.value;
   }
 
@@ -223,10 +235,14 @@ export class LynxApp {
     const id = selector.slice(1);
     const find = (node: NodeInfo, ancestors: NodeInfo[]): NodeInfo[] | undefined => {
       const nodes = [...ancestors, node];
-      if (this.attribute(node, 'idSelector') === id) return nodes;
+      if (this.attribute(node, 'idSelector') === id) {
+        return nodes;
+      }
       for (const child of node.children ?? []) {
         const result = find(child, nodes);
-        if (result) return result;
+        if (result) {
+          return result;
+        }
       }
     };
     return find(root, []);
@@ -240,8 +256,12 @@ export class LynxApp {
     } catch (error) {
       return String(error);
     }})()`);
-    if (result === 'present') return true;
-    if (result?.includes(`Unknown or released terminal session: ${id}`)) return false;
+    if (result === 'present') {
+      return true;
+    }
+    if (result?.includes(`Unknown or released terminal session: ${id}`)) {
+      return false;
+    }
     throw new Error(`Unexpected session lookup result: ${result}`);
   }
 
@@ -276,7 +296,9 @@ export class LynxApp {
     return waitFor(`visible hit target ${selector}`, async () => {
       const nodes = await this.nodePath(selector);
       const node = nodes?.at(-1);
-      if (!node) return undefined;
+      if (!node) {
+        return undefined;
+      }
       // Clay hit-testing can find a descendant of a hidden Presence wrapper.
       // Wait for its ancestor visibility as well as the target's own styles.
       if (
@@ -285,8 +307,9 @@ export class LynxApp {
             this.attribute(ancestor, 'style') ?? '',
           ),
         )
-      )
+      ) {
         return undefined;
+      }
       const { computedStyle } = await this.cdp<{
         computedStyle: { name: string; value: string }[];
       }>('CSS.getComputedStyleForNode', { nodeId: node.nodeId });
@@ -296,15 +319,17 @@ export class LynxApp {
             (name === 'visibility' && value === 'hidden') ||
             (name === 'display' && value === 'none'),
         )
-      )
+      ) {
         return undefined;
+      }
       const { model } = await this.cdp<{ model: { content: number[] } }>('DOM.getBoxModel', {
         nodeId: node.nodeId,
       });
       const xs = model.content.filter((_, index) => index % 2 === 0);
       const ys = model.content.filter((_, index) => index % 2 === 1);
-      if (Math.max(...xs) <= Math.min(...xs) || Math.max(...ys) <= Math.min(...ys))
+      if (Math.max(...xs) <= Math.min(...xs) || Math.max(...ys) <= Math.min(...ys)) {
         return undefined;
+      }
       const left = Math.min(...xs),
         right = Math.max(...xs);
       const top = Math.min(...ys),
@@ -323,7 +348,9 @@ export class LynxApp {
           target.nodeId === hit.nodeId || !!target.children?.some(contains);
         // Presence mounts hidden content before positioning it. Backdrops can
         // have their center covered by content, so also check inset corners.
-        if (contains(node)) return { x: x!, y: y! };
+        if (contains(node)) {
+          return { x: x!, y: y! };
+        }
       }
       return undefined;
     });
@@ -340,7 +367,9 @@ export class LynxApp {
         timestamp: Date.now() / 1000,
         clickCount: 1,
       });
-      if (type === 'mousePressed') await setTimeout(50);
+      if (type === 'mousePressed') {
+        await setTimeout(50);
+      }
     }
   }
 
@@ -362,7 +391,9 @@ export class LynxApp {
         : undefined;
     });
     await this.evaluate(`delete globalThis[${JSON.stringify(key)}]`);
-    if (response.error) throw new Error(`${selector}.${method}: ${JSON.stringify(response.error)}`);
+    if (response.error) {
+      throw new Error(`${selector}.${method}: ${JSON.stringify(response.error)}`);
+    }
     return response.result as T;
   }
 
@@ -372,7 +403,9 @@ export class LynxApp {
       'takeScreenshot',
       { format: 'png', scale: 1 },
     );
-    if (!result.data || !result.width || !result.height) throw new Error('Invalid Lynx screenshot');
+    if (!result.data || !result.width || !result.height) {
+      throw new Error('Invalid Lynx screenshot');
+    }
     return Buffer.from(result.data.replace(/^data:[^,]*,/, ''), 'base64');
   }
 
@@ -385,7 +418,9 @@ export class LynxApp {
         return colorPixels(last, color) > 100 ? last : undefined;
       });
     } catch (error) {
-      if (last) await writeFile('.tmp/e2e/artifacts/presentation-timeout.png', last);
+      if (last) {
+        await writeFile('.tmp/e2e/artifacts/presentation-timeout.png', last);
+      }
       throw error;
     }
   }

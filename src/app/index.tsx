@@ -8,7 +8,9 @@ import { root } from '@lynx-js/react';
 import { App } from './App';
 import { startSessionRuntime } from './state/sessionRuntime';
 
-if (__BACKGROUND__) startSessionRuntime();
+if (__BACKGROUND__) {
+  startSessionRuntime();
+}
 root.render(<App />);
 
 if (import.meta.webpackHot) {

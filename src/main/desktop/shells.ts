@@ -33,7 +33,9 @@ export async function listShells(destination?: string): Promise<readonly ShellOp
   try {
     contents = await readFile('/etc/shells', 'utf8');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
   }
   const paths = shellPaths(`${userInfo().shell || process.env.SHELL || '/bin/sh'}\n${contents}`);
   const installed = await Promise.all(

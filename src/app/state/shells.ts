@@ -13,7 +13,9 @@ export const shellHostAtom = Atom.make<ShellHost | undefined>(undefined).pipe(At
 // effects on host/type changes; no React effect owns the asynchronous result.
 const shellRequestAtom = Atom.make((get) => {
   const editor = get(editorAtom);
-  if (!editor.open || !editor.draft) return null;
+  if (!editor.open || !editor.draft) {
+    return null;
+  }
   return editor.draft.type === 'ssh' ? `ssh:${editor.draft.host.trim()}` : 'local';
 });
 export const shellsAtom = Atom.make<
@@ -21,12 +23,16 @@ export const shellsAtom = Atom.make<
   unknown
 >((get) => {
   const request = get(shellRequestAtom);
-  if (request === null || request === 'ssh:') return Effect.succeed({ request, options: [] });
+  if (request === null || request === 'ssh:') {
+    return Effect.succeed({ request, options: [] });
+  }
   const destination = request === 'local' ? undefined : request.slice(4);
   const host = get(shellHostAtom) ?? get(workspaceHostAtom) ?? nativeWorkspaceHost();
   return Effect.gen(function* () {
     // Avoid opening an SSH process for each keystroke in the Host field.
-    if (destination !== undefined) yield* Effect.sleep('400 millis');
+    if (destination !== undefined) {
+      yield* Effect.sleep('400 millis');
+    }
     const options = yield* Effect.tryPromise(() => host.listShells!(destination));
     return { request, options };
   });

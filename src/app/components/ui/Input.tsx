@@ -28,7 +28,9 @@ export function Input({ value, disabled, onChange, className, ...props }: InputP
       readonly={disabled || props.readonly}
       onInput={(value) => {
         'background only';
-        if (disabled || props.readonly) return;
+        if (disabled || props.readonly) {
+          return;
+        }
         onChange(value);
       }}
     />

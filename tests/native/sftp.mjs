@@ -83,8 +83,11 @@ export async function verifySftp(connectSftpCallback) {
   } finally {
     await connection?.close();
     for (const [key, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
     await rm(directory, { recursive: true, force: true });
   }

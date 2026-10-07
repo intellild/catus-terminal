@@ -22,7 +22,9 @@ export const terminalSessionsAtom = Atom.make((get) => {
   const remote = new Map<number, { connection: Promise<RemoteFs>; released: boolean }>();
   const releaseRemote = (id: number) => {
     const entry = remote.get(id);
-    if (!entry) return;
+    if (!entry) {
+      return;
+    }
     entry.released = true;
     remote.delete(id);
     // A late connection still closes if the tab disappeared during authentication.
@@ -32,23 +34,35 @@ export const terminalSessionsAtom = Atom.make((get) => {
   };
   const errors = new Map<number, string>();
   get.addFinalizer(() => {
-    for (const id of sessions) nativeHost().closeTerminalSession(id);
-    for (const id of remote.keys()) releaseRemote(id);
+    for (const id of sessions) {
+      nativeHost().closeTerminalSession(id);
+    }
+    for (const id of remote.keys()) {
+      releaseRemote(id);
+    }
     sessions.clear();
     errors.clear();
   });
   return {
     connection(id: number) {
       const entry = remote.get(id);
-      if (!entry || entry.released) return Promise.reject(new Error('SFTP tab is closed'));
+      if (!entry || entry.released) {
+        return Promise.reject(new Error('SFTP tab is closed'));
+      }
       return entry.connection;
     },
     reconcile(tabs: readonly TerminalTab[], environment?: WorkspaceEnvironment) {
       const live = new Set(tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id));
       const remoteLive = new Set(tabs.filter((tab) => tab.kind === 'sftp').map((tab) => tab.id));
-      for (const id of remote.keys()) if (!remoteLive.has(id)) releaseRemote(id);
+      for (const id of remote.keys()) {
+        if (!remoteLive.has(id)) {
+          releaseRemote(id);
+        }
+      }
       for (const tab of tabs) {
-        if (tab.kind !== 'sftp' || remote.has(tab.id)) continue;
+        if (tab.kind !== 'sftp' || remote.has(tab.id)) {
+          continue;
+        }
         const connection = Promise.resolve().then(() =>
           (nativeHost() as TerminalHost & SftpHost).connectSftp({ destination: tab.profile.host! }),
         );
@@ -63,10 +77,14 @@ export const terminalSessionsAtom = Atom.make((get) => {
         }
       }
       for (const id of errors.keys()) {
-        if (!live.has(id)) errors.delete(id);
+        if (!live.has(id)) {
+          errors.delete(id);
+        }
       }
       for (const id of live) {
-        if (sessions.has(id) || errors.has(id)) continue;
+        if (sessions.has(id) || errors.has(id)) {
+          continue;
+        }
         try {
           const tab = tabs.find((tab) => tab.id === id)!;
           nativeHost().createTerminalSession(id, tab.profile, environment);

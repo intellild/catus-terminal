@@ -72,13 +72,17 @@ export const Button = forwardRef<NodesRef, ButtonProps>(function Button(
         catchtap
           ? undefined
           : (event) => {
-              if (!disabled) bindtap?.(event);
+              if (!disabled) {
+                bindtap?.(event);
+              }
             }
       }
       catchtap={
         catchtap
           ? (event) => {
-              if (!disabled) catchtap(event);
+              if (!disabled) {
+                catchtap(event);
+              }
             }
           : undefined
       }

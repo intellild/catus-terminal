@@ -25,7 +25,9 @@ export function useFrameDriver() {
       const dispatch = runOnBackground(dispatchAnimationFrame);
       const frame = () => {
         state.current.request = 0;
-        if (!state.current.running) return;
+        if (!state.current.running) {
+          return;
+        }
         void dispatch();
         state.current.request = requestAnimationFrame(frame);
       };
@@ -35,7 +37,9 @@ export function useFrameDriver() {
       void runOnMainThread(() => {
         'main thread';
         state.current.running = false;
-        if (state.current.request) cancelAnimationFrame(state.current.request);
+        if (state.current.request) {
+          cancelAnimationFrame(state.current.request);
+        }
         state.current.request = 0;
       })();
     };

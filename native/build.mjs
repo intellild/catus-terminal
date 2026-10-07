@@ -9,8 +9,9 @@ import { rustTarget } from '../scripts/rust-target.mjs';
 const packageRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export async function buildNative({ nativeView = true } = {}) {
-  if (process.platform !== 'darwin')
+  if (process.platform !== 'darwin') {
     throw new Error('The native view currently supports macOS only');
+  }
   const outputDir = nativeView
     ? path.join(packageRoot, 'dist', process.platform, process.arch)
     : path.join(rustTarget, 'napi-smoke');

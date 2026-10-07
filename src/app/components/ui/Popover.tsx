@@ -57,7 +57,9 @@ export function PopoverProvider({
 
 export function usePopover() {
   const context = useContext(PopoverContext);
-  if (!context) throw new Error('Popover components require Popover');
+  if (!context) {
+    throw new Error('Popover components require Popover');
+  }
   return context;
 }
 
@@ -75,7 +77,9 @@ export function Popover({
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const actualOpen = open ?? internalOpen;
   const setOpen = (next: boolean) => {
-    if (open === undefined) setInternalOpen(next);
+    if (open === undefined) {
+      setInternalOpen(next);
+    }
     onOpenChange?.(next);
   };
   return (
@@ -123,14 +127,22 @@ export function PopoverTrigger({
       ref={ref}
       bindlayoutchange={(event) => {
         props.bindlayoutchange?.(event);
-        if (open) measure();
+        if (open) {
+          measure();
+        }
       }}
       bindtap={() => {
-        if (disabled) return;
-        if (open) setOpen(false);
+        if (disabled) {
+          return;
+        }
+        if (open) {
+          setOpen(false);
+        }
         // Measure before mounting Positioner: it computes on entering, so a
         // later native response would otherwise leave the original coordinates.
-        else measure(() => setOpen(true));
+        else {
+          measure(() => setOpen(true));
+        }
       }}
     >
       {children}
@@ -163,11 +175,15 @@ export function PopoverContent({
   const { open, setOpen } = usePopover();
   const setActive = portal?.setActive;
   useEffect(() => {
-    if (!open || !setActive) return;
+    if (!open || !setActive) {
+      return;
+    }
     setActive((count) => count + 1);
     return () => setActive((count) => count - 1);
   }, [open, setActive]);
-  if (!portal?.host) return null;
+  if (!portal?.host) {
+    return null;
+  }
   return createPortal(
     <view
       className="absolute inset-0 [-x-app-region:no-drag]"

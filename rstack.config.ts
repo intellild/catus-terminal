@@ -37,4 +37,10 @@ define.lint(({ js, ts }) => [
       },
     },
   },
+  {
+    files: scriptFiles,
+    rules: {
+      curly: ['error', 'all'],
+    },
+  },
 ]);

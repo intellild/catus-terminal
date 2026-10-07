@@ -6,8 +6,11 @@ const callbacks = new Set<() => void>();
 export function delayFrames(frames: number, callback: () => void): void {
   let remaining = frames;
   const tick = () => {
-    if (--remaining <= 0) callback();
-    else callbacks.add(tick);
+    if (--remaining <= 0) {
+      callback();
+    } else {
+      callbacks.add(tick);
+    }
   };
   callbacks.add(tick);
 }
@@ -16,5 +19,7 @@ export function dispatchUIFrames(): void {
   'background only';
   const current = Array.from(callbacks);
   callbacks.clear();
-  for (const callback of current) callback();
+  for (const callback of current) {
+    callback();
+  }
 }

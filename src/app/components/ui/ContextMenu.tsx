@@ -32,7 +32,9 @@ export function ContextMenu({
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const setOpen = (next: boolean) => {
-    if (open === undefined) setInternalOpen(next);
+    if (open === undefined) {
+      setInternalOpen(next);
+    }
     onOpenChange?.(next);
   };
   return (
@@ -70,9 +72,13 @@ export function ContextMenuTrigger({
         // Clay supplies the pressed-button bit mask; button can remain 0.
         if (event.button === 2 || (event.buttons & 2) !== 0) {
           const point = { x: event.pageX, y: event.pageY };
-          if (onContextMenu) onContextMenu(point);
-          else if (context) context.trigger(point);
-          else throw new Error('ContextMenuTrigger requires ContextMenu or onContextMenu');
+          if (onContextMenu) {
+            onContextMenu(point);
+          } else if (context) {
+            context.trigger(point);
+          } else {
+            throw new Error('ContextMenuTrigger requires ContextMenu or onContextMenu');
+          }
         }
       }}
     >
@@ -138,9 +144,13 @@ export function ContextMenuItem({
         className,
       )}
       bindtap={() => {
-        if (disabled) return;
+        if (disabled) {
+          return;
+        }
         onSelect();
-        if (closeOnSelect) setOpen(false);
+        if (closeOnSelect) {
+          setOpen(false);
+        }
       }}
     >
       <text

@@ -20,6 +20,8 @@ export function startSessionRuntime(
   registry: AtomRegistry = sessionRegistry,
   host?: WorkspaceHost,
 ) {
-  if (host) registry.set(workspaceHostAtom, host);
+  if (host) {
+    registry.set(workspaceHostAtom, host);
+  }
   registry.get(sessionRuntimeAtom);
 }

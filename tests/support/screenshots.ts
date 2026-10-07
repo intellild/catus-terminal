@@ -23,7 +23,9 @@ export function colorPixels(bytes: Buffer, color: readonly number[]) {
   const image = PNG.sync.read(bytes);
   let count = 0;
   for (let index = 0; index < image.data.length; index += 4) {
-    if (color.every((channel, offset) => image.data[index + offset] === channel)) count++;
+    if (color.every((channel, offset) => image.data[index + offset] === channel)) {
+      count++;
+    }
   }
   return count;
 }
@@ -44,7 +46,9 @@ export async function expectScreenshot(name: string, actual: Buffer) {
   try {
     expected = await readFile(baseline);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
     throw new Error(`Missing baseline ${baseline}. Run pnpm test:e2e:update and review the PNG.`, {
       cause: error,
     });

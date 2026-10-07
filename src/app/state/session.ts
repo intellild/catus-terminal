@@ -81,12 +81,18 @@ export function newTab(
   workspaceId = store.get(sessionAtom).activeWorkspaceId,
   kind: TerminalTab['kind'] = 'terminal',
 ): void {
-  if (workspaceId === null) return;
+  if (workspaceId === null) {
+    return;
+  }
   const workspace = store.get(workspaceAtom(workspaceId));
-  if (!workspace || (kind === 'sftp' && workspace.profile.type !== 'ssh')) return;
+  if (!workspace || (kind === 'sftp' && workspace.profile.type !== 'ssh')) {
+    return;
+  }
   const state = store.get(sessionAtom);
   const id = state.nextTab;
-  if (id > 0xffffffff) throw new Error('Terminal session IDs exhausted');
+  if (id > 0xffffffff) {
+    throw new Error('Terminal session IDs exhausted');
+  }
   Atom.batch(() => {
     store.set(tabAtom(id), { id, workspaceId, number: id, profile: workspace.profile, kind });
     store.set(workspaceAtom(workspaceId), {
@@ -100,29 +106,45 @@ export function newTab(
 }
 export function selectWorkspace(store: SessionAccess, id: string): void {
   const workspace = store.get(workspaceAtom(id));
-  if (!workspace) return;
-  if (!workspace.tabIds.length) return newTab(store, id);
+  if (!workspace) {
+    return;
+  }
+  if (!workspace.tabIds.length) {
+    return newTab(store, id);
+  }
   const state = store.get(sessionAtom);
-  if (state.activeWorkspaceId !== id) store.set(sessionAtom, { ...state, activeWorkspaceId: id });
+  if (state.activeWorkspaceId !== id) {
+    store.set(sessionAtom, { ...state, activeWorkspaceId: id });
+  }
 }
 export function selectTab(store: SessionAccess, id: number): void {
   const tab = store.get(tabAtom(id));
-  if (!tab) return;
+  if (!tab) {
+    return;
+  }
   const workspace = store.get(workspaceAtom(tab.workspaceId));
-  if (!workspace || !workspace.tabIds.includes(id)) return;
+  if (!workspace || !workspace.tabIds.includes(id)) {
+    return;
+  }
   Atom.batch(() => {
-    if (workspace.activeTabId !== id)
+    if (workspace.activeTabId !== id) {
       store.set(workspaceAtom(tab.workspaceId), { ...workspace, activeTabId: id });
+    }
     const state = store.get(sessionAtom);
-    if (state.activeWorkspaceId !== tab.workspaceId)
+    if (state.activeWorkspaceId !== tab.workspaceId) {
       store.set(sessionAtom, { ...state, activeWorkspaceId: tab.workspaceId });
+    }
   });
 }
 export function closeTab(store: SessionAccess, id: number): void {
   const tab = store.get(tabAtom(id));
-  if (!tab) return;
+  if (!tab) {
+    return;
+  }
   const workspace = store.get(workspaceAtom(tab.workspaceId));
-  if (!workspace) return;
+  if (!workspace) {
+    return;
+  }
   const index = workspace.tabIds.indexOf(id);
   const tabIds = workspace.tabIds.filter((tabId) => tabId !== id);
   Atom.batch(() => {
@@ -144,9 +166,13 @@ export function applyConfig(store: SessionAccess, payload: WorkspaceConfigPayloa
   const workspaceIds = payload.config.workspaces.map((workspace) => workspace.id);
   Atom.batch(() => {
     for (const id of state.workspaceIds) {
-      if (workspaceIds.includes(id)) continue;
+      if (workspaceIds.includes(id)) {
+        continue;
+      }
       const workspace = store.get(workspaceAtom(id))!;
-      for (const tabId of workspace.tabIds) store.set(tabAtom(tabId), undefined);
+      for (const tabId of workspace.tabIds) {
+        store.set(tabAtom(tabId), undefined);
+      }
       store.set(workspaceAtom(id), undefined);
     }
     for (const profile of payload.config.workspaces) {
@@ -171,8 +197,9 @@ export function applyConfig(store: SessionAccess, payload: WorkspaceConfigPayloa
           : workspaceIds,
       activeWorkspaceId,
     });
-    if (!state.payload || activeWorkspaceId !== state.activeWorkspaceId)
+    if (!state.payload || activeWorkspaceId !== state.activeWorkspaceId) {
       selectWorkspace(store, activeWorkspaceId);
+    }
     reconcileSessions(store);
   });
 }
@@ -246,7 +273,9 @@ export function editWorkspace(workspace: Workspace): EditorState {
 }
 export function createDraft(workspaces: readonly Workspace[]): EditorState {
   let number = 1;
-  while (workspaces.some((workspace) => workspace.id === `workspace-${number}`)) number += 1;
+  while (workspaces.some((workspace) => workspace.id === `workspace-${number}`)) {
+    number += 1;
+  }
   return {
     open: true,
     saving: false,

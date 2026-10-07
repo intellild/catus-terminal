@@ -14,7 +14,9 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
   const { t } = useTranslation();
   const revealActiveTab = useCallback(() => {
     'background only';
-    if (!active || !tab) return;
+    if (!active || !tab) {
+      return;
+    }
     lynx
       .createSelectorQuery()
       .select(`#tab-${tab.number}`)
@@ -25,7 +27,9 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
       .exec();
   }, [active, tab]);
   useEffect(revealActiveTab, [revealActiveTab]);
-  if (!tab) return null;
+  if (!tab) {
+    return null;
+  }
   return (
     <Button
       variant="ghost"

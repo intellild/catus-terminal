@@ -38,7 +38,9 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       const fs = await sessions.connection(id);
       const resolved = await fs.realpath(path);
       const entries = await fs.readdir(resolved, { withFileTypes: true });
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
       setListing({
         path: resolved,
         entries: entries
@@ -56,8 +58,9 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       setSelected('');
     };
     void load().catch((error) => {
-      if (!disposed)
+      if (!disposed) {
         setListing((current) => ({ ...current, loading: false, error: String(error) }));
+      }
     });
     return () => {
       disposed = true;
@@ -65,7 +68,9 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
   }, [id, path, refresh, sessions]);
   const open = async (entry: Entry) => {
     'background only';
-    if (listing.loading) return;
+    if (listing.loading) {
+      return;
+    }
     const next = joinPath(listing.path, entry.name);
     if (entry.directory) {
       setPath(next);
@@ -97,7 +102,9 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           disabled={listing.loading || !listing.path}
           id="sftp-up"
           bindtap={() => {
-            if (!listing.loading && listing.path) setPath(joinPath(listing.path, '..'));
+            if (!listing.loading && listing.path) {
+              setPath(joinPath(listing.path, '..'));
+            }
           }}
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.up')}</text>
@@ -111,7 +118,9 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           disabled={listing.loading}
           id="sftp-refresh"
           bindtap={() => {
-            if (!listing.loading) setRefresh((value) => value + 1);
+            if (!listing.loading) {
+              setRefresh((value) => value + 1);
+            }
           }}
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.refresh')}</text>

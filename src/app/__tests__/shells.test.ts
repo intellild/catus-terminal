@@ -13,8 +13,12 @@ test('Effect owns loading, failures, retry and stale remote shell responses', as
     finishOld = resolve;
   });
   const listShells = rstest.fn(async (destination?: string) => {
-    if (destination === 'old') return old;
-    if (destination === 'broken') throw new Error('SSH failed');
+    if (destination === 'old') {
+      return old;
+    }
+    if (destination === 'broken') {
+      throw new Error('SSH failed');
+    }
     return [{ value: '/bin/zsh', label: 'zsh' }];
   });
   registry.set(shellHostAtom, { listShells });

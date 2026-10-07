@@ -22,11 +22,19 @@ function draw() {
 
 process.stdin.on('data', (text) => {
   for (const character of text) {
-    if (character === '\x03') process.exit(0);
+    if (character === '\x03') {
+      process.exit(0);
+    }
     if (character === '\r' || character === '\n') {
-      if (input === 'update') state = 'updated';
-      if (input === 'reset') state = 'ready';
-      if (input === 'exit') process.exit(0);
+      if (input === 'update') {
+        state = 'updated';
+      }
+      if (input === 'reset') {
+        state = 'ready';
+      }
+      if (input === 'exit') {
+        process.exit(0);
+      }
       input = '';
     } else if (character === '\x7f') {
       input = [...input].slice(0, -1).join('');

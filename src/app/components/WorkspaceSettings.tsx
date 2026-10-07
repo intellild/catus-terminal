@@ -39,7 +39,9 @@ export function WorkspaceSettings({
 }) {
   const { t } = useTranslation();
   const draft = editor.draft;
-  if (!editor.open || !draft) return null;
+  if (!editor.open || !draft) {
+    return null;
+  }
   const shellOptions = [
     { value: '$SHELL', label: t('workspace.defaultShell') },
     ...shells.options,
@@ -90,7 +92,9 @@ export function WorkspaceSettings({
                       draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]',
                     )}
                     bindtap={() => {
-                      if (!editor.saving) onChange('type', type);
+                      if (!editor.saving) {
+                        onChange('type', type);
+                      }
                     }}
                   >
                     <text className="text-[12px] text-[#dce4e9]">

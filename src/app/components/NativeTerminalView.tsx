@@ -5,7 +5,9 @@ export function NativeTerminalView({ sessionId }: { sessionId: number }) {
   const key = (event: KeyEvent) => {
     'background only';
     // macOS system shortcuts stay with the host; ordinary/control/option keys go to the PTY.
-    if (event.metaKey) return;
+    if (event.metaKey) {
+      return;
+    }
     lynx
       .createSelectorQuery()
       .select('#terminal-surface')

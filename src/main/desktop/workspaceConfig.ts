@@ -29,7 +29,9 @@ export function createWorkspaceHost(
       return payload(parseWorkspaceConfig(JSON.parse(await readFile(configPath, 'utf8'))));
     } catch (error) {
       // An invalid existing file is reported, never replaced by defaults.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
       await mkdir(path.dirname(configPath), { recursive: true });
       try {
         await writeFile(configPath, JSON.stringify(defaults, null, 2) + '\n', {
@@ -37,7 +39,9 @@ export function createWorkspaceHost(
           mode: 0o600,
         });
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw error;
+        }
       }
       return payload(parseWorkspaceConfig(JSON.parse(await readFile(configPath, 'utf8'))));
     }

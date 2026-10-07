@@ -32,8 +32,9 @@ beforeEach(() => {
     };
     return {
       exec: () => {
-        if (options.method === 'boundingClientRect')
+        if (options.method === 'boundingClientRect') {
           options.success?.({ left: 0, top: 0, width: 470, height: 34 });
+        }
         if (options.method === 'setValue') {
           const token = this._nodeSelectToken;
           const input = (

@@ -29,7 +29,9 @@ export function FormField({
   }): ReactNode;
 }) {
   const control = useContext(FormContext);
-  if (!control) throw new Error('FormField requires Form');
+  if (!control) {
+    throw new Error('FormField requires Form');
+  }
   const error = control.errors?.[name] ?? '';
   return (
     <FieldContext.Provider value={{ name, error }}>
@@ -40,7 +42,9 @@ export function FormField({
           disabled: !!control.disabled,
           onChange: (value) => {
             'background only';
-            if (!control.disabled) control.onChange(name, value);
+            if (!control.disabled) {
+              control.onChange(name, value);
+            }
           },
         },
         fieldState: { error },
@@ -108,7 +112,9 @@ export function FormSubmit({
       className={cn('h-auto py-[10px] rounded-[7px] font-bold', className)}
       bindtap={() => {
         'background only';
-        if (!control?.disabled) control?.onSubmit();
+        if (!control?.disabled) {
+          control?.onSubmit();
+        }
       }}
     >
       {children}

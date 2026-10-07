@@ -24,12 +24,16 @@ export function WorkspaceContextMenu({
   onDelete(id: string): void;
 }) {
   const { t } = useTranslation();
-  if (!menu) return null;
+  if (!menu) {
+    return null;
+  }
   return (
     <ContextMenu
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) {
+          onClose();
+        }
       }}
     >
       <ContextMenuAnchor point={menu} />

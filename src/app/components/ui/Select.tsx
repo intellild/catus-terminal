@@ -36,7 +36,9 @@ interface SelectState {
 const SelectContext = createContext<SelectState | null>(null);
 function useSelect() {
   const context = useContext(SelectContext);
-  if (!context) throw new Error('Select components require Select');
+  if (!context) {
+    throw new Error('Select components require Select');
+  }
   return context;
 }
 
@@ -141,7 +143,9 @@ export function SelectItem({
         className,
       )}
       bindtap={() => {
-        if (disabled || select.disabled) return;
+        if (disabled || select.disabled) {
+          return;
+        }
         select.onValueChange(value);
         setOpen(false);
       }}
