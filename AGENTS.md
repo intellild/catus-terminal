@@ -32,7 +32,11 @@
   only in background-thread logic, never during render or in Main Thread Scripts.
 - Keep the layout skeleton renderable on the main thread. Put business regions
   behind `background-only` boundaries with pure UI fallbacks; presentation
-  components use type-only state imports to keep Effect out of the main bundle.
+  components use type-only business-state imports to keep business atoms out of
+  the main bundle. SessionProvider is shared by both threads and imports only
+  `@effect/atom-react/RegistryContext`; MTS creates an empty registry. Keep Node
+  codec setup and business startup in BTS. Keep the same root Provider in both
+  threads so the component tree has a consistent structure during hydration.
 - Run business state and actions in the application-level Effect registry,
   independently of React. Hooks subscribe to region view atoms and dispatch
   commands; registry reset/dispose owns cancellation and resource cleanup.

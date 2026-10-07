@@ -1,8 +1,7 @@
 import 'background-only';
 import '../runtime';
-import { RegistryContext, useAtomSet, useAtomValue } from '@effect/atom-react';
+import { useAtomSet, useAtomValue } from '@effect/atom-react';
 import { useCallback, useEffect } from '@lynx-js/react';
-import { sessionRegistry } from './sessionRegistry';
 import { sessionActionsAtom } from './sessionActions';
 import { shellOptionsAtom } from './shells';
 import {
@@ -31,14 +30,9 @@ const regions = {
   settings: SessionSettings,
 };
 
-// This boundary only connects UI subscriptions to the application registry.
 export function SessionRegion({ region }: { region: Region }) {
   const Content = regions[region];
-  return (
-    <RegistryContext.Provider value={sessionRegistry}>
-      <Content />
-    </RegistryContext.Provider>
-  );
+  return <Content />;
 }
 
 function SessionTabs() {

@@ -144,6 +144,40 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
+test('background hydration preserves the main-thread layout and portal host nodes', async () => {
+  const main = lynxTestingEnv.mainThread.globalThis;
+  lynxTestingEnv.switchToMainThread();
+  const renderPage = Reflect.get(globalThis, 'renderPage') as (...args: unknown[]) => unknown;
+  lynxTestingEnv.switchToBackgroundThread();
+  const ids = [
+    'application-layout',
+    'window-tab-bar',
+    'window-controls-space',
+    'workspace-dock',
+    'terminal-content',
+    'application-status',
+    'popover-host',
+  ];
+  let firstFrame: { id: string; element: unknown }[] = [];
+  // Capture the native element tree after IFR, before testing-library hydrates BTS.
+  main.renderPage = (...args: unknown[]) => {
+    const result = renderPage(...args);
+    firstFrame = ids.map((id) => ({ id, element: elementTree.root!.querySelector(`#${id}`) }));
+    return result;
+  };
+  try {
+    renderApp();
+  } finally {
+    delete main.renderPage;
+  }
+  await waitForTerminal();
+  expect(firstFrame).toHaveLength(ids.length);
+  for (const { id, element } of firstFrame) {
+    expect(element).not.toBeNull();
+    expect(elementTree.root!.querySelector(`#${id}`)).toBe(element);
+  }
+});
+
 test('the native view stays mounted through empty/loading/error states with one app RAF driver', async () => {
   const main = lynxTestingEnv.mainThread.globalThis;
   const raf = rstest.fn();

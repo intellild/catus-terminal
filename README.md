@@ -9,8 +9,10 @@
 构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
 布局组件，由 `App.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
 首帧渲染窗口骨架。tab、workspace 列表、内容、状态栏和设置各有独立的
-`<background-only>` 边界及首帧 fallback。`state/SessionRegion.tsx` 为这些区域
-提供同一个应用级 Effect registry；Effect 和配置加载只在 BTS 运行。
+`<background-only>` 边界及首帧 fallback。`App.tsx` 在两个线程中都使用同一层
+`state/SessionProvider.tsx`，保持首屏到后台接管时的组件树结构一致。
+Provider 精确导入 `@effect/atom-react/RegistryContext`，各区域继承应用级 registry；
+主线程只创建空 registry，业务 atom、配置加载及 Node 编码器适配只在 BTS 运行。
 `index.tsx` 在 BTS 入口启动 `state/sessionRuntime.ts`，不依赖 React 挂载。
 配置加载、保存、workspace/tab/编辑操作由 `sessionActions.ts` 的 action atoms 执行；
 各区域只订阅 `sessionViews.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
@@ -116,6 +118,9 @@ App.tsx / components/AppLayout.tsx
        ↓
 index.tsx → state/sessionRuntime.ts
   BTS 启动独立 registry，每个 registry 只初始化一次
+       ↓
+App.tsx → state/SessionProvider.tsx
+  两个线程使用一致的 Provider；主线程 registry 为空，BTS 启动业务 atom
        ↓
 state/sessionActions.ts
   action atom 加载/保存配置，执行 workspace/tab/编辑操作
@@ -472,7 +477,8 @@ src/shared/workspaces.ts               Effect Schema 校验、启动参数解析
 src/app/App.tsx                         组合静态 layout 和各区域的后台边界
 src/app/components/AppLayout.tsx       主线程首帧布局骨架与窗口 tab 栏
 src/app/components/                    tab、workspace、内容、状态栏、设置的展示组件
-src/app/state/SessionRegion.tsx        各区域 BTS 边界共享同一个 Effect registry
+src/app/state/SessionProvider.tsx      两个线程共有的唯一 Effect registry Provider
+src/app/state/SessionRegion.tsx        各区域的 atom 订阅和事件绑定
 src/app/state/sessionRuntime.ts        BTS 入口启动的独立 atom runtime
 src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/设置操作
 src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom

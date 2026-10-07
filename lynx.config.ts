@@ -20,8 +20,12 @@ const rootPath = process.cwd();
 console.log('rootPath: ', path.resolve(rootPath, './src/assets'));
 export default defineConfig({
   source: {
-    // FormatJS publishes modern JS that Lynx's main VM needs downleveled.
-    include: [/node_modules[\\/]@formatjs[\\/]/],
+    // These packages publish modern JS that Lynx's main VM needs downleveled.
+    include: [
+      /node_modules[\\/]@formatjs[\\/]/,
+      /node_modules[\\/]effect[\\/]/,
+      /node_modules[\\/]@effect[\\/]atom-react[\\/]/,
+    ],
   },
   server: {
     port: 5969,
