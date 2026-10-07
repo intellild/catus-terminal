@@ -18,6 +18,7 @@ const fileType = (entry: {
 export function createSftpService(
   connect: SftpHost['connectSftp'],
   uploadFiles?: (destination: string, path: string) => Promise<boolean>,
+  downloadFile?: (destination: string, path: string) => Promise<boolean>,
 ) {
   const connections = new Map<number, RemoteFs>();
   let nextId = 1;
@@ -27,6 +28,12 @@ export function createSftpService(
       try {
         if (disposed) {
           throw new Error('SFTP service is closed');
+        }
+        if (request.operation === 'download') {
+          if (!downloadFile) {
+            throw new Error('File download is unavailable');
+          }
+          return { ok: true, value: await downloadFile(request.destination, request.path) };
         }
         if (request.operation === 'upload') {
           if (!uploadFiles) {

@@ -3,7 +3,7 @@ import { LYNX_BUNDLE_PATH } from './vendorPaths';
 import path from 'node:path';
 
 import { connectSftp } from './sftp';
-import { createFileUploader } from './uploadFiles';
+import { createFileUploader, createFileDownloader } from './fileTransfers';
 import { createSftpService } from './sftpService';
 import { SFTP_CHANNEL } from '../../shared/sftpBridge';
 import type { SftpRequest } from '../../shared/sftpBridge';
@@ -20,6 +20,11 @@ const sftp = createSftpService(
     process.env.CATUS_E2E_PTY && process.env.CATUS_E2E_UPLOAD_FILE
       ? Promise.resolve({ canceled: false, filePaths: [process.env.CATUS_E2E_UPLOAD_FILE] })
       : dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] }),
+  ),
+  createFileDownloader((filename) =>
+    process.env.CATUS_E2E_PTY && process.env.CATUS_E2E_DOWNLOAD_FILE
+      ? Promise.resolve({ canceled: false, filePath: process.env.CATUS_E2E_DOWNLOAD_FILE })
+      : dialog.showSaveDialog({ defaultPath: filename }),
   ),
 );
 lynxBridge.handle(SFTP_CHANNEL, (_event, request) => sftp.handle(request as SftpRequest));

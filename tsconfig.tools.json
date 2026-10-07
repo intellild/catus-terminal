@@ -19,7 +19,7 @@
     "./src/shared/sftpBridge.ts",
     "./src/app/api/SftpClient.ts",
     "./src/main/desktop/sftpService.ts",
-    "./src/main/desktop/uploadFiles.ts",
+    "./src/main/desktop/fileTransfers.ts",
     "./rsbuild.config.ts",
     "./tailwind.config.ts",
     "./rstack.config.ts"

@@ -43,6 +43,8 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
   });
   const [selected, setSelected] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState('');
+  const transferring = uploading || !!downloading;
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -96,7 +98,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
   }, [id, path, refresh, sessions]);
   const upload = async () => {
     'background only';
-    if (uploading || listing.loading || !listing.path) {
+    if (transferring || listing.loading || !listing.path) {
       return;
     }
     setUploading(true);
@@ -114,6 +116,29 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
     } finally {
       if (mounted.current) {
         setUploading(false);
+      }
+    }
+  };
+  const download = async (entry: Entry) => {
+    'background only';
+    if (transferring || listing.loading || entry.directory) {
+      return;
+    }
+    setDownloading(entry.name);
+    setListing((current) => ({ ...current, error: '' }));
+    try {
+      const remotePath = joinPath(listing.path, entry.name);
+      if (entry.symlink && (await (await sessions.connection(id)).stat(remotePath)).isDirectory()) {
+        throw new Error(t('sftp.downloadFileOnly'));
+      }
+      await sftpClient.downloadFile(host, remotePath);
+    } catch (error) {
+      if (mounted.current) {
+        setListing((current) => ({ ...current, error: String(error) }));
+      }
+    } finally {
+      if (mounted.current) {
+        setDownloading('');
       }
     }
   };
@@ -153,10 +178,10 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         <Button
           variant="link"
           size="sm"
-          disabled={uploading || listing.loading || !listing.path}
+          disabled={transferring || listing.loading || !listing.path}
           id="sftp-up"
           bindtap={() => {
-            if (!uploading && !listing.loading && listing.path) {
+            if (!transferring && !listing.loading && listing.path) {
               setPath(joinPath(listing.path, '..'));
             }
           }}
@@ -186,7 +211,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
                   ) : (
                     <BreadcrumbLink
                       id={`sftp-breadcrumb-${index}`}
-                      disabled={uploading || listing.loading}
+                      disabled={transferring || listing.loading}
                       bindtap={() => setPath(crumb.path)}
                     >
                       <text className="text-[12px] truncate">{crumb.name}</text>
@@ -208,7 +233,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         <Button
           variant="link"
           size="sm"
-          disabled={uploading || listing.loading || !listing.path}
+          disabled={transferring || listing.loading || !listing.path}
           id="sftp-upload"
           bindtap={() => {
             void upload();
@@ -221,7 +246,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
         <Button
           variant="link"
           size="sm"
-          disabled={uploading || listing.loading}
+          disabled={transferring || listing.loading}
           id="sftp-refresh"
           bindtap={() => {
             if (!listing.loading) {
@@ -266,7 +291,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           >
             <Button
               variant="ghost"
-              disabled={uploading || listing.loading}
+              disabled={transferring || listing.loading}
               id={`sftp-entry-${index}`}
               data-filename={entry.name}
               className={cn(
@@ -284,6 +309,23 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
               <text className="text-[10px] text-[#8c99a7]">
                 {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
               </text>
+              {!entry.directory ? (
+                <Button
+                  id={`sftp-download-${index}`}
+                  data-downloadfile={entry.name}
+                  variant="link"
+                  size="sm"
+                  className="h-[20px] ml-[8px] px-[8px]"
+                  disabled={transferring || listing.loading}
+                  catchtap={() => {
+                    void download(entry);
+                  }}
+                >
+                  <text className="text-[11px]">
+                    {t(downloading === entry.name ? 'sftp.downloading' : 'sftp.download')}
+                  </text>
+                </Button>
+              ) : null}
             </Button>
           </list-item>
         ))}

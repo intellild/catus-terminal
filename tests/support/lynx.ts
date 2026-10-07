@@ -122,6 +122,9 @@ export class LynxApp {
           PATH: fixturePath,
           CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'one', 'two', 'three', 'remote'),
           CATUS_WORKSPACES_FILE: configuration,
+          CATUS_E2E_DOWNLOAD_FILE: options.ssh
+            ? path.join(this.temporary, 'downloaded.txt')
+            : undefined,
           CATUS_E2E_UPLOAD_FILE: options.ssh
             ? path.join(this.temporary, 'uploaded.txt')
             : undefined,
@@ -263,6 +266,18 @@ export class LynxApp {
       }
     };
     return find(root, []);
+  }
+
+  async downloadedFile() {
+    const { readFile } = await import('node:fs/promises');
+    try {
+      return await readFile(path.join(this.temporary, 'downloaded.txt'), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async sessionExists(id: number) {

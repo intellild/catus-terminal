@@ -374,6 +374,7 @@ test('terminal forwards control keys to the native PTY and keeps macOS shortcuts
 
 test('SSH has separate terminal and SFTP buttons; directory navigation preserves the native view', async () => {
   const upload = rstest.spyOn(sftpClient, 'uploadFiles').mockResolvedValue(true);
+  const download = rstest.spyOn(sftpClient, 'downloadFile').mockResolvedValue(false);
   const fs = {
     realpath: rstest.fn(async (path: string) =>
       path === '.' ? '/srv/users/home/test' : path.endsWith('/..') ? '/srv/users/home/test' : path,
@@ -447,6 +448,17 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
   await rstest.waitFor(() => expect(visibleText(3)).toContain('.cache'));
   expect(visibleText(3)).toContain('.env');
+  const fileRow = elementTree.__GetElementByUniqueId(visibleCells[2]!)!;
+  fireEvent.tap(fileRow.querySelector('#sftp-download-2')!, {
+    eventType: 'catchEvent',
+    bubbles: true,
+  });
+  await rstest.waitFor(() =>
+    expect(download).toHaveBeenCalledWith('test-alias', '/srv/users/home/test/.env'),
+  );
+  expect(fileRow.querySelector('#sftp-entry-2')?.getAttribute('class')).not.toContain(
+    'bg-[#35483f]',
+  );
   fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
   await rstest.waitFor(() => expect(visibleText(1)).not.toContain('.cache'));
   expect(visibleText(1)).not.toContain('.env');

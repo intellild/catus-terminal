@@ -139,6 +139,11 @@ test('SFTP browser uses native directory APIs and keeps terminal ownership separ
     app.node('[data-filename="uploaded.txt"]'),
   );
   await expectScreenshot('sftp-uploaded-directory', await app.screenshot('#sftp-list'));
+  await app.tap('[data-downloadfile="uploaded.txt"]');
+  await waitFor('download saved to selected path', async () =>
+    (await app.downloadedFile()) === 'Uploaded fixture' ? true : undefined,
+  );
+  expect(await app.node('#sftp-error')).toBeUndefined();
   await app.tap('#close-tab-3');
   await waitFor('SFTP browser released', async () =>
     !(await app.node('#sftp-browser')) ? true : undefined,

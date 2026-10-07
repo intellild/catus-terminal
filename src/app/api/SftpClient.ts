@@ -21,6 +21,10 @@ export class SftpClient implements SftpHost {
     return reply.value as T;
   }
 
+  downloadFile(destination: string, path: string): Promise<boolean> {
+    return this.request({ operation: 'download', destination, path });
+  }
+
   uploadFiles(destination: string, path: string): Promise<boolean> {
     return this.request({ operation: 'upload', destination, path });
   }
