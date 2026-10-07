@@ -125,7 +125,7 @@ App.tsx → state/SessionProvider.tsx
 state/sessionActions.ts
   action atom 加载/保存配置，执行 workspace/tab/编辑操作
        ↓
-state/sessionViews.ts → state/SessionRegion.tsx
+state/sessionViews.ts → components/SessionViews.tsx
   各区域订阅自己的视图 atom，发送操作指令
        ↓
 TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
@@ -478,7 +478,7 @@ src/app/App.tsx                         组合静态 layout 和各区域的后�
 src/app/components/AppLayout.tsx       主线程首帧布局骨架与窗口 tab 栏
 src/app/components/                    tab、workspace、内容、状态栏、设置的展示组件
 src/app/state/SessionProvider.tsx      两个线程共有的唯一 Effect registry Provider
-src/app/state/SessionRegion.tsx        各区域的 atom 订阅和事件绑定
+src/app/components/SessionViews.tsx    直接渲染的后台区域组件，订阅 atom 并绑定事件
 src/app/state/sessionRuntime.ts        BTS 入口启动的独立 atom runtime
 src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/设置操作
 src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom

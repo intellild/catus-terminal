@@ -2,40 +2,25 @@ import 'background-only';
 import '../runtime';
 import { useAtomSet, useAtomValue } from '@effect/atom-react';
 import { useCallback, useEffect } from '@lynx-js/react';
-import { sessionActionsAtom } from './sessionActions';
-import { shellOptionsAtom } from './shells';
+import { sessionActionsAtom } from '../state/sessionActions';
+import { shellOptionsAtom } from '../state/shells';
 import {
   tabsViewAtom,
   workspacesViewAtom,
   contentViewAtom,
   statusViewAtom,
   settingsViewAtom,
-} from './sessionViews';
-import { TabBar } from '../components/TabBar';
-import { WorkspaceList } from '../components/WorkspaceList';
-import { SftpBrowser } from '../components/SftpBrowser';
-import { TerminalView } from '../components/TerminalView';
-import { TerminalContent } from '../components/TerminalContent';
-import { StatusBar } from '../components/StatusBar';
-import { WorkspaceSettings } from '../components/WorkspaceSettings';
-import { WorkspaceContextMenu } from '../components/WorkspaceContextMenu';
+} from '../state/sessionViews';
+import { TabBar } from './TabBar';
+import { WorkspaceList } from './WorkspaceList';
+import { SftpBrowser } from './SftpBrowser';
+import { TerminalView } from './TerminalView';
+import { TerminalContent } from './TerminalContent';
+import { StatusBar } from './StatusBar';
+import { WorkspaceSettings } from './WorkspaceSettings';
+import { WorkspaceContextMenu } from './WorkspaceContextMenu';
 
-type Region = 'workspaces' | 'tabs' | 'content' | 'status' | 'settings';
-
-const regions = {
-  tabs: SessionTabs,
-  workspaces: SessionWorkspaces,
-  content: SessionContent,
-  status: SessionStatus,
-  settings: SessionSettings,
-};
-
-export function SessionRegion({ region }: { region: Region }) {
-  const Content = regions[region];
-  return <Content />;
-}
-
-function SessionTabs() {
+export function SessionTabs() {
   const view = useAtomValue(tabsViewAtom);
   const dispatch = useAtomSet(sessionActionsAtom);
   const revealActiveTab = useCallback(() => {
@@ -81,7 +66,7 @@ function SessionTabs() {
   );
 }
 
-function SessionWorkspaces() {
+export function SessionWorkspaces() {
   const view = useAtomValue(workspacesViewAtom);
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
@@ -103,7 +88,7 @@ function SessionWorkspaces() {
   );
 }
 
-function SessionContent() {
+export function SessionContent() {
   const view = useAtomValue(contentViewAtom);
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
@@ -141,12 +126,12 @@ function SessionContent() {
   );
 }
 
-function SessionStatus() {
+export function SessionStatus() {
   const view = useAtomValue(statusViewAtom);
   return <StatusBar {...view} />;
 }
 
-function SessionSettings() {
+export function SessionSettings() {
   const view = useAtomValue(settingsViewAtom);
   const shells = useAtomValue(shellOptionsAtom);
   const dispatch = useAtomSet(sessionActionsAtom);
