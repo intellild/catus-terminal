@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
 import { createContext, useContext, useState } from '@lynx-js/react';
@@ -62,7 +63,8 @@ export function ContextMenuTrigger({
 }) {
   const context = useContext(MenuContext);
   return (
-    <view
+    <Button
+      variant="ghost"
       {...props}
       bindmousedown={(event) => {
         // Clay supplies the pressed-button bit mask; button can remain 0.
@@ -75,7 +77,7 @@ export function ContextMenuTrigger({
       }}
     >
       {children}
-    </view>
+    </Button>
   );
 }
 
@@ -120,9 +122,15 @@ export function ContextMenuItem({
 }) {
   const { setOpen } = usePopover();
   return (
-    <view
+    <Button
+      variant="ghost"
+      disabled={disabled}
+      hoverClassName={destructive ? 'bg-[#59343c]' : undefined}
       {...props}
-      className={cn('py-[10px] px-[12px] rounded-[5px]', className)}
+      className={cn(
+        'h-auto justify-start py-[10px] px-[12px] rounded-[5px] font-normal',
+        className,
+      )}
       bindtap={() => {
         if (disabled) return;
         onSelect();
@@ -136,7 +144,7 @@ export function ContextMenuItem({
       >
         {children}
       </text>
-    </view>
+    </Button>
   );
 }
 

@@ -1,3 +1,4 @@
+import { Button } from './ui/Button';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import 'background-only';
@@ -90,25 +91,31 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       className="flex-1 min-h-0 flex flex-col p-[16px] [-x-app-region:no-drag]"
     >
       <view className="flex flex-row items-center gap-[14px] mb-[14px]">
-        <view
+        <Button
+          variant="link"
+          size="sm"
+          disabled={listing.loading || !listing.path}
           id="sftp-up"
           bindtap={() => {
             if (!listing.loading && listing.path) setPath(joinPath(listing.path, '..'));
           }}
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.up')}</text>
-        </view>
+        </Button>
         <text id="sftp-path" className="flex-1 text-[12px] text-[#c3cdd6] break-all">
           {host}: {listing.path || '.'}
         </text>
-        <view
+        <Button
+          variant="link"
+          size="sm"
+          disabled={listing.loading}
           id="sftp-refresh"
           bindtap={() => {
             if (!listing.loading) setRefresh((value) => value + 1);
           }}
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.refresh')}</text>
-        </view>
+        </Button>
       </view>
       {listing.error ? (
         <text
@@ -130,11 +137,13 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           </text>
         ) : null}
         {listing.entries.map((entry, index) => (
-          <view
+          <Button
+            variant="ghost"
+            disabled={listing.loading}
             id={`sftp-entry-${index}`}
             key={entry.name}
             className={cn(
-              'flex flex-row items-center py-[10px] px-[12px] rounded-[6px]',
+              'w-full h-auto justify-start gap-0 py-[10px] px-[12px] rounded-[6px] font-normal',
               selected === entry.name ? 'bg-[#35483f]' : 'bg-[#111419]',
             )}
             bindtap={() => {
@@ -148,7 +157,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             <text className="text-[10px] text-[#8c99a7]">
               {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
             </text>
-          </view>
+          </Button>
         ))}
       </scroll-view>
     </view>

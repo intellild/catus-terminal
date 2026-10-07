@@ -1,3 +1,4 @@
+import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
 import { ContextMenuTrigger } from './ui/ContextMenu';
 import type { Workspace } from '../../shared/workspaces';
@@ -36,7 +37,7 @@ export function WorkspaceList({
               id={`workspace-${item.id}`}
               key={item.id}
               className={cn(
-                'w-[64px] flex flex-col items-center pt-[5px] mb-[13px] rounded-[12px]',
+                'w-[64px] h-auto p-0 flex-col gap-0 pt-[5px] mb-[13px] rounded-[12px] font-normal',
                 activeWorkspaceId === item.id ? 'bg-[#252b30]' : '',
               )}
               bindtap={() => onSelect?.(item.id)}
@@ -71,13 +72,15 @@ export function WorkspaceList({
           ))}
         </view>
       </scroll-view>
-      <view
+      <Button
+        variant="secondary"
+        size="icon"
         id="add-workspace"
-        className="w-[44px] h-[44px] flex items-center justify-center rounded-[12px] bg-[#22262c] mt-[10px]"
+        className="w-[44px] h-[44px] rounded-[12px] mt-[10px]"
         bindtap={onAdd}
       >
         <text className="text-[22px] text-[#969fab]">+</text>
-      </view>
+      </Button>
     </>
   );
 }

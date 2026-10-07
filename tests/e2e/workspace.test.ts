@@ -13,6 +13,40 @@ afterEach(async () => {
   await app.close();
 });
 
+test('Button hover changes pixels without activating and restores them on leave', async ({
+  skip,
+}) => {
+  try {
+    await app.hover('#application-status');
+  } catch (error) {
+    // Lynxtron 0.0.28 has no native mouse CDP handler. Keep this check enabled
+    // automatically when the runtime gains it; touch emulation cannot test hover.
+    if (
+      error instanceof Error &&
+      error.message.includes('Not implemented: Input.dispatchMouseEvent')
+    ) {
+      console.warn('Skipping native hover screenshots: Input.dispatchMouseEvent is unavailable.');
+      skip();
+    }
+    throw error;
+  }
+  const normal = await app.screenshot('#add-workspace');
+  await app.hover('#add-workspace');
+  const hovered = await waitFor('Button hover pixels', async () => {
+    const image = await app.screenshot('#add-workspace');
+    return comparePng(normal, image).changed > 100 ? image : undefined;
+  });
+  expect(await app.node('#profile-shell')).toBeUndefined();
+  await expectScreenshot('button-add-workspace', normal);
+  await expectScreenshot('button-add-workspace-hover', hovered);
+  await app.hover('#application-status');
+  await waitFor('Button mouseleave restores pixels', async () =>
+    comparePng(normal, await app.screenshot('#add-workspace')).changed === 0 ? true : undefined,
+  );
+  await app.tap('#add-workspace');
+  await waitFor('Button still opens the form', () => app.node('#profile-shell'));
+});
+
 test('English TOML translations render with correct plurals in Lynx', async () => {
   const summary = async () => {
     const node = await app.node('#session-summary');

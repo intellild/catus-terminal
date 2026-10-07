@@ -1,3 +1,4 @@
+import { Button } from './ui/Button';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import type { TerminalTab } from '../state/session';
@@ -45,9 +46,10 @@ export function TabBar({
                   : 'bg-[#22262c]',
               )}
             >
-              <view
+              <Button
+                variant="ghost"
                 id={`tab-${tab.number}`}
-                className="flex-1 min-w-0 h-[43px] flex flex-row items-center pl-[15px] gap-[9px]"
+                className="flex-1 min-w-0 h-[43px] justify-start pl-[15px] pr-0 gap-[9px] rounded-tl-[10px] rounded-bl-none font-normal"
                 bindtap={() => onSelect?.(tab.id)}
               >
                 <view
@@ -65,14 +67,16 @@ export function TabBar({
                     number: tab.number,
                   })}
                 </text>
-              </view>
-              <view
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 id={`close-tab-${tab.number}`}
                 className="w-[31px] h-[38px] flex justify-center items-center shrink-0"
                 bindtap={() => onClose?.(tab.id)}
               >
                 <text className="text-[19px] text-[#9ca6b2]">×</text>
-              </view>
+              </Button>
             </view>
           ))}
           {!tabs.length && (
@@ -82,21 +86,24 @@ export function TabBar({
           )}
         </view>
       </scroll-view>
-      <view
+      <Button
+        variant="ghost"
+        size="icon"
         id="new-tab"
-        className="w-[36px] h-[36px] rounded-[9px] flex justify-center items-center ml-[8px] shrink-0 [-x-app-region:no-drag]"
+        className="rounded-[9px] ml-[8px]"
         bindtap={onAdd}
       >
         <text className="text-[24px] text-[#c1c7d0]">+</text>
-      </view>
+      </Button>
       {onAddSftp ? (
-        <view
+        <Button
+          variant="ghost"
           id="new-sftp-tab"
-          className="h-[36px] px-[9px] rounded-[9px] flex justify-center items-center shrink-0 [-x-app-region:no-drag]"
+          className="px-[9px] rounded-[9px] font-normal"
           bindtap={onAddSftp}
         >
           <text className="text-[12px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
-        </view>
+        </Button>
       ) : null}
     </>
   );

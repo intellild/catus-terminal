@@ -1,3 +1,4 @@
+import { Button } from './ui/Button';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/Select';
@@ -61,9 +62,9 @@ export function WorkspaceSettings({
           <text className="text-[21px] text-[#e2e8ed]">
             {draft.isNew ? t('workspace.add') : t('workspace.edit')}
           </text>
-          <view id="close-settings" bindtap={onClose}>
+          <Button variant="ghost" size="icon-sm" id="close-settings" bindtap={onClose}>
             <text className="text-[22px] text-[#9ca6b2]">×</text>
-          </view>
+          </Button>
         </view>
         <scroll-view scroll-y className="shrink min-h-0">
           <view key={draft.id} id="workspace-editor-form">
@@ -79,11 +80,13 @@ export function WorkspaceSettings({
               <Field name="name" label={t('workspace.name')} />
               <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
                 {(['local', 'ssh'] as const).map((type) => (
-                  <view
+                  <Button
+                    variant="ghost"
+                    disabled={editor.saving}
                     id={`workspace-type-${type}`}
                     key={type}
                     className={cn(
-                      'flex-1 py-[9px] rounded-[6px] items-center',
+                      'flex-1 h-auto py-[9px] rounded-[6px] font-normal',
                       draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]',
                     )}
                     bindtap={() => {
@@ -93,7 +96,7 @@ export function WorkspaceSettings({
                     <text className="text-[12px] text-[#dce4e9]">
                       {t(type === 'local' ? 'common.local' : 'common.ssh')}
                     </text>
-                  </view>
+                  </Button>
                 ))}
               </view>
               {draft.type === 'ssh' ? (
@@ -147,9 +150,15 @@ export function WorkspaceSettings({
                         >
                           {shells.error}
                         </text>
-                        <view id="retry-shells" bindtap={onRetryShells}>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          id="retry-shells"
+                          disabled={shells.loading || editor.saving}
+                          bindtap={onRetryShells}
+                        >
                           <text className="text-[12px] text-[#a8e6cf]">{t('common.retry')}</text>
-                        </view>
+                        </Button>
                       </view>
                     ) : null}
                     <FormMessage />

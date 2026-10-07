@@ -1,3 +1,4 @@
+import { Button } from './ui/Button';
 import { useTranslation } from '../i18n';
 import type { ReactNode } from '@lynx-js/react';
 import type { Workspace } from '../../shared/workspaces';
@@ -53,13 +54,13 @@ export function TerminalContent({
             >
               {error}
             </text>
-            <view
+            <Button
               id="retry-config"
-              className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
+              className="h-auto py-[10px] rounded-[7px] mt-[15px]"
               bindtap={onRetry}
             >
               <text className="text-[12px] font-bold text-[#20392f]">{t('terminal.retry')}</text>
-            </view>
+            </Button>
           </view>
         ) : null}
         <>
@@ -98,13 +99,13 @@ export function TerminalContent({
                 {t(loading ? 'terminal.loading' : 'terminal.empty')}
               </text>
               {!loading && !activeTab ? (
-                <view
+                <Button
                   id="start-terminal"
-                  className="p-[12px] rounded-[7px] bg-[#a8e6cf] mt-[15px]"
+                  className="h-auto p-[12px] rounded-[7px] mt-[15px] font-normal"
                   bindtap={onAdd}
                 >
                   <text className="text-[12px] text-[#20392f]">{t('terminal.new')}</text>
-                </view>
+                </Button>
               ) : null}
             </view>
           ) : null}

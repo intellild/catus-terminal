@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
 import { Children, createContext, useContext, useState } from '@lynx-js/react';
@@ -7,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger, usePopover } from './Popover';
 import type { PopoverContentProps } from './Popover';
 
 export const selectTriggerVariants = cva(
-  'w-full h-[34px] px-[10px] rounded-[6px] bg-[#14191f] border border-solid border-[#39444e] flex flex-row items-center justify-between',
+  'w-full h-[34px] px-[10px] rounded-[6px] bg-[#14191f] border border-solid border-[#39444e] flex flex-row items-center justify-between font-normal',
   {
     variants: { disabled: { true: 'opacity-50', false: null } },
     defaultVariants: { disabled: false },
@@ -122,9 +123,15 @@ export function SelectItem({
   const { setOpen } = usePopover();
   const selected = select.value === value;
   return (
-    <view
+    <Button
+      variant="ghost"
+      disabled={disabled || select.disabled}
       {...props}
-      className={cn(selectItemVariants({ selected, disabled }), className)}
+      className={cn(
+        selectItemVariants({ selected, disabled: false }),
+        'justify-start gap-0 font-normal',
+        className,
+      )}
       bindtap={() => {
         if (disabled || select.disabled) return;
         select.onValueChange(value);
@@ -135,6 +142,6 @@ export function SelectItem({
       <text className="text-[13px] text-[#e2e8ed] flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
         {children}
       </text>
-    </view>
+    </Button>
   );
 }

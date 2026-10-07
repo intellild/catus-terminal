@@ -43,6 +43,16 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 选中状态使用完整的条件类名，避免动态拼接造成漏生成。
 参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
 
+按钮统一使用 `components/ui/Button.tsx`，提供 shadcn 风格的 `variant` / `size`，
+通过 `cva` 和 `cn` 合并 Tailwind 样式。Hover 使用 Lynx `mouseenter` / `mouseleave`
+事件；`disabled` 同时阻止点击和 hover。普通文字 children 自动包进 `<text>`，
+原生 ref 会转发到 `<view>`，供 Select / Popover 定位。
+
+```tsx
+<Button variant="ghost" size="icon" bindtap={onAdd}>+</Button>
+<Button disabled={saving} bindtap={onSave}>{t('workspace.save')}</Button>
+```
+
 界面翻译使用 i18next，资源独立放在 `locales/`，目前只提供 `en.toml`。
 TOML 按界面区域分组，变量使用 `{{name}}`，数量使用 `_one` / `_other` 复数键。
 Rspeedy 和 Rstest 在构建时将 TOML 解析成对象，解析器不会进入应用运行时。

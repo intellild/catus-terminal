@@ -259,6 +259,19 @@ export class LynxApp {
     await this.click(selector, 'right');
   }
 
+  async hover(selector: string) {
+    const { x, y } = await this.visibleTarget(selector);
+    // The desktop InspectorInputAgent supports dispatchMouseEvent; touch
+    // emulation does not produce the native mouseenter/mouseleave events.
+    await this.cdp('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x,
+      y,
+      button: 'none',
+      timestamp: Date.now() / 1000,
+    });
+  }
+
   async visibleTarget(selector: string) {
     return waitFor(`visible hit target ${selector}`, async () => {
       const nodes = await this.nodePath(selector);

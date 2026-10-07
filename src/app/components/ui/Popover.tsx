@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import {
   createContext,
@@ -108,7 +109,9 @@ export function PopoverTrigger({
       .exec();
   };
   return (
-    <view
+    <Button
+      variant="ghost"
+      disabled={disabled}
       {...props}
       ref={ref}
       bindlayoutchange={(event) => {
@@ -124,7 +127,7 @@ export function PopoverTrigger({
       }}
     >
       {children}
-    </view>
+    </Button>
   );
 }
 

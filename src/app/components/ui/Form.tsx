@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { createContext, useContext } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 
@@ -63,15 +64,16 @@ export function FormMessage() {
 export function FormSubmit({ id, children }: { id: string; children: ReactNode }) {
   const control = useContext(FormContext);
   return (
-    <view
+    <Button
       id={id}
-      className="py-[10px] px-[16px] rounded-[7px] bg-[#a8e6cf]"
+      disabled={control?.disabled}
+      className="h-auto py-[10px] rounded-[7px] font-bold"
       bindtap={() => {
         'background only';
         if (!control?.disabled) control?.onSubmit();
       }}
     >
-      <text className="text-[12px] font-bold text-[#20392f]">{children}</text>
-    </view>
+      {children}
+    </Button>
   );
 }
