@@ -1,4 +1,4 @@
-import { Children, forwardRef, useState } from '@lynx-js/react';
+import { Children, forwardRef } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { NodesRef, ViewProps } from '@lynx-js/types';
 import { cva } from 'class-variance-authority';
@@ -32,42 +32,28 @@ export const buttonVariants = cva(
 const buttonHoverVariants = cva('', {
   variants: {
     variant: {
-      default: 'bg-[#91d4b9]',
-      destructive: 'bg-[#a04b56]',
-      outline: 'bg-[#2b333c]',
-      secondary: 'bg-[#343d47]',
-      ghost: 'bg-[#343d47]',
-      link: 'bg-[#263b33] underline',
+      default: 'hover:bg-[#91d4b9]',
+      destructive: 'hover:bg-[#a04b56]',
+      outline: 'hover:bg-[#2b333c]',
+      secondary: 'hover:bg-[#343d47]',
+      ghost: 'hover:bg-[#343d47]',
+      link: 'hover:bg-[#263b33] hover:underline',
     },
   },
   defaultVariants: { variant: 'default' },
 });
 
-export type ButtonProps = Omit<ViewProps, 'catchtap'> &
+export type ButtonProps = ViewProps &
   VariantProps<typeof buttonVariants> & {
     children?: ReactNode;
     disabled?: boolean;
-    hoverClassName?: string;
   };
 
-// Mouse events work on Lynx desktop without browser :hover selectors. Forward
-// the native ref so composed triggers can still measure their actual hit target.
+// Forward the native ref so composed triggers can measure their hit target.
 export const Button = forwardRef<NodesRef, ButtonProps>(function Button(
-  {
-    children,
-    variant,
-    size,
-    disabled = false,
-    className,
-    hoverClassName,
-    bindtap,
-    bindmouseenter,
-    bindmouseleave,
-    ...props
-  },
+  { children, variant, size, disabled = false, className, bindtap, catchtap, ...props },
   ref,
 ) {
-  const [hovered, setHovered] = useState(false);
   return (
     <view
       accessibility-element
@@ -76,24 +62,26 @@ export const Button = forwardRef<NodesRef, ButtonProps>(function Button(
       ref={ref}
       className={cn(
         buttonVariants({ variant, size }),
+        !disabled && buttonHoverVariants({ variant }),
         className,
-        hovered && !disabled && buttonHoverVariants({ variant }),
-        hovered && !disabled && hoverClassName,
         disabled && 'opacity-50 cursor-not-allowed',
       )}
-      bindmouseenter={(event) => {
-        setHovered(!disabled);
-        bindmouseenter?.(event);
-      }}
-      bindmouseleave={(event) => {
-        setHovered(false);
-        bindmouseleave?.(event);
-      }}
       // Keep the handler attached in the main-thread fallback even before BTS
       // supplies its action; conditional binding loses it during hydration.
-      bindtap={(event) => {
-        if (!disabled) bindtap?.(event);
-      }}
+      bindtap={
+        catchtap
+          ? undefined
+          : (event) => {
+              if (!disabled) bindtap?.(event);
+            }
+      }
+      catchtap={
+        catchtap
+          ? (event) => {
+              if (!disabled) catchtap(event);
+            }
+          : undefined
+      }
     >
       {Children.map(children, (child) =>
         typeof child === 'string' || typeof child === 'number' ? <text>{child}</text> : child,

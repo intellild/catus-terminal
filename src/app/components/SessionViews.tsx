@@ -1,7 +1,6 @@
 import 'background-only';
 import '../runtime';
 import { useAtomSet, useAtomValue } from '@effect/atom-react';
-import { useCallback, useEffect } from '@lynx-js/react';
 import { sessionActionsAtom } from '../state/sessionActions';
 import { shellOptionsAtom } from '../state/shells';
 import {
@@ -11,7 +10,8 @@ import {
   statusViewAtom,
   settingsViewAtom,
 } from '../state/sessionViews';
-import { TabBar } from './TabBar';
+import { TabList, TabActions } from './TabBar';
+import { TabItem } from './TabBar/TabItem';
 import { WorkspaceList } from './WorkspaceList';
 import { SftpBrowser } from './SftpBrowser';
 import { TerminalView } from './TerminalView';
@@ -22,33 +22,20 @@ import { WorkspaceContextMenu } from './WorkspaceContextMenu';
 
 export function SessionTabs() {
   const view = useAtomValue(tabsViewAtom);
-  const dispatch = useAtomSet(sessionActionsAtom);
-  const revealActiveTab = useCallback(() => {
-    'background only';
-    if (view.activeNumber === undefined) return;
-    lynx
-      .createSelectorQuery()
-      .select(`#tab-item-${view.activeNumber}`)
-      .invoke({
-        method: 'scrollIntoView',
-        params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
-      })
-      .exec();
-  }, [view.activeNumber]);
-  useEffect(revealActiveTab, [revealActiveTab]);
   return (
-    <TabBar
-      tabs={view.tabs}
-      activeTabId={view.activeTabId}
-      loading={view.loading}
-      onSelect={(id) => {
-        'background only';
-        dispatch({ type: 'focusTab', id });
-      }}
-      onClose={(id) => {
-        'background only';
-        dispatch({ type: 'closeTab', id });
-      }}
+    <TabList tabCount={view.tabIds.length} loading={view.loading}>
+      {view.tabIds.map((id) => (
+        <TabItem key={id} id={id} />
+      ))}
+    </TabList>
+  );
+}
+
+export function SessionTabActions() {
+  const view = useAtomValue(tabsViewAtom);
+  const dispatch = useAtomSet(sessionActionsAtom);
+  return (
+    <TabActions
       onAdd={() => {
         'background only';
         dispatch({ type: 'addTab' });
@@ -61,7 +48,6 @@ export function SessionTabs() {
             }
           : undefined
       }
-      onLayout={revealActiveTab}
     />
   );
 }

@@ -1,0 +1,243 @@
+diff --git a/dist/Random.js b/dist/Random.js
+index 166689d4f498ae69ef1f6961338115ce0cba9330..dc4e2c66ddd85290b8d31c50954d56d40de12a64 100644
+--- a/dist/Random.js
++++ b/dist/Random.js
+@@ -470,12 +470,13 @@ function add32(x, y) {
+   // return (0xBE02 << 16) | (0x14579 & 0xffff) = 0xBE024579
+   return msb << 16 | lsb & 0xffff;
+ }
+-const seedEncoder = /*#__PURE__*/new TextEncoder();
++let seedEncoder;
++const getSeedEncoder = () => seedEncoder ??= new TextEncoder();
+ /**
+  * Convert a string to UTF-8 encoded 32-bit integers (little-endian).
+  */
+ function toIntArray(seed) {
+-  const bytes = seedEncoder.encode(seed);
++  const bytes = getSeedEncoder().encode(seed);
+   const result = [];
+   for (let index = 0; index < bytes.length; index += 4) {
+     result.push((bytes[index] ?? 0) << 0 | (bytes[index + 1] ?? 0) << 8 | (bytes[index + 2] ?? 0) << 16 | (bytes[index + 3] ?? 0) << 24);
+diff --git a/dist/encoding/Base64.js b/dist/encoding/Base64.js
+index 175b58f699759ef25e12a9c8628d73c12b7a00b9..860aa4b5ca17edddf5fa5222fb66df5fe20e3ca7 100644
+--- a/dist/encoding/Base64.js
++++ b/dist/encoding/Base64.js
+@@ -36,7 +36,7 @@ import { EncodingError } from "./EncodingError.js";
+  * @category encoding
+  * @since 4.0.0
+  */
+-export const encode = input => encodeBytes(typeof input === "string" ? encoder.encode(input) : input);
++export const encode = input => encodeBytes(typeof input === "string" ? getEncoder().encode(input) : input);
+ /**
+  * Decodes a Base64 (RFC 4648) string into bytes safely.
+  *
+@@ -126,7 +126,7 @@ export const decode = str => {
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = str => Result.map(decode(str), _ => decoder.decode(_));
++export const decodeString = str => Result.map(decode(str), _ => getDecoder().decode(_));
+ const encodeBytes = bytes => {
+   const length = bytes.length;
+   let result = "";
+@@ -150,8 +150,10 @@ const encodeBytes = bytes => {
+   }
+   return result;
+ };
+-const encoder = /*#__PURE__*/new TextEncoder();
+-const decoder = /*#__PURE__*/new TextDecoder();
++let encoder;
++const getEncoder = () => encoder ??= new TextEncoder();
++let decoder;
++const getDecoder = () => decoder ??= new TextDecoder();
+ const stripCrlf = str => str.replace(/[\n\r]/g, "");
+ const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+ const codes = /*#__PURE__*/new Uint8Array(123).fill(255);
+diff --git a/dist/encoding/Base64Url.js b/dist/encoding/Base64Url.js
+index f29a1d1c096bff43c387f8306e3bb9efd6938d2d..257378c957051e81f0f319f7a7d9862f4717474c 100644
+--- a/dist/encoding/Base64Url.js
++++ b/dist/encoding/Base64Url.js
+@@ -111,6 +111,7 @@ export const decode = str => {
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = str => Result.map(decode(str), _ => decoder.decode(_));
+-const decoder = /*#__PURE__*/new TextDecoder();
++export const decodeString = str => Result.map(decode(str), _ => getDecoder().decode(_));
++let decoder;
++const getDecoder = () => decoder ??= new TextDecoder();
+ //# sourceMappingURL=Base64Url.js.map
+\ No newline at end of file
+diff --git a/dist/encoding/Hex.js b/dist/encoding/Hex.js
+index ea18d357675010ed8491c2c441ae672e6cbd89a7..ef79171947b24fc3a1b77f523087b2ef6948865d 100644
+--- a/dist/encoding/Hex.js
++++ b/dist/encoding/Hex.js
+@@ -28,7 +28,7 @@ import { EncodingError } from "./EncodingError.js";
+  * @category encoding
+  * @since 4.0.0
+  */
+-export const encode = input => typeof input === "string" ? hexEncodeUint8Array(encoder.encode(input)) : hexEncodeUint8Array(input);
++export const encode = input => typeof input === "string" ? hexEncodeUint8Array(getEncoder().encode(input)) : hexEncodeUint8Array(input);
+ /**
+  * Generates a random lowercase hexadecimal string, optimized for lengths that
+  * are multiples of 8.
+@@ -162,9 +162,11 @@ export const decode = str => {
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = str => Result.map(decode(str), _ => decoder.decode(_));
+-const encoder = /*#__PURE__*/new TextEncoder();
+-const decoder = /*#__PURE__*/new TextDecoder();
++export const decodeString = str => Result.map(decode(str), _ => getDecoder().decode(_));
++let encoder;
++const getEncoder = () => encoder ??= new TextEncoder();
++let decoder;
++const getDecoder = () => decoder ??= new TextDecoder();
+ const byteToHex = /*#__PURE__*/Array.from({
+   length: 256
+ }, (_, i) => i.toString(16).padStart(2, "0"));
+diff --git a/dist/encoding/Ndjson.js b/dist/encoding/Ndjson.js
+index ba657279fb7a7c09d5c80c42754c0a2dd11f42cd..c8a50a4f3046c6db2e24f30c305df35abee7c37d 100644
+--- a/dist/encoding/Ndjson.js
++++ b/dist/encoding/Ndjson.js
+@@ -16,7 +16,8 @@ import * as Effect from "../Effect.js";
+ import { dual, identity } from "../Function.js";
+ import * as Predicate from "../Predicate.js";
+ const NdjsonErrorTypeId = "~effect/encoding/Ndjson/NdjsonError";
+-const encoder = /*#__PURE__*/new TextEncoder();
++let encoder;
++const getEncoder = () => encoder ??= new TextEncoder();
+ /**
+  * Error raised when NDJSON encoding or decoding fails.
+  *
+@@ -90,7 +91,7 @@ export const encodeString = () => Channel.fromTransform((upstream, _scope) => Ef
+  * @category constructors
+  * @since 4.0.0
+  */
+-export const encode = () => Channel.map(encodeString(), Arr.map(_ => encoder.encode(_)));
++export const encode = () => Channel.map(encodeString(), Arr.map(_ => getEncoder().encode(_)));
+ /**
+  * Creates an NDJSON byte encoder channel for values of a schema.
+  *
+diff --git a/src/Random.ts b/src/Random.ts
+index 1857eaa490f6df231f7941d559402b2f6da7c4ab..a4580bb7ed416f5dbbe04987e4bb8eb0b485c09b 100644
+--- a/src/Random.ts
++++ b/src/Random.ts
+@@ -636,13 +636,14 @@ function add32(x: number, y: number): number {
+   return (msb << 16) | (lsb & 0xffff)
+ }
+ 
+-const seedEncoder = new TextEncoder()
++let seedEncoder: TextEncoder | undefined
++const getSeedEncoder = () => seedEncoder ??= new TextEncoder()
+ 
+ /**
+  * Convert a string to UTF-8 encoded 32-bit integers (little-endian).
+  */
+ function toIntArray(seed: string): Array<number> {
+-  const bytes = seedEncoder.encode(seed)
++  const bytes = getSeedEncoder().encode(seed)
+   const result: Array<number> = []
+ 
+   for (let index = 0; index < bytes.length; index += 4) {
+diff --git a/src/encoding/Base64.ts b/src/encoding/Base64.ts
+index b04b5be450d7421d95cd86a643a342101f759faf..02a39ac91fddfcb054fbb94bbdcf9efdbc5e42a9 100644
+--- a/src/encoding/Base64.ts
++++ b/src/encoding/Base64.ts
+@@ -38,7 +38,7 @@ import { EncodingError } from "./EncodingError.ts"
+  * @since 4.0.0
+  */
+ export const encode: (input: Uint8Array | string) => string = (input) =>
+-  encodeBytes(typeof input === "string" ? encoder.encode(input) : input)
++  encodeBytes(typeof input === "string" ? getEncoder().encode(input) : input)
+ 
+ /**
+  * Decodes a Base64 (RFC 4648) string into bytes safely.
+@@ -141,7 +141,7 @@ export const decode = (str: string): Result.Result<Uint8Array, EncodingError> =>
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = (str: string) => Result.map(decode(str), (_) => decoder.decode(_))
++export const decodeString = (str: string) => Result.map(decode(str), (_) => getDecoder().decode(_))
+ 
+ const encodeBytes = (bytes: Uint8Array): string => {
+   const length = bytes.length
+@@ -167,8 +167,10 @@ const encodeBytes = (bytes: Uint8Array): string => {
+   return result
+ }
+ 
+-const encoder = new TextEncoder()
+-const decoder = new TextDecoder()
++let encoder: TextEncoder | undefined
++const getEncoder = () => encoder ??= new TextEncoder()
++let decoder: TextDecoder | undefined
++const getDecoder = () => decoder ??= new TextDecoder()
+ const stripCrlf = (str: string) => str.replace(/[\n\r]/g, "")
+ const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+ const codes = new Uint8Array(123).fill(255)
+diff --git a/src/encoding/Base64Url.ts b/src/encoding/Base64Url.ts
+index 01fb7d4d39536f813acd3c025600d8430d7fb654..5e815f7ac2e9777d5a91328bba941448ad4b81bf 100644
+--- a/src/encoding/Base64Url.ts
++++ b/src/encoding/Base64Url.ts
+@@ -119,6 +119,7 @@ export const decode = (str: string): Result.Result<Uint8Array, EncodingError> =>
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = (str: string) => Result.map(decode(str), (_) => decoder.decode(_))
++export const decodeString = (str: string) => Result.map(decode(str), (_) => getDecoder().decode(_))
+ 
+-const decoder = new TextDecoder()
++let decoder: TextDecoder | undefined
++const getDecoder = () => decoder ??= new TextDecoder()
+diff --git a/src/encoding/Hex.ts b/src/encoding/Hex.ts
+index 1ac78464ddfbbd0024b2d1b71b01f2290dd5c6bc..81338cebdc26119e149db252d72b502e7cdafacf 100644
+--- a/src/encoding/Hex.ts
++++ b/src/encoding/Hex.ts
+@@ -30,7 +30,7 @@ import { EncodingError } from "./EncodingError.ts"
+  * @since 4.0.0
+  */
+ export const encode: (input: Uint8Array | string) => string = (input) =>
+-  typeof input === "string" ? hexEncodeUint8Array(encoder.encode(input)) : hexEncodeUint8Array(input)
++  typeof input === "string" ? hexEncodeUint8Array(getEncoder().encode(input)) : hexEncodeUint8Array(input)
+ 
+ /**
+  * Generates a random lowercase hexadecimal string, optimized for lengths that
+@@ -236,10 +236,12 @@ export const decode = (str: string): Result.Result<Uint8Array, EncodingError> =>
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeString = (str: string) => Result.map(decode(str), (_) => decoder.decode(_))
++export const decodeString = (str: string) => Result.map(decode(str), (_) => getDecoder().decode(_))
+ 
+-const encoder = new TextEncoder()
+-const decoder = new TextDecoder()
++let encoder: TextEncoder | undefined
++const getEncoder = () => encoder ??= new TextEncoder()
++let decoder: TextDecoder | undefined
++const getDecoder = () => decoder ??= new TextDecoder()
+ 
+ const byteToHex: Array<string> = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"))
+ 
+diff --git a/src/encoding/Ndjson.ts b/src/encoding/Ndjson.ts
+index 96234160936f0e4149195dd152754160773d6d6d..ffdbe8432b07fb4afd169d7df96c6eab40f1981d 100644
+--- a/src/encoding/Ndjson.ts
++++ b/src/encoding/Ndjson.ts
+@@ -19,7 +19,8 @@ import type * as Schema from "../Schema.ts"
+ 
+ const NdjsonErrorTypeId = "~effect/encoding/Ndjson/NdjsonError"
+ 
+-const encoder = new TextEncoder()
++let encoder: TextEncoder | undefined
++const getEncoder = () => encoder ??= new TextEncoder()
+ 
+ /**
+  * Error raised when NDJSON encoding or decoding fails.
+@@ -117,7 +118,7 @@ export const encode = <IE = never, Done = unknown>(): Channel.Channel<
+   Arr.NonEmptyReadonlyArray<unknown>,
+   IE,
+   Done
+-> => Channel.map(encodeString(), Arr.map((_) => encoder.encode(_)))
++> => Channel.map(encodeString(), Arr.map((_) => getEncoder().encode(_)))
+ 
+ /**
+  * Creates an NDJSON byte encoder channel for values of a schema.

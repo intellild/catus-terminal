@@ -14,3 +14,5 @@ onlyBuiltDependencies:
   - '@lynx-js/lynxtron-builder'
   - electron-winstaller
   - fsevents
+patchedDependencies:
+  effect@4.0.0: patches/effect@4.0.0.patch

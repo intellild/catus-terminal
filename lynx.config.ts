@@ -23,6 +23,7 @@ export default defineConfig({
     // These packages publish modern JS that Lynx's main VM needs downleveled.
     include: [
       /node_modules[\\/]@formatjs[\\/]/,
+      /node_modules[\\/]@lynx-js[\\/]preact-devtools[\\/]/,
       /node_modules[\\/]effect[\\/]/,
       /node_modules[\\/]@effect[\\/]atom-react[\\/]/,
     ],

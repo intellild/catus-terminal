@@ -1,3 +1,5 @@
+// Install main-thread API compatibility before Effect initializes.
+import '../runtime/polyfills';
 import { RegistryContext } from '@effect/atom-react/RegistryContext';
 import type { ReactNode } from '@lynx-js/react';
 import { sessionRegistry } from './sessionRegistry';

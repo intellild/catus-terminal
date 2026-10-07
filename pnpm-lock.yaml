@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  effect@4.0.0:
+    hash: 0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909
+    path: patches/effect@4.0.0.patch
+
 importers:
 
   .:
@@ -13,7 +18,7 @@ importers:
         version: link:native
       '@effect/atom-react':
         specifier: 4.0.0
-        version: 4.0.0(effect@4.0.0)(react@19.2.4)(scheduler@0.27.0)
+        version: 4.0.0(effect@4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909))(react@19.2.4)(scheduler@0.27.0)
       '@formatjs/intl-getcanonicallocales':
         specifier: ^2.5.6
         version: 2.5.6
@@ -40,7 +45,7 @@ importers:
         version: 2.1.1
       effect:
         specifier: 4.0.0
-        version: 4.0.0
+        version: 4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909)
       i18next:
         specifier: ^24.2.3
         version: 24.2.3(typescript@5.9.3)
@@ -5218,9 +5223,9 @@ snapshots:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
 
-  '@effect/atom-react@4.0.0(effect@4.0.0)(react@19.2.4)(scheduler@0.27.0)':
+  '@effect/atom-react@4.0.0(effect@4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909))(react@19.2.4)(scheduler@0.27.0)':
     dependencies:
-      effect: 4.0.0
+      effect: 4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909)
       react: 19.2.4
       scheduler: 0.27.0
 
@@ -7914,7 +7919,7 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  effect@4.0.0: {}
+  effect@4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909): {}
 
   ejs@3.1.10:
     dependencies:

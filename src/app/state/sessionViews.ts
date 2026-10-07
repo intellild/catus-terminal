@@ -1,19 +1,48 @@
 import 'background-only';
 import * as Atom from 'effect/reactivity/Atom';
+import type { TerminalTab } from './session';
 import { editorAtom, loadAtom, sessionAtom, sessionViewAtom, workspaceMenuAtom } from './session';
 
 const payloadAtom = Atom.make((get) => get(sessionAtom).payload);
 
 export const tabsViewAtom = Atom.make((get) => {
-  const { tabs, activeTab, workspace } = get(sessionViewAtom);
+  const state = get(sessionAtom);
+  const workspace = state.payload?.config.workspaces.find(
+    (workspace) => workspace.id === state.activeWorkspaceId,
+  );
   return {
-    tabs,
-    activeTabId: activeTab?.id,
-    activeNumber: activeTab?.number,
+    tabIds: state.tabs.filter((tab) => tab.workspaceId === workspace?.id).map((tab) => tab.id),
     ssh: workspace?.type === 'ssh',
     loading: get(loadAtom).loading,
   };
-});
+}).pipe(
+  Atom.withEquality<{ tabIds: number[]; ssh: boolean; loading: boolean }>(
+    (a, b) =>
+      a.ssh === b.ssh &&
+      a.loading === b.loading &&
+      a.tabIds.length === b.tabIds.length &&
+      a.tabIds.every((id, index) => id === b.tabIds[index]),
+  ),
+);
+
+export const tabViewAtom = Atom.family((id: number) =>
+  Atom.make((get) => {
+    const state = get(sessionAtom);
+    const tab = state.tabs.find((tab) => tab.id === id);
+    return {
+      tab,
+      active:
+        !!tab &&
+        state.activeWorkspaceId === tab.workspaceId &&
+        state.activeTabs[tab.workspaceId] === id,
+    };
+  }).pipe(
+    Atom.withEquality<{ tab: TerminalTab | undefined; active: boolean }>(
+      (a, b) => a.tab === b.tab && a.active === b.active,
+    ),
+  ),
+);
+
 export const workspacesViewAtom = Atom.make((get) => {
   const { workspaces, workspace, runningIds } = get(sessionViewAtom);
   return {

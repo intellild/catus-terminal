@@ -8,12 +8,13 @@ import {
   AppLayoutMain,
   AppLayoutSidebar,
 } from './components/AppLayout';
-import { TabBar } from './components/TabBar';
+import { TabBar, TabList, TabActions } from './components/TabBar';
 import { WorkspaceList } from './components/WorkspaceList';
 import { TerminalContent } from './components/TerminalContent';
 import { StatusBar } from './components/StatusBar';
 import {
   SessionTabs,
+  SessionTabActions,
   SessionWorkspaces,
   SessionContent,
   SessionStatus,
@@ -36,8 +37,13 @@ export function App() {
               className="w-[92px] h-[54px] shrink-0 [-x-app-region:drag]"
             />
             <AppLayoutHeaderContent>
-              <background-only fallback={<TabBar loading />}>
-                <SessionTabs />
+              <TabBar>
+                <background-only fallback={<TabList loading />}>
+                  <SessionTabs />
+                </background-only>
+              </TabBar>
+              <background-only fallback={<TabActions />}>
+                <SessionTabActions />
               </background-only>
               <view className="flex-1 min-w-[32px] h-[54px] [-x-app-region:drag]" />
               <view className="w-[1px] h-[18px] ml-[12px] mr-[16px] bg-[#363b42]" />

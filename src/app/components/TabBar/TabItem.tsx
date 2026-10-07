@@ -1,0 +1,74 @@
+import 'background-only';
+import '../../runtime';
+import { useAtomSet, useAtomValue } from '@effect/atom-react';
+import { memo, useCallback, useEffect } from '@lynx-js/react';
+import { tabViewAtom } from '../../state/sessionViews';
+import { sessionActionsAtom } from '../../state/sessionActions';
+import { Button } from '../ui/Button';
+import { useTranslation } from '../../i18n';
+import { cn } from '../../lib/utils';
+
+export const TabItem = memo(function TabItem({ id }: { id: number }) {
+  const { tab, active } = useAtomValue(tabViewAtom(id));
+  const dispatch = useAtomSet(sessionActionsAtom);
+  const { t } = useTranslation();
+  const revealActiveTab = useCallback(() => {
+    'background only';
+    if (!active || !tab) return;
+    lynx
+      .createSelectorQuery()
+      .select(`#tab-${tab.number}`)
+      .invoke({
+        method: 'scrollIntoView',
+        params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
+      })
+      .exec();
+  }, [active, tab]);
+  useEffect(revealActiveTab, [revealActiveTab]);
+  if (!tab) return null;
+  return (
+    <Button
+      variant="ghost"
+      id={`tab-${tab.number}`}
+      bindtap={() => {
+        'background only';
+        dispatch({ type: 'focusTab', id });
+      }}
+      bindlayoutchange={revealActiveTab}
+      className={cn(
+        'w-[192px] h-[43px] p-0 gap-0 shrink-0 rounded-t-[10px] rounded-b-none flex flex-row items-center font-normal [-x-app-region:no-drag]',
+        active ? 'bg-[#2b3037] border-t border-solid border-[#46504f]' : 'bg-[#22262c]',
+      )}
+    >
+      <view className="flex-1 min-w-0 h-[43px] flex flex-row items-center pl-[15px] gap-[9px]">
+        <view
+          className="w-[6px] h-[6px] rounded-[3px] shrink-0 bg-[var(--workspace-color)]"
+          style={`--workspace-color: ${tab.profile.color}`}
+        />
+        <text
+          className={cn(
+            'text-[12px] whitespace-nowrap overflow-hidden text-ellipsis',
+            active ? 'text-[#e1e8e5]' : 'text-[#959eaa]',
+          )}
+        >
+          {t(tab.kind === 'sftp' ? 'tabs.sftpTitle' : 'tabs.title', {
+            name: tab.profile.name,
+            number: tab.number,
+          })}
+        </text>
+      </view>
+      <Button
+        variant="ghost"
+        size="icon"
+        id={`close-tab-${tab.number}`}
+        className="w-[31px] h-[38px] flex justify-center items-center shrink-0"
+        catchtap={() => {
+          'background only';
+          dispatch({ type: 'closeTab', id });
+        }}
+      >
+        <text className="text-[19px] text-[#9ca6b2]">×</text>
+      </Button>
+    </Button>
+  );
+});

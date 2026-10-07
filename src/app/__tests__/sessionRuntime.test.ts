@@ -9,7 +9,7 @@ import type { SessionAction } from '../state/sessionActions';
 import { startSessionRuntime } from '../state/sessionRuntime';
 import { terminalHostAtom } from '../state/terminalSessions';
 import { shellOptionsAtom } from '../state/shells';
-import { tabsViewAtom, statusViewAtom } from '../state/sessionViews';
+import { tabsViewAtom, tabViewAtom, statusViewAtom } from '../state/sessionViews';
 
 let registry: AtomRegistry.AtomRegistry;
 const payload: WorkspaceConfigPayload = {
@@ -146,4 +146,52 @@ test('failed deletion preserves sessions and retries; saving blocks duplicate co
     expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2),
   );
   expect(registry.get(editorAtom).saving).toBe(false);
+});
+
+test('tab families notify only changed items; selection leaves the tab list unchanged', async () => {
+  startSessionRuntime(registry, makeHost());
+  await loaded();
+  dispatch({ type: 'addTab' });
+  dispatch({ type: 'addTab' });
+  expect(tabViewAtom(1)).toBe(tabViewAtom(1));
+  expect(tabViewAtom(1)).not.toBe(tabViewAtom(2));
+  const items = [1, 2, 3].map((id) => ({ id, changed: rstest.fn() }));
+  const stops = items.map(({ id, changed }) => {
+    registry.get(tabViewAtom(id));
+    return registry.subscribe(tabViewAtom(id), changed);
+  });
+  const listChanged = rstest.fn();
+  registry.get(tabsViewAtom);
+  const stopList = registry.subscribe(tabsViewAtom, listChanged);
+  dispatch({ type: 'focusTab', id: 1 });
+  expect(registry.get(tabViewAtom(1)).active).toBe(true);
+  expect(registry.get(tabViewAtom(3)).active).toBe(false);
+  expect(registry.get(tabViewAtom(2)).active).toBe(false);
+  expect(items[0]!.changed).toHaveBeenCalledOnce();
+  expect(items[1]!.changed).not.toHaveBeenCalled();
+  expect(items[2]!.changed).toHaveBeenCalledOnce();
+  expect(listChanged).not.toHaveBeenCalled();
+  items.forEach(({ changed }) => changed.mockClear());
+  registry.update(sessionAtom, (state) => ({
+    ...state,
+    tabs: state.tabs.map((tab) =>
+      tab.id === 2
+        ? {
+            ...tab,
+            profile: { ...tab.profile, name: 'Updated tab' },
+          }
+        : tab,
+    ),
+  }));
+  expect(registry.get(tabViewAtom(2)).tab?.profile.name).toBe('Updated tab');
+  expect(items[0]!.changed).not.toHaveBeenCalled();
+  await rstest.waitFor(() => expect(items[1]!.changed).toHaveBeenCalledOnce());
+  expect(items[2]!.changed).not.toHaveBeenCalled();
+  expect(listChanged).not.toHaveBeenCalled();
+  dispatch({ type: 'closeTab', id: 1 });
+  expect(registry.get(tabViewAtom(1)).tab).toBeUndefined();
+  expect(registry.get(tabsViewAtom).tabIds).toEqual([2, 3]);
+  expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(1);
+  stopList();
+  stops.forEach((stop) => stop());
 });

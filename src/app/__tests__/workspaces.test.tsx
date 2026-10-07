@@ -132,6 +132,7 @@ test('main-thread first frame renders the layout and region fallbacks without lo
   for (const id of [
     'application-layout',
     'window-tab-bar',
+    'tab-bar-scroll',
     'window-controls-space',
     'workspace-dock',
     'terminal-content',
@@ -152,6 +153,7 @@ test('background hydration preserves the main-thread layout and portal host node
   const ids = [
     'application-layout',
     'window-tab-bar',
+    'tab-bar-scroll',
     'window-controls-space',
     'workspace-dock',
     'terminal-content',
@@ -238,8 +240,8 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#workspace-local')!);
   await findByText('Local 3');
-  fireEvent.tap(root.querySelector('#close-tab-3')!);
-  fireEvent.tap(root.querySelector('#close-tab-2')!);
+  fireEvent.tap(root.querySelector('#close-tab-3')!, { eventType: 'catchEvent', bubbles: true });
+  fireEvent.tap(root.querySelector('#close-tab-2')!, { eventType: 'catchEvent', bubbles: true });
   await findByText('Open a terminal tab in this workspace.');
   expect(root.querySelector('#running-local')).toBeNull();
   expect(root.querySelector('#running-shell')).not.toBeNull();
@@ -425,7 +427,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(1);
   expect(fs.close).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('#tab-2')!);
-  fireEvent.tap(root.querySelector('#close-tab-2')!);
+  fireEvent.tap(root.querySelector('#close-tab-2')!, { eventType: 'catchEvent', bubbles: true });
   await rstest.waitFor(() => expect(fs.close).toHaveBeenCalledOnce());
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
 });

@@ -131,10 +131,10 @@ export function ContextMenuItem({
     <Button
       variant="ghost"
       disabled={disabled}
-      hoverClassName={destructive ? 'bg-[#59343c]' : undefined}
       {...props}
       className={cn(
         'h-auto justify-start py-[10px] px-[12px] rounded-[5px] font-normal',
+        destructive && !disabled && 'hover:bg-[#59343c]',
         className,
       )}
       bindtap={() => {
