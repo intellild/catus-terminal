@@ -9,8 +9,8 @@ import {
   AppLayoutSidebar,
 } from './components/AppLayout';
 import { TabBar, TabList, TabActions } from './components/TabBar';
-import { WorkspaceList } from './components/WorkspaceList';
-import { TerminalContent } from './components/TerminalContent';
+import { WorkspaceList } from './components/Workspace/WorkspaceList';
+import { TerminalContent } from './components/Terminal/TerminalContent';
 import { StatusBar } from './components/StatusBar';
 import {
   SessionTabs,

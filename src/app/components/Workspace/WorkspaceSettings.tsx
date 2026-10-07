@@ -1,12 +1,12 @@
-import { Button } from './ui/Button';
-import { useTranslation } from '../i18n';
-import { cn } from '../lib/utils';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/Select';
-import { Input } from './ui/Input';
-import type { ShellOption } from '../../shared/shells';
-import type { WorkspaceEnvironment } from '../../shared/workspaces';
-import { launchPreview } from '../../shared/launch';
-import type { EditorState, WorkspaceDraft } from '../state/session';
+import { Button } from '../ui/Button';
+import { useTranslation } from '../../i18n';
+import { cn } from '../../lib/utils';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select';
+import { Input } from '../ui/Input';
+import type { ShellOption } from '../../../shared/shells';
+import type { WorkspaceEnvironment } from '../../../shared/workspaces';
+import { launchPreview } from '../../../shared/launch';
+import type { EditorState, WorkspaceDraft } from '../../state/session';
 import {
   Form,
   FormField,
@@ -16,7 +16,7 @@ import {
   FormMessage,
   FormDescription,
   FormSubmit,
-} from './ui/Form';
+} from '../ui/Form';
 
 export function WorkspaceSettings({
   editor,

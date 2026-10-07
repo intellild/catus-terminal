@@ -12,13 +12,13 @@ import {
 } from '../state/sessionViews';
 import { TabList, TabActions } from './TabBar';
 import { TabItem } from './TabBar/TabItem';
-import { WorkspaceList } from './WorkspaceList';
+import { WorkspaceList } from './Workspace/WorkspaceList';
 import { SftpBrowser } from './SftpBrowser';
-import { TerminalView } from './TerminalView';
-import { TerminalContent } from './TerminalContent';
+import { TerminalView } from './Terminal/TerminalView';
+import { TerminalContent } from './Terminal/TerminalContent';
 import { StatusBar } from './StatusBar';
-import { WorkspaceSettings } from './WorkspaceSettings';
-import { WorkspaceContextMenu } from './WorkspaceContextMenu';
+import { WorkspaceSettings } from './Workspace/WorkspaceSettings';
+import { WorkspaceContextMenu } from './Workspace/WorkspaceContextMenu';
 
 export function SessionTabs() {
   const view = useAtomValue(tabsViewAtom);

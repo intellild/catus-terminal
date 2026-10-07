@@ -1,10 +1,10 @@
-import { useTranslation } from '../i18n';
+import { useTranslation } from '../../i18n';
 import {
   ContextMenu,
   ContextMenuAnchor,
   ContextMenuContent,
   ContextMenuItem,
-} from './ui/ContextMenu';
+} from '../ui/ContextMenu';
 
 export function WorkspaceContextMenu({
   menu,

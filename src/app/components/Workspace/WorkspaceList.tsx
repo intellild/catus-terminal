@@ -1,7 +1,7 @@
-import { Button } from './ui/Button';
-import { cn } from '../lib/utils';
-import { ContextMenuTrigger } from './ui/ContextMenu';
-import type { Workspace } from '../../shared/workspaces';
+import { Button } from '../ui/Button';
+import { cn } from '../../lib/utils';
+import { ContextMenuTrigger } from '../ui/ContextMenu';
+import type { Workspace } from '../../../shared/workspaces';
 
 export function WorkspaceList({
   workspaces = [],
