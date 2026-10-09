@@ -1,9 +1,10 @@
 #pragma once
 
+#include <dispatch/dispatch.h>
+#include <pthread.h>
+
 #include <cstdint>
 #include <memory>
-#include <pthread.h>
-#include <dispatch/dispatch.h>
 
 namespace catus {
 inline bool IsUiThread() { return pthread_main_np() != 0; }

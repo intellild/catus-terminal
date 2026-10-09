@@ -6,6 +6,8 @@
   "scripts": {
     "format": "rs format '**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'",
     "format:check": "rs format --check '**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'",
+    "format:cpp": "node scripts/format-cpp.mjs",
+    "format:cpp:check": "node scripts/format-cpp.mjs --check",
     "lint": "rs lint",
     "lint:fix": "rs lint --fix",
     "dev": "cross-env NODE_ENV=development concurrently -k --prefix none \"rspeedy dev --environment lynx\" \"dev-ready-rspeedy && rsbuild dev --environment desktop\"",
