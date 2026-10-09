@@ -287,7 +287,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           <list-item
             key={joinPath(listing.path, entry.name)}
             item-key={joinPath(listing.path, entry.name)}
-            estimated-main-axis-size-px={40}
+            estimated-main-axis-size-px={34}
           >
             <Button
               variant="ghost"
@@ -295,14 +295,14 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
               id={`sftp-entry-${index}`}
               data-filename={entry.name}
               className={cn(
-                'w-full h-auto justify-start gap-0 py-[10px] px-[12px] rounded-[6px] font-normal',
+                'w-full h-auto justify-start gap-0 py-[8px] px-[10px] rounded-[6px] font-normal',
                 selected === entry.name ? 'bg-[#35483f]' : 'bg-[#111419]',
               )}
               bindtap={() => {
                 void open(entry);
               }}
             >
-              <text className="w-[28px] text-[12px] text-[#a8e6cf]">
+              <text className="w-[22px] text-[12px] text-[#a8e6cf]">
                 {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
               </text>
               <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>

@@ -20,17 +20,19 @@ export function TabList({
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const width = Math.max(tabCount * 198 + 10, 198);
+  const width = Math.max(tabCount * 184 + 6, 184);
   return (
     <view
-      className="h-12 flex flex-row items-end pl-[10px] gap-[6px] w-[var(--tab-width)]"
+      className="h-full flex flex-row items-end pl-[6px] gap-[4px] w-[var(--tab-width)]"
       style={`--tab-width: ${width}px`}
     >
       {children}
       {!tabCount && (
-        <text className="py-[10px] px-[12px] text-[12px] text-[#7f8996]">
-          {t(loading ? 'tabs.opening' : 'tabs.empty')}
-        </text>
+        <view className="h-[32px] flex flex-row items-center px-[10px]">
+          <text className="text-[12px] text-[#7f8996]">
+            {t(loading ? 'tabs.opening' : 'tabs.empty')}
+          </text>
+        </view>
       )}
     </view>
   );
@@ -39,26 +41,26 @@ export function TabList({
 export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?(): void }) {
   const { t } = useTranslation();
   return (
-    <>
+    <view className="h-full flex flex-row items-end pb-[4px] ml-[4px] gap-[2px]">
       <Button
         variant="ghost"
         size="icon-sm"
         id="new-tab"
-        className="rounded-[9px] ml-[8px]"
+        className="w-[24px] h-[24px] rounded-[6px]"
         bindtap={onAdd}
       >
-        <text className="text-[20px] text-[#c1c7d0]">+</text>
+        <text className="text-[16px] text-[#c1c7d0]">+</text>
       </Button>
       {onAddSftp ? (
         <Button
           variant="ghost"
           id="new-sftp-tab"
-          className="h-7 px-[9px] rounded-[9px] font-normal"
+          className="h-[24px] px-[8px] rounded-[6px] font-normal"
           bindtap={onAddSftp}
         >
-          <text className="text-[12px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
+          <text className="text-[11px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
         </Button>
       ) : null}
-    </>
+    </view>
   );
 }

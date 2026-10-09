@@ -43,7 +43,13 @@ export function BreadcrumbLink({ className, ...props }: ButtonProps) {
 }
 export function BreadcrumbPage({ children, className, ...props }: BreadcrumbTextProps) {
   return (
-    <text {...props} className={cn('text-[12px] text-[#e2e8ed] truncate', className)}>
+    <text
+      {...props}
+      className={cn(
+        'text-[12px] text-[#e2e8ed] whitespace-nowrap overflow-hidden text-ellipsis',
+        className,
+      )}
+    >
       {children}
     </text>
   );

@@ -59,7 +59,7 @@ function WorkspaceItemContent({
       : [workspace.command, ...workspace.args].join(' ');
   return (
     <>
-      <PopoverAnchor className="w-10 h-10 overflow-visible">
+      <PopoverAnchor className="w-9 h-9 overflow-visible">
         <Button
           variant="ghost"
           ref={hover.ref}
@@ -69,7 +69,7 @@ function WorkspaceItemContent({
           id={`workspace-${workspace.id}`}
           accessibility-label={workspace.name}
           className={cn(
-            'w-10 h-10 p-0 rounded-[10px] relative',
+            'w-9 h-9 p-0 rounded-[9px] relative',
             active && 'bg-[#303b40] hover:bg-[#3a474d]',
           )}
           bindtap={() => {
@@ -79,7 +79,7 @@ function WorkspaceItemContent({
           }}
         >
           <text
-            className="text-[16px] font-bold text-[color:var(--workspace-color)]"
+            className="text-[15px] font-bold text-[color:var(--workspace-color)]"
             style={`--workspace-color: ${active ? workspace.color : '#aeb7c4'}`}
           >
             {workspace.icon}
@@ -87,7 +87,7 @@ function WorkspaceItemContent({
           {running && (
             <view
               id={`running-${workspace.id}`}
-              className="absolute bottom-[3px] left-[18px] w-[4px] h-[4px] rounded-full bg-[var(--workspace-color)]"
+              className="absolute bottom-[2px] left-[16px] w-[4px] h-[4px] rounded-full bg-[var(--workspace-color)]"
               style={`--workspace-color: ${workspace.color}`}
             />
           )}

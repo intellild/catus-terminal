@@ -60,12 +60,12 @@ export function WorkspaceSettings({
     <view className="absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]">
       <view className="absolute inset-0 bg-[#00000080]" bindtap={onClose} />
       <view className="w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]">
-        <view className="flex flex-row justify-between items-center mb-[18px]">
-          <text className="text-[21px] text-[#e2e8ed]">
+        <view className="flex flex-row justify-between items-center mb-[14px]">
+          <text className="text-[18px] text-[#e2e8ed]">
             {draft.isNew ? t('workspace.add') : t('workspace.edit')}
           </text>
           <Button variant="ghost" size="icon-sm" id="close-settings" bindtap={onClose}>
-            <text className="text-[22px] text-[#9ca6b2]">×</text>
+            <text className="text-[18px] text-[#9ca6b2]">×</text>
           </Button>
         </view>
         <scroll-view scroll-y className="shrink min-h-0">
@@ -88,7 +88,7 @@ export function WorkspaceSettings({
                     id={`workspace-type-${type}`}
                     key={type}
                     className={cn(
-                      'flex-1 h-auto py-[9px] rounded-[6px] font-normal',
+                      'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
                       draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]',
                     )}
                     bindtap={() => {

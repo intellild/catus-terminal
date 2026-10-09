@@ -28,7 +28,10 @@ export function App() {
     <SessionProvider>
       <AppLayout>
         <AppLayoutHeader>
-          <view id="window-controls-space" className="w-24 h-full shrink-0 [-x-app-region:drag]" />
+          <view
+            id="window-controls-space"
+            className="w-[76px] h-full shrink-0 [-x-app-region:drag]"
+          />
 
           <TabBar>
             <background-only>

@@ -40,13 +40,13 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
       }}
       bindlayoutchange={revealActiveTab}
       className={cn(
-        'w-[192px] h-8 px-2 gap-0 shrink-0 rounded-t-[8px] rounded-b-none flex flex-row items-center font-normal [-x-app-region:no-drag]',
+        'w-[180px] h-[32px] px-[8px] gap-0 shrink-0 rounded-t-[7px] rounded-b-none flex flex-row items-center font-normal [-x-app-region:no-drag]',
         active ? 'bg-[#2b3037] border-t border-solid border-[#46504f]' : 'bg-[#22262c]',
       )}
     >
-      <view className="flex-1 min-w-0 h-full flex flex-row items-center pl-[15px] gap-[9px]">
+      <view className="flex-1 min-w-0 h-full flex flex-row items-center gap-[7px]">
         <view
-          className="w-[6px] h-[6px] rounded-[3px] shrink-0 bg-[var(--workspace-color)]"
+          className="w-[5px] h-[5px] rounded-full shrink-0 bg-[var(--workspace-color)]"
           style={`--workspace-color: ${tab.profile.color}`}
         />
         <text
@@ -65,13 +65,13 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
         variant="ghost"
         size="icon"
         id={`close-tab-${tab.number}`}
-        className="w-4 h-4 flex justify-center items-center shrink-0"
+        className="w-[16px] h-[16px] flex justify-center items-center shrink-0"
         catchtap={() => {
           'background only';
           dispatch({ type: 'closeTab', id });
         }}
       >
-        <text className="text-[19px] text-[#9ca6b2]">×</text>
+        <text className="text-[13px] text-[#9ca6b2]">×</text>
       </Button>
     </Button>
   );

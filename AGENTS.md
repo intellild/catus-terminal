@@ -25,6 +25,9 @@
 
 ## Development Conventions
 
+- Use Conventional Commits for every commit: `<type>(<optional scope>): <description>`
+  (for example, `feat(sftp): add file downloads` or `fix(ui): align tab controls`).
+
 ### UI and State
 
 - Use `@lynx-js/react`, Lynx elements and `bind*` events. Browser DOM/BOM APIs

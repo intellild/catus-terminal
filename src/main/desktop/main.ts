@@ -43,7 +43,7 @@ function createWindow() {
     minHeight: 480,
     frame: false,
     titleBarStyle: 'hidden',
-    trafficLightPosition: { x: 16, y: 20 },
+    trafficLightPosition: { x: 14, y: 13 },
     backgroundColor: '#101215',
     title: 'Catus',
     lynxPreference: {

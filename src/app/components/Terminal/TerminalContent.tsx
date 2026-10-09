@@ -28,7 +28,7 @@ export function TerminalContent({
       <view className="flex-1 min-h-0 flex flex-col bg-[#111419] border border-solid border-[#272d35] overflow-hidden">
         {error ? (
           <view className="flex-1 flex flex-col items-center justify-center py-[18px] px-[30px]">
-            <text className="text-[27px] font-medium text-[#dce3e7] text-center mb-[12px]">
+            <text className="text-[22px] font-medium text-[#dce3e7] text-center mb-[12px]">
               {t('terminal.loadError')}
             </text>
             <text
@@ -52,11 +52,11 @@ export function TerminalContent({
               className={
                 error
                   ? 'hidden'
-                  : 'h-[55px] py-0 px-[24px] flex flex-row items-center justify-between shrink-0'
+                  : 'h-[36px] py-0 px-[16px] flex flex-row items-center justify-between shrink-0'
               }
             >
-              <view className="flex flex-row items-center gap-[10px] flex-1 min-w-0">
-                <text className="text-[18px] text-[#778b86]">~</text>
+              <view className="flex flex-row items-center gap-[8px] flex-1 min-w-0">
+                <text className="text-[14px] text-[#778b86]">~</text>
                 <text
                   id="session-directory"
                   className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
@@ -70,7 +70,7 @@ export function TerminalContent({
               </view>
               <text
                 id="session-label"
-                className="text-[9px] text-[#65717f] tracking-[1px] ml-[12px]"
+                className="text-[10px] text-[#65717f] tracking-[1px] ml-[12px]"
               >
                 {activeTab
                   ? t('terminal.session', { number: String(activeTab.number).padStart(2, '0') })
@@ -97,16 +97,16 @@ export function TerminalContent({
           ) : null}
           <view
             className={
-              error ? 'hidden' : 'py-[17px] px-[24px] flex flex-row justify-between shrink-0'
+              error ? 'hidden' : 'py-[8px] px-[16px] flex flex-row justify-between shrink-0'
             }
           >
-            <text className="text-[9px] text-[#596574]">
+            <text className="text-[10px] text-[#596574]">
               {t('terminal.summary', {
                 name: workspace?.name ?? 'Catus',
                 tab: activeTab ? t('terminal.tab', { number: activeTab.number }) : t('tabs.empty'),
               })}
             </text>
-            <text className="text-[9px] text-[#596574]">
+            <text className="text-[10px] text-[#596574]">
               {t(
                 activeTab?.kind === 'sftp'
                   ? 'common.sftp'
