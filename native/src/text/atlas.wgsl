@@ -21,8 +21,10 @@ fn vs_main(@builtin(vertex_index) index: u32,
   let corner = corners[index];
   let pixel = rect.xy + rect.zw * corner;
   var out: VertexOutput;
-  // Adapt top-left pixel positions to Lynxtron's bottom-up shared surface.
-  out.position = vec4<f32>(pixel / params.yz * 2.0 - vec2<f32>(1), 0, 1);
+  // wgpu NDC is Y-up; ordinary framebuffers use top-left pixels.
+  // Only Lynx OSR targets need the opposite orientation for host composition.
+  let ndc = pixel / params.yz * 2.0 - vec2<f32>(1);
+  out.position = vec4<f32>(ndc.x, ndc.y * params.w, 0, 1);
   out.uv = uv.xy + uv.zw * corner;
   out.color = color;
   out.multicolor = params.x;

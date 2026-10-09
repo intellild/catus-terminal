@@ -10,8 +10,16 @@ pub struct SharedGlyphs {
     sampler: wgpu::Sampler,
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) enum TargetOrigin {
+    #[default]
+    TopLeft,
+    BottomLeft,
+}
+
 #[derive(Default)]
 pub struct GlyphRenderer {
+    pub(crate) origin: TargetOrigin,
     instances: Option<wgpu::Buffer>,
     instance_capacity: usize,
 }
@@ -191,6 +199,12 @@ impl GlyphRenderer {
             if cell.strikeout {
                 items.push(solid([x, y + ch * 0.5, w, ratio.max(1.)], color));
             }
+        }
+        for (_, data) in &mut items {
+            data[15] = match self.origin {
+                TargetOrigin::TopLeft => -1.,
+                TargetOrigin::BottomLeft => 1.,
+            };
         }
         self.draw_items(
             device,

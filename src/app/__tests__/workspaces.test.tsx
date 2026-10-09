@@ -342,7 +342,7 @@ test('React unmount and remount preserve global sessions; atom writes release th
   expect(host.closeTerminalSession).toHaveBeenCalledWith(id);
 });
 
-test('terminal forwards control keys to the native PTY and keeps macOS shortcuts with the host', async () => {
+test('terminal leaves keyboard handling to the native input client', async () => {
   renderApp();
   await waitForTerminal();
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
@@ -364,12 +364,8 @@ test('terminal forwards control keys to the native PTY and keeps macOS shortcuts
     });
   };
   key(false);
-  expect(invoke).toHaveBeenLastCalledWith({
-    method: 'key',
-    params: { key: 'c', control: true, alt: false },
-  });
   key(true);
-  expect(invoke).toHaveBeenCalledOnce();
+  expect(invoke).not.toHaveBeenCalled();
 });
 
 test('SSH has separate terminal and SFTP buttons; directory navigation preserves the native view', async () => {

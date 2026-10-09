@@ -78,6 +78,18 @@ impl TerminalRenderer {
     pub(crate) fn invalidate_grid(&mut self) {
         self.rendered_grid = None;
     }
+    pub(crate) fn cell_size(&self, viewport: &Viewport) -> Result<(f32, f32)> {
+        let mut shared = self
+            .gpu
+            .glyphs
+            .try_lock()
+            .map_err(|_| anyhow!("Glyph cache busy"))?;
+        let metrics = shared.cache.metrics(viewport.font_pixels()?)?;
+        Ok((
+            metrics.average_advance.round().max(1.) as f32,
+            metrics.line_height.round().max(1.) as f32,
+        ))
+    }
     pub(crate) fn grid_size(&self, viewport: &Viewport) -> Result<GridSize> {
         let mut shared = self.gpu.glyphs()?;
         GlyphRenderer::grid_size(&mut shared, viewport)
@@ -122,6 +134,24 @@ impl TerminalRenderer {
         deadline: i64,
         prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
     ) -> Result<bool> {
+        self.render_grid_with_origin(
+            viewport,
+            grid,
+            deadline,
+            crate::text::TargetOrigin::TopLeft,
+            prepare_target,
+        )
+    }
+
+    pub(crate) fn render_grid_with_origin(
+        &mut self,
+        viewport: &Viewport,
+        grid: &GridSnapshot,
+        deadline: i64,
+        origin: crate::text::TargetOrigin,
+        prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
+    ) -> Result<bool> {
+        self.glyphs.origin = origin;
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }

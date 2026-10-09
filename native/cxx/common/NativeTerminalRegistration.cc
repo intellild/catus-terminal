@@ -18,6 +18,7 @@ lynx_extension_module_t* CreateTerminalExtension(void*) {
       [](lynx_extension_module_t*, void* data) { delete static_cast<TerminalExtension*>(data); });
   lynx_extension_module_bind_lynx_view_create(module,
       [](lynx_extension_module_t* module, lynx_view_t* view) {
+        Extension(module).frames->view = view;
         lynx_view_register_native_view(view, "native-terminal", catus::CreateNativeTerminalView,
             Extension(module).frames.get());
       });

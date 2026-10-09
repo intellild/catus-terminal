@@ -11,6 +11,7 @@
 #include <string>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace catus {
 using lynx::pub::LynxValue;
@@ -22,7 +23,12 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         frame_registration_(frame_callbacks_->callbacks().register_frame_callback(frame_target_)) {
     frame_target_->SetRender([this](int64_t deadline) {
       std::unique_lock lock(mutex_, std::try_to_lock);
-      if (lock.owns_lock() && catus::monotonic_now_ns() < deadline) Render(deadline);
+      if (lock.owns_lock() && catus::monotonic_now_ns() < deadline) {
+        Render(deadline);
+        const bool focus = std::exchange(focus_pending_, false);
+        lock.unlock();
+        if (focus) Focus();
+      }
     });
   }
 
@@ -47,6 +53,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   void OnDestroy() override {
     std::lock_guard lock(mutex_);
     attached_ = false;
+    UnbindTerminal();
     terminal_.reset();
     terminal_id_ = 0;
     UpdateFrameLoop();
@@ -86,6 +93,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     const auto id = static_cast<uint32_t>(number);
     if (id == terminal_id_) return;
     if (id == 0) {
+      UnbindTerminal();
       terminal_.reset();
       terminal_id_ = 0;
       error_.clear();
@@ -97,6 +105,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       if (viewport_.width != 0 && viewport_.height != 0) terminal->resize_viewport(viewport_);
       terminal_.emplace(std::move(terminal));
       terminal_id_ = id;
+      BindTerminal(**terminal_);
       if (terminal_) (*terminal_)->invalidate_frame();
     } catch (const rust::Error& error) { error_ = error.what(); }
     UpdateFrameLoop();
@@ -107,7 +116,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     const std::string name = method ? method : "";
     if (name == "focus") {
       lock.unlock();
-      RequestFocus();
+      Focus();
       callback(kSuccess, LynxValue(true));
       return;
     }
@@ -137,7 +146,9 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     if (name == "renderFrame") {
       const bool ok = Render();
       auto result = ok ? LynxValue(true) : LynxValue(error_);
+      const bool focus = std::exchange(focus_pending_, false);
       lock.unlock();
+      if (focus) Focus();
       callback(ok ? kSuccess : kInvalidStateError, std::move(result));
       return;
     }
@@ -146,6 +157,10 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   }
 
  protected:
+  virtual void Focus() { RequestFocus(); }
+  virtual bool PresentFrame() { const bool ok = SwapBack(); if (ok) MarkDirty(); return ok; }
+  virtual void BindTerminal(const TerminalHandle&) {}
+  virtual void UnbindTerminal() {}
   // The platform lends a native buffer to Rust and waits for GPU completion.
   virtual bool RenderSurface(TerminalHandle& terminal, const Viewport& viewport,
                              int64_t deadline) = 0;
@@ -159,7 +174,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   void FocusAfterFirstFrame() {
     if (needs_focus_) {
       needs_focus_ = false;
-      RequestFocus();
+      focus_pending_ = true;
     }
   }
 
@@ -176,13 +191,12 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
         (*terminal_)->invalidate_frame();
         return true;
       }
-      if (!SwapBack()) {
+      if (!PresentFrame()) {
         (*terminal_)->invalidate_frame();
         error_ = "Lynx could not swap the rendered back buffer";
         return false;
       }
       error_.clear();
-      MarkDirty();
       FocusAfterFirstFrame();
       return true;
     } catch (const std::exception& error) {
@@ -200,6 +214,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   catus::Viewport viewport_{};
   bool attached_ = false;
   bool needs_focus_ = true;
+  bool focus_pending_ = false;
   std::string error_;
 };
 

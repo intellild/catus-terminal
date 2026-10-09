@@ -43,7 +43,7 @@ export class LynxApp {
   private session = 0;
   private operation = 0;
 
-  async start(options: { ssh?: boolean } = {}) {
+  async start(options: { ssh?: boolean; windowless?: boolean } = {}) {
     if (process.platform !== 'darwin') {
       throw new Error('Native terminal E2E requires macOS + Metal.');
     }
@@ -130,7 +130,12 @@ export class LynxApp {
             : undefined,
           CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
           CATUS_E2E_NODE: process.execPath,
-          CATUS_E2E_WINDOWLESS: process.env.CATUS_E2E_WINDOWLESS ?? '1',
+          CATUS_E2E_WINDOWLESS:
+            options.windowless === undefined
+              ? (process.env.CATUS_E2E_WINDOWLESS ?? '1')
+              : options.windowless
+                ? '1'
+                : '0',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });

@@ -2,6 +2,12 @@
 use anyhow::{Result, anyhow};
 #[cxx::bridge(namespace = "catus")]
 mod ffi {
+    struct CursorRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    }
     #[derive(Clone, Copy, Debug, PartialEq)]
     struct Viewport {
         width: u32,
@@ -9,7 +15,7 @@ mod ffi {
         pixel_ratio: f32,
     }
 }
-pub(crate) use ffi::Viewport;
+pub(crate) use ffi::{CursorRect, Viewport};
 
 impl Viewport {
     pub(crate) fn font_pixels(&self) -> Result<u32> {

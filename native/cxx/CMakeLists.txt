@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18.1)
-project(CatusNative LANGUAGES C CXX OBJCXX)
+project(CatusNative LANGUAGES C CXX)
 
 if(NOT APPLE)
   message(FATAL_ERROR "Catus native components currently implement macOS only.")
@@ -29,8 +29,7 @@ add_library(catus_native STATIC
   common/NativeFrameCallbacks.cc
 )
 if(APPLE)
-  target_sources(catus_native PRIVATE platform/macos/NativeTerminalView.mm)
-  set_source_files_properties(platform/macos/NativeTerminalView.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_sources(catus_native PRIVATE platform/macos/NativeTerminalView.cc)
 endif()
 target_compile_features(catus_native PRIVATE cxx_std_17)
 target_include_directories(catus_native PRIVATE
@@ -39,11 +38,8 @@ target_include_directories(catus_native PRIVATE
   "${CXXBRIDGE_INCLUDE_DIR}"
 )
 set_target_properties(catus_native PROPERTIES
-  OBJCXX_STANDARD 17
-  OBJCXX_STANDARD_REQUIRED ON
   POSITION_INDEPENDENT_CODE ON
   CXX_VISIBILITY_PRESET hidden
-  OBJCXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON
   ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
 )
