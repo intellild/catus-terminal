@@ -5,6 +5,11 @@ use crate::terminal_session::{SessionRenderer, TerminalHandle};
 use anyhow::{Context, Result, anyhow};
 
 impl TerminalHandle {
+    pub(crate) fn set_preedit(&self, text: &str) {
+        *self.preedit.lock().unwrap() = text.to_owned();
+        self.invalidate_frame();
+    }
+
     // Called by OnLayoutChanged, or when binding a session to an already-laid-out view.
     pub(crate) fn resize_viewport(&self, viewport: &Viewport) -> Result<()> {
         viewport.font_pixels()?;
@@ -62,6 +67,23 @@ impl TerminalHandle {
         deadline: i64,
         prepare_target: impl FnOnce(&wgpu::Device, &Viewport) -> Result<wgpu::Texture>,
     ) -> Result<bool> {
+        self.render_snapshot(deadline, |renderer, viewport, snapshot| {
+            renderer.render_grid(viewport, snapshot, deadline, |device| {
+                prepare_target(device, viewport)
+            })
+        })
+    }
+
+    // Session/grid preparation stays outside platform rendering functions.
+    pub(crate) fn render_snapshot(
+        &self,
+        deadline: i64,
+        draw: impl FnOnce(
+            &mut crate::renderer::TerminalRenderer,
+            &Viewport,
+            &crate::terminal_core::grid::GridSnapshot,
+        ) -> Result<bool>,
+    ) -> Result<bool> {
         if crate::frame_callbacks::expired(deadline) {
             return Ok(false);
         }
@@ -75,14 +97,14 @@ impl TerminalHandle {
         if state.renderer.try_needs_grid(revision, &state.viewport)? != Some(true) {
             return Ok(false);
         }
-        let Some(snapshot) = self.session.core.try_snapshot()? else {
+        let Some(mut snapshot) = self.session.core.try_snapshot()? else {
             return Ok(false);
         };
-        state
-            .renderer
-            .render_grid(&state.viewport, &snapshot, deadline, |device| {
-                prepare_target(device, &state.viewport)
-            })
+        let Some(preedit) = try_lock(&self.preedit)? else {
+            return Ok(false);
+        };
+        snapshot.overlay_preedit(&preedit);
+        draw(&mut state.renderer, &state.viewport, &snapshot)
     }
 }
 

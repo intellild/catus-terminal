@@ -4,4 +4,4 @@ pub mod atlas;
 pub mod font;
 mod glyph_renderer;
 
-pub(crate) use glyph_renderer::{GlyphRenderer, SharedGlyphs};
+pub(crate) use glyph_renderer::{GlyphRenderer, SharedGlyphs, TargetOrigin};

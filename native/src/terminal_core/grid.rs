@@ -61,9 +61,58 @@ pub struct GridSnapshot {
     pub revision: u64,
     pub cells: Vec<DisplayCell>,
     pub cursor: Option<DisplayCursor>,
+    pub insertion_point: Option<(usize, usize)>,
     pub background: [u8; 3],
 }
 impl GridSnapshot {
+    // Composition is a display overlay; it never changes the VT grid or PTY stream.
+    #[cfg(any(feature = "native-view", test))]
+    pub(crate) fn overlay_preedit(&mut self, text: &str) {
+        use unicode_width::UnicodeWidthChar;
+        if text.is_empty() {
+            return;
+        }
+        let Some((mut row, mut column)) = self.insertion_point else {
+            return;
+        };
+        self.cursor = None;
+        let mut appended = false;
+        for character in text.chars() {
+            let width = character.width().unwrap_or(0);
+            if width == 0 {
+                if appended && let Some(cell) = self.cells.last_mut() {
+                    cell.characters.push(character);
+                }
+                continue;
+            }
+            if column + width > self.size.columns {
+                column = 0;
+                row += 1;
+            }
+            if row >= self.size.rows {
+                break;
+            }
+            self.cells.retain(|cell| {
+                cell.row != row
+                    || cell.column + (if cell.wide { 2 } else { 1 }) <= column
+                    || cell.column >= column + width
+            });
+            self.cells.push(DisplayCell {
+                row,
+                column,
+                characters: vec![character],
+                foreground: FOREGROUND,
+                background: self.background,
+                bold: false,
+                wide: width > 1,
+                underline: true,
+                strikeout: false,
+            });
+            appended = true;
+            column += width;
+        }
+    }
+
     pub fn text(&self) -> String {
         let mut rows = vec![vec![' '; self.size.columns]; self.size.rows];
         for cell in &self.cells {
@@ -240,6 +289,8 @@ impl TerminalGrid {
             })
         };
         GridSnapshot {
+            insertion_point: point_to_viewport(content.display_offset, content.cursor.point)
+                .map(|point| (point.line, point.column.0)),
             size: self.size,
             revision: self.revision,
             cells,

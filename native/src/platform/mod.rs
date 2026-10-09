@@ -18,3 +18,5 @@ pub(crate) use macos::{GPU_BACKENDS, load_font_size, monotonic_now_ns, post_fram
 
 #[cfg(all(feature = "native-view", not(target_os = "macos")))]
 compile_error!("Native terminal views currently implement macOS only");
+#[cfg(all(feature = "native-input-tests", target_os = "macos"))]
+pub(crate) use macos::run_native_input_tests;

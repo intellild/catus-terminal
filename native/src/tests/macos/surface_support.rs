@@ -56,8 +56,8 @@ impl Target {
         target
     }
 
-    pub(crate) fn surface(&self) -> usize {
-        CFRetained::as_ptr(&self.surface).as_ptr() as usize
+    pub(crate) fn surface(&self) -> &IOSurfaceRef {
+        &self.surface
     }
 
     pub(crate) fn pixels(&self) -> Vec<u8> {

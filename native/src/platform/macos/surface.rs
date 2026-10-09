@@ -1,27 +1,60 @@
 //! Import a synchronously borrowed Lynx IOSurface into the shared wgpu device.
 use crate::frame::Viewport;
 use anyhow::{Context, Result, anyhow};
-use objc2_core_foundation::CFRetained;
 use objc2_io_surface::IOSurfaceRef;
 use objc2_metal::{
     MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage,
 };
-use std::ptr::NonNull;
+/// Opaque cxx binding for the object behind Apple's IOSurfaceRef.
+#[repr(C)]
+pub(super) struct IOSurface {
+    _private: [u8; 0],
+    _pinned: std::marker::PhantomPinned,
+}
+
+// SAFETY: C++ aliases catus::IOSurface to the opaque object behind IOSurfaceRef.
+unsafe impl cxx::ExternType for IOSurface {
+    type Id = cxx::type_id!("catus::IOSurface");
+    type Kind = cxx::kind::Opaque;
+}
+impl IOSurface {
+    pub(super) fn as_native(&self) -> &IOSurfaceRef {
+        // Both bindings describe the same borrowed opaque Apple object.
+        unsafe { &*(self as *const Self).cast::<IOSurfaceRef>() }
+    }
+}
+
+/// Draw a supplied grid into a borrowed IOSurface, without accessing a session,
+/// PTY or native view. Returns false when the frame is expired or contended.
+///
+/// # Safety
+/// The caller must reserve the surface exclusively until GPU writes complete.
+pub(crate) unsafe fn render_to_surface(
+    renderer: &mut crate::renderer::TerminalRenderer,
+    viewport: &Viewport,
+    grid: &crate::terminal_core::grid::GridSnapshot,
+    surface: &IOSurfaceRef,
+    deadline: i64,
+) -> Result<bool> {
+    renderer.render_grid_with_origin(
+        viewport,
+        grid,
+        deadline,
+        crate::text::TargetOrigin::BottomLeft,
+        |device| unsafe { import_surface(device, surface, viewport) },
+    )
+}
 
 /// # Safety
-/// `iosurface` must point to a live IOSurfaceRef, exclusively borrowed until all
+/// `surface` must be exclusively borrowed until all
 /// GPU writes complete. The caller validates the viewport before importing.
 pub(crate) unsafe fn import_surface(
     device: &wgpu::Device,
-    iosurface: usize,
+    surface: &IOSurfaceRef,
     viewport: &Viewport,
 ) -> Result<wgpu::Texture> {
     let Viewport { width, height, .. } = *viewport;
-    let ptr =
-        NonNull::new(iosurface as *mut IOSurfaceRef).context("Lynx back buffer is unavailable")?;
-    // Retain only our own reference; never consume Lynx's borrowed ownership.
-    let surface = unsafe { CFRetained::retain(ptr) };
     if surface.width() != width as usize
         || surface.height() != height as usize
         || surface.bytes_per_element() != 4
@@ -46,9 +79,18 @@ pub(crate) unsafe fn import_surface(
         descriptor.setStorageMode(MTLStorageMode::Shared);
         device
             .raw_device()
-            .newTextureWithDescriptor_iosurface_plane(&descriptor, &surface, 0)
+            .newTextureWithDescriptor_iosurface_plane(&descriptor, surface, 0)
             .context("Metal could not import the Lynx IOSurface")
     })?;
+    unsafe { import_texture(device, raw, viewport) }
+}
+
+pub(crate) unsafe fn import_texture(
+    device: &wgpu::Device,
+    raw: objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>,
+    viewport: &Viewport,
+) -> Result<wgpu::Texture> {
+    let Viewport { width, height, .. } = *viewport;
     let size = wgpu::Extent3d {
         width,
         height,
@@ -75,7 +117,7 @@ pub(crate) unsafe fn import_surface(
         device.create_texture_from_hal::<wgpu::hal::api::Metal>(
             hal_texture,
             &wgpu::TextureDescriptor {
-                label: Some("Lynx IOSurface terminal back buffer"),
+                label: Some("Imported native terminal render target"),
                 size,
                 mip_level_count: 1,
                 sample_count: 1,

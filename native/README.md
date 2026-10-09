@@ -2,7 +2,7 @@
 
 Catus Terminal 专属的 Rust/napi-rs workspace，统一导出 Rust 能力和 Lynx native
 组件。包名为 `@catus/native`，所有组件链接进同一个 `catus-native.node`。
-当前实现 `<native-terminal>`（Lynx IOSurface + Rust wgpu / Metal + Alacritty 默认 shell 终端）。
+当前实现 `<native-terminal>`（嵌入 NSView / windowless OSR + Rust wgpu / Metal + Alacritty 终端）。
 
 Rust 内部统一使用 `anyhow::Result`，通过 `?` 和 `Context` 保留底层错误。
 N-API 边界转换为 `napi::Error` 并输出完整原因链；cxx 实现直接返回 anyhow 错误。
@@ -29,7 +29,9 @@ native/
     macos/
       mod.rs                   Metal 后端选择
       surface.rs               IOSurface 校验与 wgpu texture 导入
-      terminal.rs              macOS terminal cxx 桥
+      terminal.rs              macOS terminal cxx 桥和纹理渲染入口
+      view.rs                  Rust NSView、CAMetalLayer、嵌入 / OSR 生命周期
+      input_view.rs            objc2 NSResponder、NSTextInputClient 和组合文本
       frame.rs                 native 回调、时钟和 UI 调度桥
       font.rs                  Menlo / CoreText 字体策略
       build.rs                 macOS CMake 和 framework 链接
@@ -50,7 +52,7 @@ native/
     platform/
       UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
       macos/
-        NativeTerminalView.mm   借用 IOSurface 并交给 Rust 渲染
+        NativeTerminalView.cc   Lynx 回调、buffer 和宿主接口到 Rust 的薄桥接
         UiThread.h              主队列调度与 UI 线程检查
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
@@ -125,18 +127,37 @@ Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的�
 `src/tests/macos/surface_support.rs` 提供 IOSurface 创建与像素回读夹具。
 桌面自动化与截图对比通过根目录 `pnpm run test:e2e` 运行。
 逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
-尚不支持 IME、选择、滚动历史 UI、完整键盘协议和复杂文本 shaping。
+macOS 输入通过 NSResponder / NSTextInputClient 处理，组合文本在提交前只作为显示叠加。
+尚不支持终端选择、滚动历史 UI、完整键盘协议和复杂文本 shaping。
 
 ## 构建与加载
 
-`native-terminal` 使用 `CatusNativeTerminalElement` 注册，启用
-`IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
+`native-terminal` 使用 `CatusNativeTerminalElement` 注册。参考 Lynx CEF 的 macOS 适配：
+默认将 NSView 加入 `lynx_view_get_native_window()` 返回的宿主，layout 更新其 frame。
+NSView 的 CAMetalLayer 提供 drawable，Rust 用共享 wgpu device 导入纹理，GPU 完成后呈现。
+网格使用左上角坐标；直接 Metal 目标按 wgpu Y-up NDC 转换，只有 Lynx OSR 做合成所需的 Y 轴补偿。
+NSView frame 根据父 view 的 isFlipped 转换；自身 isFlipped 只决定内部坐标。
+attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期。
+`use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
+OSR 才启用 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
 `IOSurfaceRef`。C++ 用缓存的 layout 获取 buffer，直接调用 Rust 的
-`render_surface(iosurface, deadline)`；Rust 内部检查锁忙、idle revision、尺寸和
+`render_osr(&IOSurface, deadline)`，不再将地址转换为整数。会话层检查锁忙和 idle revision，
+准备网格快照后调用公共 `render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
+该函数只负责目标校验、纹理导入及绘制，不读取 PTY 或 session。Rust 检查尺寸和
 像素布局，使用全局共享 MTLDevice 创建 BGRA8Unorm texture，再导入 wgpu 绘制。
 Rust 等待已提交 GPU 工作完成；C++ 仅在返回已绘制且未过期时 `SwapBack` 和
 `MarkDirty`。FrameInfo 已删除，device 和 viewport 不再每帧回传 C++。
-没有独立的 NSView 或 CAMetalLayer。
+嵌入模式直接呈现 CAMetalLayer drawable，不调用 Lynx SwapBack。
+两种模式共享 NSTextInputClient：嵌入模式通过 NSView responder 接收事件；OSR 与 CEF 一样通过
+`lynx_view_register_ime_handler` 和 NSTextInputContext 接收宿主事件。组合文本不会写入 PTY，
+提交文本才调用 Rust write；两种模式的组合文本均由共享 atlas 绘制。
+NSView、NSTextInputContext、CAMetalLayer 和输入会话绑定全部由 Rust 持有；
+C++ 只传入宿主句柄及焦点 / IME 注册函数，转发 Lynx 生命周期回调。
+候选框位置来自 Rust renderer 的字符尺寸及实际终端光标，并转换为屏幕坐标。
+JS 不再转发 keydown，防止 native 输入与 JS 重复写入。
+嵌入 NSView 与 CEF 子 view 一样，独立于 Lynx 合成树；Lynx surface 截图与覆盖层场景使用 OSR。
+`pnpm test:native-input` 在 macOS 主线程运行 Rust 测试，验证原生文本输入协议；Rust 测试验证 CAMetalLayer drawable 和 OSR 组合文本。
+真实系统输入法的候选窗交互仍需要 macOS 运行时验收。
 
 `renderer.rs` 使用全局 `LazyLock<anyhow::Result<GpuContext>>` 惰性创建一次 device、
 queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。

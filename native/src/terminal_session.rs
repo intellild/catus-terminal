@@ -113,14 +113,17 @@ pub fn get_terminal_session_info(id: u32) -> napi::Result<TerminalSessionInfo> {
 }
 
 #[cfg(feature = "native-view")]
+#[derive(Clone)]
 pub struct TerminalHandle {
     pub(crate) session: Arc<Session>,
+    pub(crate) preedit: Arc<Mutex<String>>,
 }
 
 #[cfg(feature = "native-view")]
 pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>> {
     Ok(Box::new(TerminalHandle {
         session: session(id)?,
+        preedit: Arc::new(Mutex::new(String::new())),
     }))
 }
 

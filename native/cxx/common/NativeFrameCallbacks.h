@@ -8,6 +8,8 @@
 #include <cassert>
 #include "platform/UiThread.h"
 
+typedef struct lynx_view_t lynx_view_t;
+
 typedef struct lynx_native_view_ lynx_native_view_t;
 
 namespace catus {
@@ -43,6 +45,7 @@ class NativeFrameCallbacks : public std::enable_shared_from_this<NativeFrameCall
   NativeFrameCallbacks();
   ~NativeFrameCallbacks();
   FrameCallbacks& callbacks();
+  lynx_view_t* view = nullptr;
  private:
   rust::Box<FrameCallbacks> callbacks_;
 };

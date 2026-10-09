@@ -11,3 +11,4 @@ build/
 .idea
 tests/e2e/__screenshots__/
 docs/terminal-native-vsync.png
+*.tgz
