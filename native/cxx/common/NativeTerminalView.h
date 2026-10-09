@@ -1,17 +1,18 @@
 #pragma once
 
-#include "common/NativeFrameCallbacks.h"
-#include "platform/RustBridge.h"
 #include <lynx_native_view.h>
-#include "rust/cxx.h"
 
 #include <cmath>
+#include <limits>
 #include <mutex>
 #include <optional>
-#include <string>
-#include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
+
+#include "common/NativeFrameCallbacks.h"
+#include "platform/RustBridge.h"
+#include "rust/cxx.h"
 
 namespace catus {
 using lynx::pub::LynxValue;
@@ -19,7 +20,8 @@ using lynx::pub::LynxValue;
 class NativeTerminalView : public lynx::pub::LynxNativeView {
  public:
   explicit NativeTerminalView(std::shared_ptr<catus::NativeFrameCallbacks> host)
-      : frame_callbacks_(std::move(host)), frame_target_(std::make_shared<catus::NativeFrameTarget>()),
+      : frame_callbacks_(std::move(host)),
+        frame_target_(std::make_shared<catus::NativeFrameTarget>()),
         frame_registration_(frame_callbacks_->callbacks().register_frame_callback(frame_target_)) {
     frame_target_->SetRender([this](int64_t deadline) {
       std::unique_lock lock(mutex_, std::try_to_lock);
@@ -63,9 +65,8 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     (void)left;
     (void)top;
     std::lock_guard lock(mutex_);
-    if (!std::isfinite(width) || !std::isfinite(height) ||
-        !std::isfinite(pixel_ratio) || pixel_ratio <= 0 ||
-        width <= 0 || height <= 0 || width * pixel_ratio > 8192 ||
+    if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(pixel_ratio) ||
+        pixel_ratio <= 0 || width <= 0 || height <= 0 || width * pixel_ratio > 8192 ||
         height * pixel_ratio > 8192) {
       viewport_.width = viewport_.height = 0;
       error_ = "Terminal layout is zero or exceeds the texture size limit";
@@ -77,7 +78,9 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     viewport_.pixel_ratio = pixel_ratio;
     try {
       if (terminal_) (*terminal_)->resize_viewport(viewport_);
-    } catch (const rust::Error& error) { error_ = error.what(); }
+    } catch (const rust::Error& error) {
+      error_ = error.what();
+    }
     UpdateFrameLoop();
   }
   void OnPropertiesChanged(const LynxValue& attrs, const LynxValue& events) override {
@@ -87,8 +90,9 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     const auto type = value.Type();
     if (type != lynx_value_double && type != lynx_value_int32 && type != lynx_value_int64) return;
     const double number = value.Number();
-    if (!std::isfinite(number) || number < 0 ||
-        number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number) return;
+    if (!std::isfinite(number) || number < 0 || number > std::numeric_limits<uint32_t>::max() ||
+        std::floor(number) != number)
+      return;
     std::lock_guard lock(mutex_);
     const auto id = static_cast<uint32_t>(number);
     if (id == terminal_id_) return;
@@ -107,11 +111,13 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       terminal_id_ = id;
       BindTerminal(**terminal_);
       if (terminal_) (*terminal_)->invalidate_frame();
-    } catch (const rust::Error& error) { error_ = error.what(); }
+    } catch (const rust::Error& error) {
+      error_ = error.what();
+    }
     UpdateFrameLoop();
   }
   void OnMethodInvoked(const char* method, const LynxValue& params,
-      std::function<void(int, LynxValue&&)> callback) override {
+                       std::function<void(int, LynxValue&&)> callback) override {
     std::unique_lock lock(mutex_);
     const std::string name = method ? method : "";
     if (name == "focus") {
@@ -132,7 +138,9 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
           if (key.Type() != lynx_value_string) throw std::runtime_error("Expected key");
           const auto control = params.GetProperty("control");
           const auto alt = params.GetProperty("alt");
-          (*terminal_)->key(key.StdString(), control.Type() == lynx_value_bool && control.Bool(), alt.Type() == lynx_value_bool && alt.Bool());
+          (*terminal_)
+              ->key(key.StdString(), control.Type() == lynx_value_bool && control.Bool(),
+                    alt.Type() == lynx_value_bool && alt.Bool());
         }
         lock.unlock();
         callback(kSuccess, LynxValue(true));
@@ -158,7 +166,11 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
 
  protected:
   virtual void Focus() { RequestFocus(); }
-  virtual bool PresentFrame() { const bool ok = SwapBack(); if (ok) MarkDirty(); return ok; }
+  virtual bool PresentFrame() {
+    const bool ok = SwapBack();
+    if (ok) MarkDirty();
+    return ok;
+  }
   virtual void BindTerminal(const TerminalHandle&) {}
   virtual void UnbindTerminal() {}
   // The platform lends a native buffer to Rust and waits for GPU completion.
@@ -168,7 +180,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
  private:
   void UpdateFrameLoop() {
     frame_registration_->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
-        viewport_.width != 0 && viewport_.height != 0);
+                                    viewport_.width != 0 && viewport_.height != 0);
   }
 
   void FocusAfterFirstFrame() {

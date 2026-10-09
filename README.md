@@ -87,6 +87,10 @@ Lynx 缺少 Intl，初始化前使用 FormatJS 条件 polyfill 补齐 PluralRule
 React 绑定通过现有 alias 使用 ReactLynx，关闭 Suspense；同步资源保证主线程首屏可渲染。
 
 JS/TS 工具统一使用 Rstack CLI，配置位于 `rstack.config.ts`。
+`pnpm format:cpp` 使用 clang-format 格式化仓库内 C/C++/Objective-C 源码和头文件，
+`pnpm format:cpp:check` 只检查格式。配置在 `.clang-format`；可用 `CLANG_FORMAT` 指定程序路径，
+macOS 默认还会尝试 Xcode 工具链。
+
 `pnpm format` 格式化所有 JS/TS 文件（含 JSX/TSX、MJS/CJS 和声明文件），
 `pnpm format:check` 检查格式，`pnpm lint` 运行 JavaScript / TypeScript 推荐规则，
 `pnpm lint:fix` 应用自动修复。构建产物、依赖和缓存不参与检查；native 构建

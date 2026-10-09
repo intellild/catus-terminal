@@ -1,4 +1,5 @@
 #include "common/NativeFrameCallbacks.h"
+
 #include "platform/RustBridge.h"
 
 namespace catus {
