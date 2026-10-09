@@ -31,6 +31,10 @@ add_library(catus_native STATIC
 if(APPLE)
   target_sources(catus_native PRIVATE platform/macos/NativeTerminalView.cc)
 endif()
+# Lynx C++ extension headers use Lynx's weak N-API bindings, as CEF does.
+set_source_files_properties(common/NativeTerminalRegistration.cc PROPERTIES
+  COMPILE_DEFINITIONS "USE_WEAK_SUFFIX_NAPI;NAPI_CPP_CUSTOM_NAMESPACE=weak_node_api"
+)
 target_compile_features(catus_native PRIVATE cxx_std_17)
 target_include_directories(catus_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
