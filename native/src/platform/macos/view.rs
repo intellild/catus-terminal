@@ -42,6 +42,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
             if let Some(terminal) = binding.borrow().as_ref() {
                 match event {
                     InputEvent::Text(text) => terminal.write(&text)?,
+                    InputEvent::Paste(text) => terminal.paste(&text)?,
                     InputEvent::Key { key, control, alt } => terminal.key(&key, control, alt)?,
                     InputEvent::Preedit(text) => terminal.set_preedit(&text),
                     InputEvent::Mouse(event) => terminal.mouse_input(&event)?,

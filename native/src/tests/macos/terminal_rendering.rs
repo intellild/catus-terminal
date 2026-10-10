@@ -429,8 +429,21 @@ fn native_mouse_selection_and_precision_scroll_refresh_the_surface() {
     let selected = target.pixels();
     assert_ne!(selected, initial);
     assert!(selected.chunks_exact(4).any(|p| p[..3] == [112, 82, 61]));
-    event.kind = 2;
+    event.kind = 5;
+    event.buttons = crate::binding::types::MouseButtons::EMPTY;
+    event.x = f32::NAN;
+    event.y = f32::NAN;
     handle.mouse_input(&event).unwrap();
+    assert_eq!(handle.session.core.selected_text().as_deref(), Some("FAKE"));
+    event.kind = 3;
+    event.x = 8. + cw * 8.2;
+    event.y = 8. + ch * 0.5;
+    handle.mouse_input(&event).unwrap();
+    assert_eq!(
+        handle.session.core.selected_text().as_deref(),
+        Some("FAKE"),
+        "movement after cancellation cannot extend the selection"
+    );
     handle.write("history\r").unwrap();
     wait_text(&handle, "history 39");
     assert!(handle.session.core.selected_text().is_none());

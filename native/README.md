@@ -177,8 +177,12 @@ Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的�
 桌面自动化与截图对比通过根目录 `pnpm run test:e2e` 运行。
 逐字符 atlas 支持普通/粗体、前景/背景色、下划线、删除线、光标及宽字符。
 macOS 输入通过 NSResponder / NSTextInputClient 处理，组合文本在提交前只作为显示叠加。
+剪贴板粘贴独立于普通文本输入：开启 bracketed-paste 时整包发送起止标记，并过滤
+payload 中的 ESC/Ctrl-C；关闭时将 CRLF/LF 转为 Enter 的 CR，普通输入保持原样。
 滚轮和触控板滚动 Alacritty 历史；拖动选择文本，双击选词、三击选行，Option 拖动矩形选择，Cmd+C 复制。
 程序启用鼠标报告时，点击、拖动和滚轮转发给 PTY；Shift 强制本地选择/历史滚动。备用屏幕使用 Alacritty 的 alternate-scroll 模式发送方向键。
+OSR pointer cancel 使用记忆中的按键、位置和按下时修饰键补发 release；即使无布局或
+取消坐标无效也会清理状态，重复取消不发送报告，取消本地选择保留选区。
 嵌入模式通过 NSView 接收事件，OSR 通过 Lynx `OnMotionEvent` 接收；逻辑坐标转换及触控板小数滚动累积位于 Rust macOS 适配器，高亮由现有 atlas 渲染。尚不支持拖出视口后的自动滚动、完整键盘协议和复杂文本 shaping。
 
 滚动条是 `src/app/components/ui/ScrollBar.tsx` 渲染的 12px overlay，不改变 terminal viewport 或网格列数。

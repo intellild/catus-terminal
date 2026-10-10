@@ -72,6 +72,19 @@ pub(crate) fn run_native_input_tests() {
             matches!(events.borrow().last(), Some(InputEvent::Preedit(text)) if text.is_empty())
         );
     }
+    // A private pasteboard exercises clipboard input without changing the
+    // user's general clipboard. IME/insertText above must remain ordinary Text.
+    let board = NSPasteboard::pasteboardWithUniqueName();
+    let before = events.borrow().len();
+    input.paste_from_board(&board);
+    assert_eq!(events.borrow().len(), before);
+    assert!(unsafe {
+        board.setString_forType(&NSString::from_str("first\n中文"), NSPasteboardTypeString)
+    });
+    input.paste_from_board(&board);
+    assert!(
+        matches!(events.borrow().last(), Some(InputEvent::Paste(text)) if text == "first\n中文")
+    );
     for (kind, native_kind) in [
         (objc2_app_kit::NSEventType::LeftMouseDown, 1),
         (objc2_app_kit::NSEventType::LeftMouseDragged, 3),

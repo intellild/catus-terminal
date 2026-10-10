@@ -134,6 +134,9 @@ impl TerminalHandle {
     pub fn write(&self, text: &str) -> Result<()> {
         self.session.core.write(text.as_bytes().to_vec())
     }
+    pub fn paste(&self, text: &str) -> Result<()> {
+        self.session.core.paste(text)
+    }
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         self.session.core.key(key, control, alt)
     }

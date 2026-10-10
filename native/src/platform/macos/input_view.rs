@@ -23,6 +23,7 @@ use std::{
 
 pub(super) enum InputEvent {
     Text(String),
+    Paste(String),
     Key {
         key: String,
         control: bool,
@@ -116,10 +117,7 @@ define_class!(
         fn key_down(&self, event: &NSEvent) { self.handle_key(event, None); }
         #[unsafe(method(paste:))]
         fn paste(&self, _sender: Option<&AnyObject>) {
-            let board = NSPasteboard::generalPasteboard();
-            if let Some(text) = unsafe { board.stringForType(NSPasteboardTypeString) } {
-                self.ivars().emit(InputEvent::Text(text.to_string()));
-            }
+            self.paste_from_board(&NSPasteboard::generalPasteboard());
         }
     }
     unsafe impl NSTextInputClient for InputView {
@@ -196,6 +194,11 @@ define_class!(
 );
 
 impl InputView {
+    fn paste_from_board(&self, board: &NSPasteboard) {
+        if let Some(text) = unsafe { board.stringForType(NSPasteboardTypeString) } {
+            self.ivars().emit(InputEvent::Paste(text.to_string()));
+        }
+    }
     pub(super) fn new(mtm: MainThreadMarker, state: Rc<InputState>) -> Retained<Self> {
         let allocated = Self::alloc(mtm).set_ivars(state);
         let view: Retained<Self> =
