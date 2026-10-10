@@ -254,6 +254,17 @@ impl TerminalGrid {
             if cell.flags.contains(Flags::INVERSE) {
                 std::mem::swap(&mut fg, &mut bg);
             }
+            if content.selection.as_ref().is_some_and(|selection| {
+                selection.contains(indexed.point)
+                    || (cell.flags.contains(Flags::WIDE_CHAR)
+                        && selection.contains(alacritty_terminal::index::Point::new(
+                            indexed.point.line,
+                            indexed.point.column + alacritty_terminal::index::Column(1),
+                        )))
+            }) {
+                bg = [61, 82, 112];
+                fg = [238, 242, 248];
+            }
             let mut characters = vec![];
             if !cell.flags.intersects(
                 Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER | Flags::HIDDEN,
@@ -354,3 +365,7 @@ fn palette(index: usize) -> [u8; 3] {
 #[cfg(test)]
 #[path = "../tests/terminal_grid.rs"]
 mod tests;
+
+#[path = "interaction.rs"]
+mod interaction;
+pub use interaction::{MouseModifiers, PointerAction};

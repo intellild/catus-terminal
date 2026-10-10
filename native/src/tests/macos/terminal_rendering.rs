@@ -386,3 +386,70 @@ fn direct_metal_and_lynx_osr_use_opposite_target_y_origins() {
     );
     assert_ne!(pixel(&osr_pixels, 9), [77, 77, 205]);
 }
+
+#[test]
+fn native_mouse_selection_and_precision_scroll_refresh_the_surface() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let session = FakeSession::new(2097);
+    let handle = session.handle();
+    let target = layout(
+        &handle,
+        Viewport {
+            width: 512,
+            height: 256,
+            pixel_ratio: 2.,
+        },
+    );
+    wait_text(&handle, "FAKE PTY READY");
+    assert!(render(&handle, &target));
+    let initial = target.pixels();
+    let (cw, ch) = {
+        let rendering = handle.session.rendering.lock().unwrap();
+        let state = rendering.as_ref().unwrap();
+        let (cw, ch) = state.renderer.cell_size(&state.viewport).unwrap();
+        (cw / 2., ch / 2.)
+    };
+    let mut event = ffi::NativeMouseEvent {
+        kind: 1,
+        x: 8. + cw * 3.2,
+        y: 8. + ch * 0.5,
+        wheel: 0.,
+        precise: true,
+        buttons: 1,
+        shift: false,
+        control: false,
+        alt: false,
+        clicks: 2,
+    };
+    handle.mouse_input(&event).unwrap();
+    assert_eq!(handle.session.core.selected_text().as_deref(), Some("FAKE"));
+    assert!(handle.needs_frame().unwrap());
+    assert!(render(&handle, &target));
+    let selected = target.pixels();
+    assert_ne!(selected, initial);
+    assert!(selected.chunks_exact(4).any(|p| p[..3] == [112, 82, 61]));
+    event.kind = 2;
+    handle.mouse_input(&event).unwrap();
+    handle.write("history\r").unwrap();
+    wait_text(&handle, "history 39");
+    assert!(handle.session.core.selected_text().is_none());
+    assert!(render(&handle, &target));
+    let live_text = handle.session.core.snapshot().text();
+    let live_pixels = target.pixels();
+    event.kind = 4;
+    event.wheel = f64::from(ch) / 6.;
+    handle.mouse_input(&event).unwrap();
+    assert_eq!(
+        handle.session.core.snapshot().text(),
+        live_text,
+        "fractional line must accumulate"
+    );
+    handle.mouse_input(&event).unwrap();
+    assert_ne!(handle.session.core.snapshot().text(), live_text);
+    assert!(handle.needs_frame().unwrap());
+    assert!(render(&handle, &target));
+    assert_ne!(target.pixels(), live_pixels);
+    event.wheel = -f64::from(ch) / 3.;
+    handle.mouse_input(&event).unwrap();
+    assert_eq!(handle.session.core.snapshot().text(), live_text);
+}

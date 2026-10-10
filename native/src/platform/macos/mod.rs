@@ -3,6 +3,8 @@
 mod font;
 mod frame;
 mod input_view;
+mod mouse;
+pub(crate) use mouse::MouseState;
 mod surface;
 mod terminal;
 mod view;

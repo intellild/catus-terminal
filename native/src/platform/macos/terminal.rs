@@ -7,6 +7,22 @@ use anyhow::Result;
 #[cxx::bridge(namespace = "catus")]
 pub(super) mod ffi {
     #[derive(Clone, Copy)]
+    struct NativeMouseEvent {
+        // 1 down, 2 up, 3 move, 4 scroll, 5 cancel. Coordinates are logical pixels.
+        kind: u8,
+        x: f32,
+        y: f32,
+        // Positive is up; precise deltas use pixels, otherwise lines.
+        wheel: f64,
+        precise: bool,
+        buttons: u32,
+        shift: bool,
+        control: bool,
+        alt: bool,
+        // OSR supplies 0; Rust derives click count from time and cell position.
+        clicks: u8,
+    }
+    #[derive(Clone, Copy)]
     struct NativeViewHost {
         parent: usize,
         lynx_view: usize,
@@ -31,6 +47,7 @@ pub(super) mod ffi {
         fn detach(self: &MacTerminalView);
         fn destroy(self: &MacTerminalView);
         fn layout(self: &MacTerminalView, left: f32, top: f32, width: f32, height: f32, ratio: f32);
+        fn motion(self: &MacTerminalView, event: &NativeMouseEvent);
         fn focus(self: &MacTerminalView);
         fn blur(self: &MacTerminalView);
         fn render_native(self: &MacTerminalView, deadline: i64) -> Result<bool>;
