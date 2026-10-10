@@ -21,6 +21,12 @@ pub(crate) fn generate(package_root: &Path, out_dir: &Path) -> Result<()> {
     let header = include.join("capi/lynx_extension_module_capi.h");
     bindgen::Builder::default()
         .header(header.to_string_lossy())
+        .header_contents("catus-lynx-env.h", "#include <capi/lynx_env_capi.h>")
+        .header(
+            package_root
+                .join("cxx/common/NativeTerminalFactory.h")
+                .to_string_lossy(),
+        )
         // The public C entry points include Lynx value headers that require
         // C++ syntax. Their extern "C" declarations still generate C ABI calls.
         .clang_args(["-x", "c++", "-std=c++17"])
@@ -28,6 +34,9 @@ pub(crate) fn generate(package_root: &Path, out_dir: &Path) -> Result<()> {
         .allowlist_function(
             "lynx_extension_module_(create_with_finalizer|get_user_data|unref|bind_.*)",
         )
+        .allowlist_function("lynx_env_register_extension_module")
+        .allowlist_function("lynx_view_register_native_view")
+        .allowlist_function("catus_create_native_terminal_view")
         .allowlist_type("lynx_extension_module_on_.*_func")
         // Reuse napi-rs handles instead of generating incompatible Rust types
         // for the same opaque N-API pointers.

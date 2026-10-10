@@ -8,6 +8,8 @@ mod frame_driver;
 #[cfg(feature = "native-view")]
 pub mod lynx_extension;
 #[cfg(feature = "native-view")]
+mod terminal_extension;
+#[cfg(feature = "native-view")]
 pub use frame_driver::dispatch_animation_frame;
 mod platform;
 mod sftp;

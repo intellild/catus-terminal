@@ -22,6 +22,8 @@ native/
   src/frame.rs                 平台无关的 cxx Viewport
   src/frame_driver.rs          napi-rs JS RAF 适配器
   src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
+  src/terminal_extension.rs    Rust 组件注册和窗口生命周期
+  src/lynx_extension/          bindgen C ABI 和泛型 trait 桥接
   src/platform/
     mod.rs                     按目标平台选择适配器
     unix.rs                    Unix 默认 shell 和 PTY EOF 策略
@@ -48,7 +50,7 @@ native/
     common/
       NativeFrameCallbacks.h/cc  Rust 回调对象与平台无关 callback target
       NativeTerminalView.h       session、layout、props、输入和帧生命周期
-      NativeTerminalRegistration.cc  Lynx extension 注册与窗口生命周期
+      NativeTerminalRegistration.cc  加载时调用 Rust 注册入口
     platform/
       UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
       macos/
@@ -64,7 +66,7 @@ native/
 terminal 的 extension module 负责组件注册和窗口生命周期。新增原生组件时，
 将 C++ 源码加入 `cxx/CMakeLists.txt`，并在 `elements.d.ts` 声明标签类型。
 
-`src/lynx_extension/` 提供独立的 Rust extension C API 桥接层，目前尚未接入 terminal。
+`src/lynx_extension/` 提供独立的 Rust extension C API 桥接层。
 实现 `Extension` trait 后，`Module::new(value)` 自动绑定全部生命周期回调；未实现的方法为空操作。
 回调按具体 Rust 类型单态化，不使用 trait object 或 C++ 虚函数。状态要求 `Send + Sync`，
 因为 UI 与 BTS 生命周期可能跨线程执行；view、observer 和 N-API 参数仍需遵守各自线程及有效期。
@@ -75,6 +77,14 @@ terminal 的 extension module 负责组件注册和窗口生命周期。新增�
 产物写入 Cargo `OUT_DIR`，不提交生成代码；仅生成桥接所需接口，并复用 napi-rs 的 N-API 类型。
 SDK 头文件变动自动触发重新生成；测试用独立 C 宿主替身和生成的回调类型验证绑定和释放。
 生成需要 libclang，macOS 可使用 Xcode Command Line Tools 提供的版本；自定义安装可设置 `LIBCLANG_PATH`。
+
+`terminal_extension.rs` 实现 `Extension` trait，通过泛型 `register<T>` 注册 factory。
+每个 Lynx view 创建一个 Rust extension 和帧注册表；`on_view_create` 注册 `native-terminal`。
+Rust extension 与 C++ native view 的 shared host 共用该表，view 持有 host 的共享引用。
+前后台生命周期直接修改 Rust 状态；view/module 销毁及最终 Drop 均停止帧回调。
+已创建的 native view 可以比 extension 活得更久，但不能继续绘制已销毁窗口。
+C++ 注册文件只保留加载 constructor，由 cdylib 专用静态库触发，避免 Rust 测试进程自动注册宿主接口。
+C++ extension 类及 weak N-API 编译选项已移除。
 
 ## 终端对象和帧接口
 
