@@ -199,6 +199,10 @@ impl TerminalSession {
             .context("Write terminal mouse input")
     }
 
+    pub fn paste(&self, text: &str) -> Result<()> {
+        let bytes = self.grid.lock().unwrap().paste(text);
+        self.write(bytes)
+    }
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         let bytes = self.grid.lock().unwrap().key(key, control, alt);
         if let Some(bytes) = bytes {

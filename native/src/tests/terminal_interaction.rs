@@ -7,6 +7,65 @@ fn grid() -> TerminalGrid {
 fn mods() -> MouseModifiers {
     MouseModifiers::default()
 }
+
+#[test]
+fn paste_respects_current_mode_and_cannot_inject_a_bracketed_paste_terminator() {
+    let mut grid = grid();
+    assert_eq!(
+        grid.paste("one\r\ntwo\n中文\r"),
+        "one\rtwo\r中文\r".as_bytes()
+    );
+    grid.advance(b"\x1b[?2004h");
+    assert_eq!(
+        grid.paste("one\r\ntwo\n中文\x1b[201~\x03\r"),
+        "\x1b[200~one\r\ntwo\n中文[201~\r\x1b[201~".as_bytes()
+    );
+    assert_eq!(grid.paste(""), b"\x1b[200~\x1b[201~");
+    grid.advance(b"\x1b[?2004l");
+    assert_eq!(grid.paste("\x1b\x03\n"), b"\x1b\x03\r");
+}
+
+#[test]
+fn pointer_cancel_releases_reporting_buttons_and_preserves_local_selection() {
+    let mut grid = grid();
+    grid.advance(b"\x1b[?1002h\x1b[?1006h");
+    for button in 0..3 {
+        assert_eq!(
+            grid.pointer(PointerAction::Cancel, 1, 2, false, 1, button, mods())
+                .unwrap(),
+            format!("\x1b[<{button};3;2m").as_bytes()
+        );
+    }
+    assert!(
+        grid.pointer(PointerAction::Cancel, 1, 2, false, 1, 3, mods())
+            .is_none()
+    );
+    grid.advance(b"\x1b[?1006l");
+    assert_eq!(
+        grid.pointer(PointerAction::Cancel, 1, 2, false, 1, 2, mods())
+            .unwrap(),
+        b"\x1b[M#\x23\x22"
+    );
+    grid.advance(b"hello");
+    let shift = MouseModifiers {
+        shift: true,
+        ..mods()
+    };
+    grid.pointer(PointerAction::Down, 0, 1, false, 2, 0, shift);
+    let before = grid.revision();
+    assert!(
+        grid.pointer(PointerAction::Cancel, 2, 11, true, 1, 0, shift)
+            .is_none()
+    );
+    assert_eq!(grid.revision(), before);
+    assert_eq!(grid.selected_text().as_deref(), Some("hello"));
+    grid.advance(b"\x1b[?1002l");
+    assert!(
+        grid.pointer(PointerAction::Cancel, 2, 11, true, 1, 0, mods())
+            .is_none()
+    );
+    assert_eq!(grid.selected_text().as_deref(), Some("hello"));
+}
 #[test]
 fn history_scroll_and_selection_use_scrolled_points() {
     let mut grid = grid();

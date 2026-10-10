@@ -11,6 +11,8 @@ pub(crate) struct MouseState {
     button: u8,
     remainder: f64,
     click: Option<(std::time::Instant, usize, usize, u8, u8)>,
+    position: (usize, usize),
+    modifiers: MouseModifiers,
 }
 impl Default for MouseState {
     fn default() -> Self {
@@ -18,11 +20,33 @@ impl Default for MouseState {
             button: 3,
             remainder: 0.,
             click: None,
+            position: (0, 0),
+            modifiers: MouseModifiers::default(),
         }
     }
 }
 impl TerminalHandle {
     pub(super) fn mouse_input(&self, event: &NativeMouseEvent) -> Result<()> {
+        if event.kind == 5 {
+            // A cancel may have no coordinates or arrive after layout is gone.
+            // Release the remembered press; event.buttons/Shift may have changed.
+            let mut mouse = self.mouse.lock().unwrap();
+            let button = std::mem::replace(&mut mouse.button, 3);
+            mouse.remainder = 0.;
+            mouse.click = None;
+            if button < 3 {
+                self.session.core.pointer(
+                    PointerAction::Cancel,
+                    mouse.position.0,
+                    mouse.position.1,
+                    false,
+                    1,
+                    button,
+                    mouse.modifiers,
+                )?;
+            }
+            return Ok(());
+        }
         if !event.x.is_finite() || !event.y.is_finite() || !event.wheel.is_finite() {
             return Ok(());
         }
@@ -56,11 +80,6 @@ impl TerminalHandle {
             mouse.remainder -= f64::from(lines);
             return self.session.core.scroll(lines, row, column, modifiers);
         }
-        if event.kind == 5 {
-            mouse.button = 3;
-            mouse.remainder = 0.;
-            return Ok(());
-        }
         let button = match event.buttons {
             buttons if buttons.contains(MouseButton::Primary) => 0,
             buttons if buttons.contains(MouseButton::Middle) => 1,
@@ -71,6 +90,8 @@ impl TerminalHandle {
         let action = match event.kind {
             1 => {
                 mouse.button = button;
+                mouse.position = (row, column);
+                mouse.modifiers = modifiers;
                 if clicks == 0 {
                     let now = std::time::Instant::now();
                     clicks = mouse
@@ -91,7 +112,10 @@ impl TerminalHandle {
                 mouse.button = 3;
                 PointerAction::Up
             }
-            3 => PointerAction::Move,
+            3 => {
+                mouse.position = (row, column);
+                PointerAction::Move
+            }
             _ => return Ok(()),
         };
         self.session
@@ -99,3 +123,7 @@ impl TerminalHandle {
             .pointer(action, row, column, right_half, clicks, button, modifiers)
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/macos/mouse.rs"]
+mod tests;

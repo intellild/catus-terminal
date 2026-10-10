@@ -31,6 +31,21 @@ pub enum PointerAction {
 }
 
 impl TerminalGrid {
+    pub fn paste(&self, text: &str) -> Vec<u8> {
+        if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
+            // Match Alacritty: prevent pasted ESC/Ctrl-C from prematurely
+            // ending bracketed paste, and send the complete paste as one packet.
+            let text = text.replace(['\x1b', '\x03'], "");
+            let mut bytes = Vec::with_capacity(text.len() + 12);
+            bytes.extend_from_slice(b"\x1b[200~");
+            bytes.extend_from_slice(text.as_bytes());
+            bytes.extend_from_slice(b"\x1b[201~");
+            bytes
+        } else {
+            // Without bracketed mode, line breaks behave like the Enter key.
+            text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
+        }
+    }
     pub fn scroll_state(&self) -> ScrollState {
         ScrollState {
             offset: self.term.grid().display_offset(),
@@ -117,11 +132,11 @@ impl TerminalGrid {
     ) -> Option<Vec<u8>> {
         let row = row.min(self.size.rows - 1);
         let column = column.min(self.size.columns - 1);
-        if action == PointerAction::Cancel {
-            return None;
-        }
         let mode = *self.term.mode();
         if mode.intersects(TermMode::MOUSE_MODE) && !modifiers.shift {
+            if action == PointerAction::Cancel && button >= 3 {
+                return None;
+            }
             if action == PointerAction::Move
                 && !mode.contains(TermMode::MOUSE_MOTION)
                 && !(mode.contains(TermMode::MOUSE_DRAG) && button < 3)
@@ -133,7 +148,7 @@ impl TerminalGrid {
                 code,
                 row,
                 column,
-                action == PointerAction::Up,
+                matches!(action, PointerAction::Up | PointerAction::Cancel),
                 modifiers,
             ));
         }
