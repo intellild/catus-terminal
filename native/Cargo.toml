@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native-view"]
-native-view = ["dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
+native-view = ["dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
 native-input-tests = ["native-view"]
 
 [dependencies]
@@ -31,14 +31,16 @@ wgpu = { version = "=30.0.1", default-features = false, features = ["metal"], op
 objc2 = { version = "0.6", optional = true }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSGraphicsContext", "NSView", "NSResponder", "NSWindow", "NSEvent", "NSTextInputClient", "NSTextInputContext", "NSPasteboard", "NSTrackingArea", "objc2-core-foundation", "objc2-quartz-core"], optional = true }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSAttributedString", "NSGeometry", "NSObject", "NSRange"], optional = true }
-objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-metal"], optional = true }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-metal", "objc2-core-graphics"], optional = true }
 objc2-metal = { version = "0.3", default-features = false, features = ["MTLDevice", "MTLTexture", "MTLAllocation", "MTLResource", "MTLPixelFormat", "objc2-io-surface"], optional = true }
 
 objc2-io-surface = { version = "0.3", default-features = false, features = ["IOSurfaceRef", "IOSurfaceTypes", "objc2-core-foundation", "libc"], optional = true }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGColor"], optional = true }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["CFDictionary", "CFNumber", "CFString"], optional = true }
 
 [build-dependencies]
 anyhow = "1.0"
+bindgen = { version = "0.72", default-features = false, features = ["runtime"] }
 napi-build = "=2.6.0"
 cxx-build = "1.0"
 

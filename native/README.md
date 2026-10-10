@@ -64,6 +64,18 @@ native/
 terminal 的 extension module 负责组件注册和窗口生命周期。新增原生组件时，
 将 C++ 源码加入 `cxx/CMakeLists.txt`，并在 `elements.d.ts` 声明标签类型。
 
+`src/lynx_extension/` 提供独立的 Rust extension C API 桥接层，目前尚未接入 terminal。
+实现 `Extension` trait 后，`Module::new(value)` 自动绑定全部生命周期回调；未实现的方法为空操作。
+回调按具体 Rust 类型单态化，不使用 trait object 或 C++ 虚函数。状态要求 `Send + Sync`，
+因为 UI 与 BTS 生命周期可能跨线程执行；view、observer 和 N-API 参数仍需遵守各自线程及有效期。
+`Module` 持有初始 C 引用，未交给宿主时 Drop 会 unref；factory 用 `into_raw()` 转交给 Lynx。
+`on_destroy` 只通知生命周期，最后一次 unref 的 finalizer 才回收 `Box<T>`。
+在支持 unwind 的构建中，桥接捕获回调/析构 panic，避免其跨越 C ABI。
+构建时 bindgen 从 pnpm 安装的 `lynx-library-headers` 生成 C ABI 类型、回调和函数声明，
+产物写入 Cargo `OUT_DIR`，不提交生成代码；仅生成桥接所需接口，并复用 napi-rs 的 N-API 类型。
+SDK 头文件变动自动触发重新生成；测试用独立 C 宿主替身和生成的回调类型验证绑定和释放。
+生成需要 libclang，macOS 可使用 Xcode Command Line Tools 提供的版本；自定义安装可设置 `LIBCLANG_PATH`。
+
 ## 终端对象和帧接口
 
 `createTerminalSession(id)` 接收 JS 分配的正整数 `u32` ID，创建默认 shell，成功返回 void。
@@ -131,6 +143,16 @@ macOS 输入通过 NSResponder / NSTextInputClient 处理，组合文本在提�
 滚轮和触控板滚动 Alacritty 历史；拖动选择文本，双击选词、三击选行，Option 拖动矩形选择，Cmd+C 复制。
 程序启用鼠标报告时，点击、拖动和滚轮转发给 PTY；Shift 强制本地选择/历史滚动。备用屏幕使用 Alacritty 的 alternate-scroll 模式发送方向键。
 嵌入模式通过 NSView 接收事件，OSR 通过 Lynx `OnMotionEvent` 接收；逻辑坐标转换及触控板小数滚动累积位于 Rust macOS 适配器，高亮由现有 atlas 渲染。尚不支持拖出视口后的自动滚动、完整键盘协议和复杂文本 shaping。
+
+滚动条是 `src/app/components/ui/ScrollBar.tsx` 渲染的 12px overlay，不改变 terminal viewport 或网格列数。
+现有 UI-thread RAF 在滚动状态变化时派发 `scrollchange`，detail 为
+`{ sessionId, offset, historyRows, visibleRows }`；位置以距底部的历史行数计，0 表示最新内容。
+拖动通过 `invoke({ method: 'scrollTo', params: { sessionId, offset } })` 绝对定位；native 校验当前绑定 session，
+将 offset 限制在历史范围内，且不向 PTY 写鼠标报告。`getScrollState` 可查询当前状态。
+无历史时滑块隐藏，切换 session 后由新事件同步；旧 session 的事件会被 UI 忽略。
+嵌入 NSView 模式用 CALayer mask 透出右侧覆盖区域，并在 hitTest 中让该区域交给 Lynx。
+OSR 使用 Lynx 合成；网格数据始终留在 native。
+
 
 ## 构建与加载
 

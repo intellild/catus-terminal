@@ -8,10 +8,12 @@ process.stdin.setEncoding('utf8');
 let state = 'ready';
 let input = '';
 
+// Full-screen fixture redraws must not archive timing-dependent startup frames.
+// The history command appends lines explicitly for scrolling tests.
 function draw() {
   const color = state === 'ready' ? 41 : 44;
   process.stdout.write(
-    '\x1b[?25l\x1b[2J\x1b[H' +
+    '\x1b[?25l\x1b[2J\x1b[3J\x1b[H' +
       `\x1b[${color}m  FAKE PTY ${state.toUpperCase()}  \x1b[0m\r\n` +
       '\x1b[32mgreen\x1b[0m / \x1b[1mbold\x1b[0m / \x1b[4munderline\x1b[0m\r\n' +
       'UTF-8: 中文 / e\u0301 / 😀\r\n' +

@@ -27,8 +27,10 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       std::unique_lock lock(mutex_, std::try_to_lock);
       if (lock.owns_lock() && catus::monotonic_now_ns() < deadline) {
         Render(deadline);
+        const auto scroll = ScrollUpdate();
         const bool focus = std::exchange(focus_pending_, false);
         lock.unlock();
+        if (scroll) EmitScroll(*scroll);
         if (focus) Focus();
       }
     });
@@ -96,6 +98,7 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
     std::lock_guard lock(mutex_);
     const auto id = static_cast<uint32_t>(number);
     if (id == terminal_id_) return;
+    last_scroll_.reset();
     if (id == 0) {
       UnbindTerminal();
       terminal_.reset();
@@ -124,6 +127,32 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
       lock.unlock();
       Focus();
       callback(kSuccess, LynxValue(true));
+      return;
+    }
+    if (name == "scrollTo" || name == "getScrollState") {
+      try {
+        if (!terminal_) throw std::runtime_error("Terminal is not attached");
+        if (name == "scrollTo") {
+          const auto id = params.GetProperty("sessionId");
+          const auto offset = params.GetProperty("offset");
+          if (id.Number() != terminal_id_) throw std::runtime_error("Terminal session changed");
+          const double number = offset.Number();
+          if ((offset.Type() != lynx_value_double && offset.Type() != lynx_value_int32 &&
+               offset.Type() != lynx_value_int64) ||
+              !std::isfinite(number) || number < 0 ||
+              number > std::numeric_limits<uint32_t>::max() || std::floor(number) != number)
+            throw std::runtime_error("Expected nonnegative integer offset");
+          (*terminal_)->scroll_to(static_cast<uint32_t>(number));
+        }
+        auto state = (*terminal_)->scroll_state();
+        auto result = ScrollValue(state);
+        lock.unlock();
+        callback(kSuccess, std::move(result));
+      } catch (const std::exception& error) {
+        auto result = LynxValue(std::string(error.what()));
+        lock.unlock();
+        callback(kInvalidStateError, std::move(result));
+      }
       return;
     }
     if (name == "write" || name == "key") {
@@ -178,6 +207,32 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
                              int64_t deadline) = 0;
 
  private:
+  LynxValue ScrollValue(const NativeScrollState& state) {
+    LynxValue result(LynxValue::kCreateAsMapTag);
+    result.SetProperty("sessionId", LynxValue(static_cast<int64_t>(terminal_id_)));
+    result.SetProperty("offset", LynxValue(static_cast<int64_t>(state.offset)));
+    result.SetProperty("historyRows", LynxValue(static_cast<int64_t>(state.history_rows)));
+    result.SetProperty("visibleRows", LynxValue(static_cast<int64_t>(state.visible_rows)));
+    return result;
+  }
+  std::optional<NativeScrollState> ScrollUpdate() {
+    if (!terminal_) return std::nullopt;
+    try {
+      auto state = (*terminal_)->scroll_state();
+      if (last_scroll_id_ == terminal_id_ && last_scroll_ && last_scroll_->offset == state.offset &&
+          last_scroll_->history_rows == state.history_rows &&
+          last_scroll_->visible_rows == state.visible_rows)
+        return std::nullopt;
+      last_scroll_id_ = terminal_id_;
+      last_scroll_ = state;
+      return state;
+    } catch (const rust::Error&) {
+      return std::nullopt;
+    }  // A contended grid retries next RAF.
+  }
+  void EmitScroll(const NativeScrollState& state) {
+    TriggerEvent("scrollchange", ScrollValue(state));
+  }
   void UpdateFrameLoop() {
     frame_registration_->set_active(attached_ && terminal_id_ != 0 && terminal_ &&
                                     viewport_.width != 0 && viewport_.height != 0);
@@ -223,6 +278,8 @@ class NativeTerminalView : public lynx::pub::LynxNativeView {
   rust::Box<catus::FrameRegistration> frame_registration_;
   std::optional<rust::Box<catus::TerminalHandle>> terminal_;
   uint32_t terminal_id_ = 0;
+  uint32_t last_scroll_id_ = 0;
+  std::optional<NativeScrollState> last_scroll_;
   catus::Viewport viewport_{};
   bool attached_ = false;
   bool needs_focus_ = true;

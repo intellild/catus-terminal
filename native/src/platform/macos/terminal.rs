@@ -6,6 +6,12 @@ use anyhow::Result;
 
 #[cxx::bridge(namespace = "catus")]
 pub(super) mod ffi {
+    #[derive(Clone, Copy, PartialEq)]
+    struct NativeScrollState {
+        offset: u32,
+        history_rows: u32,
+        visible_rows: u32,
+    }
     #[derive(Clone, Copy)]
     struct NativeMouseEvent {
         // 1 down, 2 up, 3 move, 4 scroll, 5 cancel. Coordinates are logical pixels.
@@ -61,11 +67,30 @@ pub(super) mod ffi {
         fn write(self: &TerminalHandle, text: &str) -> Result<()>;
         fn key(self: &TerminalHandle, key: &str, control: bool, alt: bool) -> Result<()>;
         fn resize_viewport(self: &TerminalHandle, viewport: &Viewport) -> Result<()>;
+        fn scroll_state(self: &TerminalHandle) -> Result<NativeScrollState>;
+        fn scroll_to(self: &TerminalHandle, offset: u32);
         fn invalidate_frame(self: &TerminalHandle);
     }
 }
 
 impl TerminalHandle {
+    pub(super) fn scroll_state(&self) -> Result<ffi::NativeScrollState> {
+        use anyhow::Context;
+        let state = self
+            .session
+            .core
+            .try_scroll_state()?
+            .context("Terminal grid busy")?;
+        Ok(ffi::NativeScrollState {
+            offset: state.offset as u32,
+            history_rows: state.history_rows as u32,
+            visible_rows: state.visible_rows as u32,
+        })
+    }
+    pub(super) fn scroll_to(&self, offset: u32) {
+        self.session.core.scroll_to(offset as usize);
+    }
+
     pub(super) fn cursor_rect(&self) -> Result<crate::frame::CursorRect> {
         use anyhow::Context;
         let rendering = self

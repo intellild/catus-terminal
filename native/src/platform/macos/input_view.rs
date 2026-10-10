@@ -35,6 +35,7 @@ pub(super) enum InputEvent {
 pub(super) struct InputState {
     pub host: Option<Weak<NSView>>,
     pub cursor: Cell<NSRect>,
+    pub overlay_width: Cell<f64>,
     pub emit: Box<dyn Fn(InputEvent) -> Result<()>>,
     pub focus: Box<dyn Fn()>,
     marked: RefCell<Retained<NSAttributedString>>,
@@ -48,6 +49,7 @@ impl InputState {
     ) -> Rc<Self> {
         Rc::new(Self {
             host: host.map(Weak::new),
+            overlay_width: Cell::new(0.),
             cursor: Cell::new(NSRect::new(NSPoint::new(8., 8.), NSSize::new(14., 20.))),
             emit: Box::new(emit),
             focus: Box::new(focus),
@@ -73,6 +75,12 @@ define_class!(
 
     unsafe impl NSObjectProtocol for InputView {}
     impl InputView {
+        #[unsafe(method(hitTest:))]
+        fn hit_test(&self, point: NSPoint) -> *mut NSView {
+            let local = self.convertPoint_fromView(point, unsafe { self.superview() }.as_deref());
+            if self.ivars().overlay_width.get() > 0. && local.x >= self.bounds().size.width - self.ivars().overlay_width.get() { return std::ptr::null_mut(); }
+            unsafe { msg_send![super(self), hitTest: point] }
+        }
         #[unsafe(method(isFlipped))]
         fn is_flipped(&self) -> bool { true }
         #[unsafe(method(acceptsFirstResponder))]
@@ -214,6 +222,13 @@ impl InputView {
     }
     fn pointer_event(&self, event: &NSEvent, kind: u8) {
         let point = self.convertPoint_fromView(event.locationInWindow(), None);
+        // AppKit tracking areas also deliver hover inside the transparent overlay strip.
+        if event.r#type() == objc2_app_kit::NSEventType::MouseMoved
+            && self.ivars().overlay_width.get() > 0.
+            && point.x >= self.bounds().size.width - self.ivars().overlay_width.get()
+        {
+            return;
+        }
         let mods = event.modifierFlags();
         let buttons = match if kind == 4 || event.r#type() == objc2_app_kit::NSEventType::MouseMoved
         {
