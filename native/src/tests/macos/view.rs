@@ -10,8 +10,8 @@ pub(crate) fn run_view_lifecycle_tests() {
         parent: Retained::as_ptr(&parent) as usize,
         lynx_view: 0,
         native_view: 0,
-        request_focus: 0,
-        register_ime: 0,
+        request_focus: None,
+        register_ime: None,
     };
     let view = unsafe { create_mac_terminal_view(&host) }.unwrap();
     assert!(view.uses_osr(), "a parent without NSWindow requires OSR");

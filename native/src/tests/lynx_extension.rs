@@ -93,14 +93,6 @@ unsafe extern "C" fn lynx_view_register_native_view(
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn catus_create_native_terminal_view(
-    _opaque: *mut c_void,
-) -> *mut ffi::lynx_native_view_t {
-    // Component construction is verified by runtime E2E, not this C host stub.
-    std::ptr::null_mut()
-}
-
-#[unsafe(no_mangle)]
 unsafe extern "C" fn lynx_extension_module_create_with_finalizer(
     data: *mut c_void,
     finalizer: Option<unsafe extern "C" fn(*mut RawModule, *mut c_void)>,

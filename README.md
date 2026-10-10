@@ -211,7 +211,7 @@ state/session.ts / terminalSessions.ts / preload.ts（BTS）
 NativeTerminalView.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
        ↓
-cxx/common/NativeTerminalView.h / OnLayoutChanged
+native_terminal_view.rs / on_layout_changed
   逻辑尺寸 × backing scale → 字体 advance、line height / leading → 行列 / PTY resize
        ↓
 terminal_core/pty.rs（独立读线程）
@@ -220,7 +220,7 @@ terminal_core/pty.rs（独立读线程）
 frameDriver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs
   dispatchAnimationFrame() → UI → Rust 全局回调注册对象
        ↓
-cxx/platform/macos/NativeTerminalView.mm（同一 UI 线程）
+native_terminal_view.rs → platform/macos/native_view.rs（同一 UI 线程）
   按缓存 layout 获取 Lynx IOSurface → render_surface(iosurface, deadline)
        ↓
 terminal_view.rs
@@ -379,8 +379,8 @@ text/glyph_renderer.rs
   共享 pipeline / sampler / 页 bind group
   每个 session 独立 instance buffer
        ↓
-cxx/common/NativeTerminalView.h / terminal_view.rs
-  Lynx layout → Rust resize；C++ 直接传 IOSurface + deadline
+native_terminal_view.rs / terminal_view.rs
+  Lynx C API → Rust layout / session；平台适配借用 IOSurface
        ↓
 platform/macos/terminal.rs / surface.rs
   IOSurface + session viewport → 校验并导入 wgpu::Texture
@@ -455,7 +455,7 @@ premultiplied RGBA；自定义 grayscale、复杂 shaping、ligature 尚未实�
 ## Native 构建与链接
 
 napi-rs 驱动 Cargo 构建 Rust `cdylib`，将 terminal C++ 静态库链接进同一个
-`catus-native.node`。C++ 通过 cxx 访问 Rust terminal session 和 renderer。
+`catus-native.node`。Rust 通过 bindgen C API 接收 Lynx View 回调；cxx 仅桥接加载入口和 UI 调度。
 
 ```text
 pnpm run build:native → native/build.mjs
@@ -466,7 +466,7 @@ native/build.rs
   cxx_build 生成桥接头文件和 C++ 桥接静态库
        ↓
 native/cxx/CMakeLists.txt
-  编译 C++ / Objective-C++ view → libcatus_native.a
+  编译加载 constructor → libcatus_native.a
        ↓
 Cargo / Rust 链接器
   Rust cdylib + cxx 桥 + C++ 静态库 + AppKit 等系统 framework
@@ -477,7 +477,7 @@ napi-rs CLI
 ```
 
 最终 Node-API 入口由 Rust 的 napi-rs 提供。
-CMake 只负责 C++ 静态库，不负责最终 `.node` 链接；C++ 调用 Rust 仍通过 cxx。
+CMake 只负责 C++ 静态库，不负责最终 `.node` 链接；加载 constructor 调用 Rust 仍通过 cxx。
 `-force_load` 只用于 `cdylib`，Rust 测试可独立运行。`test:napi` 使用
 `--no-default-features` 构建不含 Lynx view 的扩展，在 Node 中检查 napi-rs 导出；
 组合扩展的组件注册和跨语言调用则在实际 Lynxtron 应用中验证。
@@ -513,6 +513,8 @@ native/
   src/lib.rs                          napi-rs 类、cxx 桥、共享状态和生命周期
   src/terminal_core/                   portable-pty 传输与 Alacritty 网格计算
   src/terminal_session.rs              u32 注册表、session renderer 及生命周期
+  src/binding/                        bindgen ABI、Extension / NativeView trait 和 Value RAII
+  src/native_terminal_view.rs          Rust native element 生命周期、属性、invoke 和事件
   src/terminal_view.rs                 layout resize、网格快照与渲染目标准备
   src/renderer.rs                     LazyLock 共享 GPU/atlas 与每个 session 的 renderer
   src/frame.rs                        平台无关的 cxx Viewport
@@ -545,19 +547,16 @@ native/
   cxx/
     CMakeLists.txt                    仅生成项目 C++ 静态库
     common/
-      NativeTerminalView.h             session、props、layout、输入和帧生命周期
       NativeTerminalRegistration.cc    Lynx extension 注册与窗口生命周期
-      NativeFrameCallbacks.h/cc        Rust 回调对象和通用 render target
     platform/
       UiThread.h / RustBridge.h        按平台选择适配器
       macos/
-        NativeTerminalView.mm          获取 Lynx IOSurface，交给 Rust 渲染
         UiThread.h                     主队列调度和 UI 线程检查
 ```
 
-`@catus/native` 是整个项目的 native 包。新增组件只需将 C++ 源码加入
-`native/cxx/CMakeLists.txt`，以唯一 module 名称和标签调用 `LYNX_REGISTER_ELEMENT`，
-再补充 `native/elements.d.ts` 类型。多个组件共享一个 `.node`，不要求包名与标签同名。
+`@catus/native` 是整个项目的 native 包。新增组件实现 Rust `NativeView` / `ViewFactory`，
+由 extension 注册唯一标签，再补充 `native/elements.d.ts` 类型。多个组件共享一个 `.node`，
+不要求包名与标签同名。
 
 ```text
 pnpm run dev / build
@@ -570,7 +569,7 @@ native/index.cjs
   require(.node)，激活 terminal extension 静态注册
        ↓
 TerminalView.tsx 渲染 <native-terminal>
-  C++ 创建 terminal view 并绑定 Rust session
+  Rust factory 创建 terminal view 并绑定 session
        ↓
 OnPropertiesChanged / OnLayoutChanged
   更新原生属性与布局

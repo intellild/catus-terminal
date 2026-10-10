@@ -6,25 +6,6 @@ use objc2_metal::{
     MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage,
 };
-/// Opaque cxx binding for the object behind Apple's IOSurfaceRef.
-#[repr(C)]
-pub(super) struct IOSurface {
-    _private: [u8; 0],
-    _pinned: std::marker::PhantomPinned,
-}
-
-// SAFETY: C++ aliases catus::IOSurface to the opaque object behind IOSurfaceRef.
-unsafe impl cxx::ExternType for IOSurface {
-    type Id = cxx::type_id!("catus::IOSurface");
-    type Kind = cxx::kind::Opaque;
-}
-impl IOSurface {
-    pub(super) fn as_native(&self) -> &IOSurfaceRef {
-        // Both bindings describe the same borrowed opaque Apple object.
-        unsafe { &*(self as *const Self).cast::<IOSurfaceRef>() }
-    }
-}
-
 /// Draw a supplied grid into a borrowed IOSurface, without accessing a session,
 /// PTY or native view. Returns false when the frame is expired or contended.
 ///

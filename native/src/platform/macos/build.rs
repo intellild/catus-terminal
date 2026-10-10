@@ -2,11 +2,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use std::{env, path::Path, process::Command};
 
-pub(crate) const BRIDGES: &[&str] = &[
-    "src/frame.rs",
-    "src/platform/macos/frame.rs",
-    "src/platform/macos/terminal.rs",
-];
+pub(crate) const BRIDGES: &[&str] = &["src/frame.rs", "src/platform/macos/frame.rs"];
 
 fn run(command: &mut Command) -> Result<()> {
     let status = command

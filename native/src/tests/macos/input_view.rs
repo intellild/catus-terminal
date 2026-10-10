@@ -88,7 +88,7 @@ pub(crate) fn run_native_input_tests() {
             };
         }
         assert!(
-            matches!(events.borrow().last(), Some(InputEvent::Mouse(mouse)) if mouse.kind == native_kind && mouse.buttons == 1 && mouse.shift)
+            matches!(events.borrow().last(), Some(InputEvent::Mouse(mouse)) if mouse.kind == native_kind && mouse.buttons == MouseButton::Primary.into() && mouse.shift)
         );
     }
     unsafe {

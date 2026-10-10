@@ -3,7 +3,7 @@
 //! `register<T>` installs a factory which creates a concrete Rust extension,
 //! binds its lifecycle callbacks and transfers the initial C reference to Lynx.
 //! The host supplies the C symbols; this is not a standalone Node capability.
-mod ffi;
+use super::{ffi, protocol::ExtensionName};
 
 use std::{
     ffi::{CStr, c_char, c_void},
@@ -17,15 +17,14 @@ use anyhow::{Result, bail};
 use napi::sys::{napi_env, napi_value};
 
 pub use ffi::{LynxView, RawModule, VsyncObserver};
-pub(crate) use ffi::{catus_create_native_terminal_view, lynx_view_register_native_view};
 
-/// Register a concrete extension factory. The name is retained by the host, so
-/// it must have static storage. Each created module owns a fresh `T::default()`.
-pub fn register<T: Extension + Default>(name: &'static CStr, lazy: bool) {
+/// Register a concrete extension factory using a protocol name with static
+/// storage. Each created module owns a fresh `T::default()`.
+pub fn register<T: Extension + Default>(name: ExtensionName, lazy: bool) {
     // SAFETY: The factory has the SDK signature; its opaque argument is unused.
     unsafe {
         ffi::lynx_env_register_extension_module(
-            name.as_ptr(),
+            name.as_cstr().as_ptr(),
             Some(create::<T>),
             lazy,
             std::ptr::null_mut(),

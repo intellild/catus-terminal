@@ -1,5 +1,5 @@
 use super::*;
-use crate::lynx_extension::tests as host;
+use crate::binding::extension::tests as host;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -21,15 +21,15 @@ fn rust_factory_registers_component_and_controls_the_shared_native_registry() {
     assert_eq!(native.name, "native-terminal");
     assert!(native.creator.is_some());
 
-    // A real C++ host is retained just as each native view retains it. It must
-    // share Rust lifecycle state and remain valid after the extension finalizes.
+    // Native views clone the Rust registry. It must share lifecycle state
+    // and remain stopped after the extension finalizes.
     let retained_host = unsafe {
         host::with_extension(raw, |extension: &TerminalExtension| {
-            extension.host.get().unwrap().clone()
+            extension.host.get().unwrap().frames.clone()
         })
     };
-    assert_eq!(native.opaque, retained_host.as_ptr() as usize);
-    let frames = retained_host.callbacks();
+    assert_ne!(native.opaque, 0);
+    let frames = &retained_host;
     let calls = Arc::new(AtomicUsize::new(0));
     let count = calls.clone();
     let render = frames.register(move |_| {

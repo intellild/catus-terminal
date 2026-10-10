@@ -3,10 +3,16 @@
 #include <dispatch/dispatch.h>
 #include <pthread.h>
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 
 namespace catus {
+inline int64_t monotonic_now_ns() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
 inline bool IsUiThread() { return pthread_main_np() != 0; }
 void dispatch_frame_callbacks(int64_t deadline) noexcept;
 inline void post_frame_to_ui(int64_t deadline) {

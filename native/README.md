@@ -23,7 +23,8 @@ native/
   src/frame_driver.rs          napi-rs JS RAF 适配器
   src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
-  src/lynx_extension/          bindgen C ABI 和泛型 trait 桥接
+  src/native_terminal_view.rs  Rust terminal element、layout、props、invoke 和事件
+  src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
   src/platform/
     mod.rs                     按目标平台选择适配器
     unix.rs                    Unix 默认 shell 和 PTY EOF 策略
@@ -31,7 +32,8 @@ native/
     macos/
       mod.rs                   Metal 后端选择
       surface.rs               IOSurface 校验与 wgpu texture 导入
-      terminal.rs              macOS terminal cxx 桥和纹理渲染入口
+      terminal.rs              macOS 输入数据和纹理渲染入口
+      native_view.rs           Lynx 宿主、鼠标事件和 surface 的 macOS 适配
       view.rs                  Rust NSView、CAMetalLayer、嵌入 / OSR 生命周期
       input_view.rs            objc2 NSResponder、NSTextInputClient 和组合文本
       frame.rs                 native 回调、时钟和 UI 调度桥
@@ -48,13 +50,10 @@ native/
   cxx/
     CMakeLists.txt             项目 C++ 静态库的源文件清单
     common/
-      NativeFrameCallbacks.h/cc  Rust 回调对象与平台无关 callback target
-      NativeTerminalView.h       session、layout、props、输入和帧生命周期
       NativeTerminalRegistration.cc  加载时调用 Rust 注册入口
     platform/
       UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
       macos/
-        NativeTerminalView.cc   Lynx 回调、buffer 和宿主接口到 Rust 的薄桥接
         UiThread.h              主队列调度与 UI 线程检查
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
@@ -64,9 +63,10 @@ native/
 ```
 
 terminal 的 extension module 负责组件注册和窗口生命周期。新增原生组件时，
-将 C++ 源码加入 `cxx/CMakeLists.txt`，并在 `elements.d.ts` 声明标签类型。
+实现 `binding::native_view::NativeView` / `ViewFactory`，由 extension 注册标签，
+并在 `elements.d.ts` 声明标签类型。
 
-`src/lynx_extension/` 提供独立的 Rust extension C API 桥接层。
+`src/binding/` 统一保存 SDK 生成的 C ABI 和 Rust 封装；`extension.rs` 提供 extension 桥接层。
 实现 `Extension` trait 后，`Module::new(value)` 自动绑定全部生命周期回调；未实现的方法为空操作。
 回调按具体 Rust 类型单态化，不使用 trait object 或 C++ 虚函数。状态要求 `Send + Sync`，
 因为 UI 与 BTS 生命周期可能跨线程执行；view、observer 和 N-API 参数仍需遵守各自线程及有效期。
@@ -80,11 +80,37 @@ SDK 头文件变动自动触发重新生成；测试用独立 C 宿主替身和�
 
 `terminal_extension.rs` 实现 `Extension` trait，通过泛型 `register<T>` 注册 factory。
 每个 Lynx view 创建一个 Rust extension 和帧注册表；`on_view_create` 注册 `native-terminal`。
-Rust extension 与 C++ native view 的 shared host 共用该表，view 持有 host 的共享引用。
+Rust native view 克隆该表的共享句柄，不再使用 C++ shared host 或 render target。
 前后台生命周期直接修改 Rust 状态；view/module 销毁及最终 Drop 均停止帧回调。
 已创建的 native view 可以比 extension 活得更久，但不能继续绘制已销毁窗口。
 C++ 注册文件只保留加载 constructor，由 cdylib 专用静态库触发，避免 Rust 测试进程自动注册宿主接口。
-C++ extension 类及 weak N-API 编译选项已移除。
+C++ extension / native view 类及 weak N-API 编译选项已移除。
+
+`binding/native_view.rs` 提供 `NativeView` trait；`View::new` 绑定全部生命周期、
+layout、props、motion、focus 和 invoke 回调，按具体 Rust 类型单态化。
+`ViewFactory` / `register<T>` 将具体组件注册给 Lynx；借用的 factory context
+由 extension 持有到窗口销毁。`on_destroy` 仅通知组件清理，最后一次
+`lynx_native_view_release` 才释放 Rust 对象。创建失败和初始化 panic 同样释放初始引用。
+Native View 限定在创建/UI 线程，允许直接持有 AppKit 和 RefCell 状态；不要求 Send/Sync。
+`Handle` 在释放后失效；`Target<T>` 可保存在共享 RAF registry 中，但仅在创建线程
+借用组件，释放后的回调直接跳过。回调执行期间 retain host，防止事件/焦点重入释放对象。
+`binding/value.rs` 管理属性读写、UTF-8、引用计数和事件/invoke 值的所有权转移；
+内部错误保留 anyhow 原因链，在 invoke 边界转换为 Lynx 状态码。
+`binding/types.rs` 将 SDK 常量转换为 Rust enum：事件/设备/滚动信号、surface buffer 模式、
+Value 类型、Value API 状态和 invoke 状态。未知值使用 `Unrecognized(raw)` 保留，
+不将未经校验的数字 transmute 为 enum。鼠标按键通过 `MouseButton` / `MouseButtons`
+表达组合与未知 bits；`MotionEvent` 在回调边界转换枚举、字段名及 bool。
+应用代码使用 typed 参数，`Reply` 返回 `InvokeStatus`，`NativeView::surface_buffer_mode`
+返回 `SurfaceBufferMode`。invoke 数字来自已安装 SDK 的 C++ constexpr，经 bindgen
+生成，Rust 不重复维护数值。FFI 模块私有；平台宿主操作通过 `binding/host.rs` 调用。
+SDK C ABI / 泛型桥接的独立宿主测试位于 `src/tests/lynx_native_view*.rs` 和
+`src/tests/lynx_value_host.rs`，实际 native component 创建由运行时 E2E 验证。
+
+`binding/protocol.rs` 集中定义字符串协议的 `ExtensionName`、`ElementName`、
+`Event`、`Property` 和 `Method` 枚举。注册、属性读写、事件发送和 invoke 回调
+只接受枚举；C 字符串编码/解析在 binding 内完成，原有 JS 接口名称保持不变。
+未知方法转换为 `Method::Unknown` 并返回 `MethodNotFound`。新增组件的协议名称
+也在此目录维护；文本内容、错误信息和运行时 URL 仍使用普通字符串。
 
 ## 终端对象和帧接口
 
@@ -100,7 +126,7 @@ Rust 不分配 ID，互斥保护注册表创建，拒绝重复 ID 和保留值 0
 注册表强引用 session；每个 session 拥有计算层和带锁的 renderer/viewport。
 renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
 切换 tab 保留同一个 native element、shell 和 renderer，由 OnPropertiesChanged 更新 session 绑定。
-C++ 的 `OnPropertiesChanged` 校验数字 ID，并取得共享 `TerminalHandle`。
+Rust 的 `on_properties_changed` 校验数字 ID，并取得共享 `TerminalHandle`。
 诊断/主机 API 为 `writeTerminalSession(id, text)` 和 `getTerminalSessionInfo(id)`。
 
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/pty.rs` 管理阻塞
@@ -112,7 +138,7 @@ PTY 读写线程。`terminal_session.rs` 管理生命周期，`terminal_view.rs`
 `renderFrame()` 只读取 session 的 renderer/viewport、检查 revision、生成快照并绘制。
 `renderer.rs` 接收计算后的网格、session 的 viewport 和准备 wgpu texture 的回调，
 不访问 PTY 或 OS 指针。macOS 回调在 `platform/macos/surface.rs` 导入 IOSurface。
-C++ 不再独立持有或创建 renderer。
+native view 不独立持有或创建 renderer。
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
@@ -122,8 +148,8 @@ C++ 不再独立持有或创建 renderer。
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-`frame_callbacks.rs` 保存弱引用的回调注册，C++ view 调用 `register_frame_callback()`，
-持有 registration；销毁 view 时清除 C++ render callback 并释放注册。
+`frame_callbacks.rs` 保存弱引用的回调注册，Rust view 用 `Target<T>` 注册 UI 渲染回调，
+持有 registration；销毁 view 时停止并释放注册，最终释放使 target 失效。
 独立的 `src/app/frameDriver.ts` 由 App 挂载时启动 MTS RAF，卸载时取消。
 外层 MTS 先创建 `runOnBackground` 调用函数，RAF 回调直接调用它；不等待 Promise 回执。
 preload 暴露 napi-rs 的 `dispatchAnimationFrame()`；`frame_driver.rs` 接收 JS 帧信号，
@@ -174,19 +200,19 @@ NSView frame 根据父 view 的 isFlipped 转换；自身 isFlipped 只决定内
 attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期。
 `use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
 OSR 才启用 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
-`IOSurfaceRef`。C++ 用缓存的 layout 获取 buffer，直接调用 Rust 的
-`render_osr(&IOSurface, deadline)`，不再将地址转换为整数。会话层检查锁忙和 idle revision，
+`IOSurfaceRef`。Rust 用缓存的 layout 获取 buffer，将平台句柄直接借用为
+`&IOSurfaceRef` 调用 `render_osr`，不经 C++ 或整数地址桥接。会话层检查锁忙和 idle revision，
 准备网格快照后调用公共 `render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
 该函数只负责目标校验、纹理导入及绘制，不读取 PTY 或 session。Rust 检查尺寸和
 像素布局，使用全局共享 MTLDevice 创建 BGRA8Unorm texture，再导入 wgpu 绘制。
-Rust 等待已提交 GPU 工作完成；C++ 仅在返回已绘制且未过期时 `SwapBack` 和
-`MarkDirty`。FrameInfo 已删除，device 和 viewport 不再每帧回传 C++。
+Rust 等待已提交 GPU 工作完成，再检查 deadline，通过 C API `swap_back` 和
+`mark_dirty` 呈现完成的帧。device 和 viewport 留在 Rust。
 嵌入模式直接呈现 CAMetalLayer drawable，不调用 Lynx SwapBack。
 两种模式共享 NSTextInputClient：嵌入模式通过 NSView responder 接收事件；OSR 与 CEF 一样通过
 `lynx_view_register_ime_handler` 和 NSTextInputContext 接收宿主事件。组合文本不会写入 PTY，
 提交文本才调用 Rust write；两种模式的组合文本均由共享 atlas 绘制。
 NSView、NSTextInputContext、CAMetalLayer 和输入会话绑定全部由 Rust 持有；
-C++ 只传入宿主句柄及焦点 / IME 注册函数，转发 Lynx 生命周期回调。
+Rust 平台适配直接通过 SDK C API 请求焦点、注册 IME 并获取宿主句柄。
 候选框位置来自 Rust renderer 的字符尺寸及实际终端光标，并转换为屏幕坐标。
 JS 不再转发 keydown，防止 native 输入与 JS 重复写入。
 嵌入 NSView 与 CEF 子 view 一样，独立于 Lynx 合成树；Lynx surface 截图与覆盖层场景使用 OSR。
@@ -229,11 +255,11 @@ arm64/x64，但每次构建只生成当前架构产物。当前已验证 macOS a
 
 主应用的 `pluginLynxtron()` 自动扫描、复制和加载本库；不要从 UI 运行时代码
 导入 `./lynxtron`。preload 可以通过其默认导出访问 napi-rs 的终端 session API。
-库的 Node-API 入口由 Rust 提供，terminal extension 在 C++ 中静态注册。
+库的 Node-API 和组件注册由 Rust 提供，C++ 加载 constructor 调用 Rust 注册入口。
 
 源码编译依赖 `@lynx-js/lynx-library-headers`，CMake 直接读取已安装的 SDK 头文件。
 
-Rust 扩展与 C++ 元素链接为同一个 `.node`，cxx 生成类型安全的 C++ 头文件。
+Rust 扩展与最小 C++ 加载/调度适配链接为同一个 `.node`，cxx 生成注册入口和 UI 调度头文件。
 构建入口是 `build.mjs`，通过官方 `@napi-rs/cli` 调用 Cargo，输出
 `.node` 和自动生成的 `index.d.ts`。`build.rs` 先用 `cxx-build` 生成
 桥接代码，再调用 CMake 构建 `libcatus_native.a`；Rust `cdylib` 最后链接
@@ -243,7 +269,7 @@ Rust napi-rs 提供。
 macOS 链接参数 `-force_load` 保留 C++ 的 terminal extension 注册构造函数，
 仅应用于 Cargo 的 `cdylib` 目标。`native-view` 是默认 feature；关闭它可构建
 不含 Lynx view 的 Rust 扩展，供独立 Node 进程执行 N-API 测试。实际组合扩展
-通过 AutoLink 加载，组件注册及 C++ → Rust 调用在 Lynxtron 中验证。
+通过 AutoLink 加载，Rust 组件注册及 SDK 回调在 Lynxtron 中验证。
 
 release profile 显式使用 `strip = "none"`，避免当前 Rust 1.95 / LLVM 在 macOS 27
 上 strip 产生无效 LINKEDIT 的问题（[Rust issue #157750](https://github.com/rust-lang/rust/issues/157750)）。

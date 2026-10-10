@@ -1,96 +1,36 @@
 //! macOS Lynx terminal bridge; shared session logic prepares the latest grid.
-use super::surface::IOSurface;
-use super::view::{MacTerminalView, create_mac_terminal_view};
-use crate::terminal_session::{TerminalHandle, acquire_terminal};
+use crate::terminal_session::TerminalHandle;
 use anyhow::Result;
 
-#[cxx::bridge(namespace = "catus")]
 pub(super) mod ffi {
-    #[derive(Clone, Copy, PartialEq)]
-    struct NativeScrollState {
-        offset: u32,
-        history_rows: u32,
-        visible_rows: u32,
-    }
+    use crate::binding::types::MouseButtons;
     #[derive(Clone, Copy)]
-    struct NativeMouseEvent {
+    pub struct NativeMouseEvent {
         // 1 down, 2 up, 3 move, 4 scroll, 5 cancel. Coordinates are logical pixels.
-        kind: u8,
-        x: f32,
-        y: f32,
+        pub kind: u8,
+        pub x: f32,
+        pub y: f32,
         // Positive is up; precise deltas use pixels, otherwise lines.
-        wheel: f64,
-        precise: bool,
-        buttons: u32,
-        shift: bool,
-        control: bool,
-        alt: bool,
+        pub wheel: f64,
+        pub precise: bool,
+        pub buttons: MouseButtons,
+        pub shift: bool,
+        pub control: bool,
+        pub alt: bool,
         // OSR supplies 0; Rust derives click count from time and cell position.
-        clicks: u8,
+        pub clicks: u8,
     }
     #[derive(Clone, Copy)]
-    struct NativeViewHost {
-        parent: usize,
-        lynx_view: usize,
-        native_view: usize,
-        request_focus: usize,
-        register_ime: usize,
-    }
-    unsafe extern "C++" {
-        include!("catus-native/src/frame.rs.h");
-        type Viewport = crate::frame::Viewport;
-        include!("platform/macos/IOSurface.h");
-        type IOSurface = super::IOSurface;
-    }
-    extern "Rust" {
-        type MacTerminalView;
-        unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacTerminalView>>;
-        fn uses_osr(self: &MacTerminalView) -> bool;
-        fn set_osr(self: &MacTerminalView, requested: bool);
-        fn bind_terminal(self: &MacTerminalView, terminal: &TerminalHandle);
-        fn clear_terminal(self: &MacTerminalView);
-        fn attach(self: &MacTerminalView);
-        fn detach(self: &MacTerminalView);
-        fn destroy(self: &MacTerminalView);
-        fn layout(self: &MacTerminalView, left: f32, top: f32, width: f32, height: f32, ratio: f32);
-        fn motion(self: &MacTerminalView, event: &NativeMouseEvent);
-        fn focus(self: &MacTerminalView);
-        fn blur(self: &MacTerminalView);
-        fn render_native(self: &MacTerminalView, deadline: i64) -> Result<bool>;
-        unsafe fn render_osr(
-            self: &MacTerminalView,
-            surface: &IOSurface,
-            deadline: i64,
-        ) -> Result<bool>;
-        type TerminalHandle;
-        fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>>;
-        fn write(self: &TerminalHandle, text: &str) -> Result<()>;
-        fn key(self: &TerminalHandle, key: &str, control: bool, alt: bool) -> Result<()>;
-        fn resize_viewport(self: &TerminalHandle, viewport: &Viewport) -> Result<()>;
-        fn scroll_state(self: &TerminalHandle) -> Result<NativeScrollState>;
-        fn scroll_to(self: &TerminalHandle, offset: u32);
-        fn invalidate_frame(self: &TerminalHandle);
+    pub struct NativeViewHost {
+        pub parent: usize,
+        pub lynx_view: usize,
+        pub native_view: usize,
+        pub request_focus: Option<unsafe extern "C" fn(usize)>,
+        pub register_ime: Option<unsafe extern "C" fn(usize, usize, usize)>,
     }
 }
 
 impl TerminalHandle {
-    pub(super) fn scroll_state(&self) -> Result<ffi::NativeScrollState> {
-        use anyhow::Context;
-        let state = self
-            .session
-            .core
-            .try_scroll_state()?
-            .context("Terminal grid busy")?;
-        Ok(ffi::NativeScrollState {
-            offset: state.offset as u32,
-            history_rows: state.history_rows as u32,
-            visible_rows: state.visible_rows as u32,
-        })
-    }
-    pub(super) fn scroll_to(&self, offset: u32) {
-        self.session.core.scroll_to(offset as usize);
-    }
-
     pub(super) fn cursor_rect(&self) -> Result<crate::frame::CursorRect> {
         use anyhow::Context;
         let rendering = self
