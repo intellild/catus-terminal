@@ -129,6 +129,7 @@ impl TerminalSession {
         if self.exited() {
             return Err(anyhow!("Shell has exited"));
         }
+        self.grid.lock().unwrap().clear_interaction();
         self.input
             .lock()
             .unwrap()
@@ -137,6 +138,60 @@ impl TerminalSession {
             .send(bytes)
             .context("Send PTY input")
     }
+    pub fn scroll_multiplier(&self, modifiers: super::grid::MouseModifiers) -> f64 {
+        self.grid.lock().unwrap().scroll_multiplier(modifiers)
+    }
+    pub fn selected_text(&self) -> Option<String> {
+        self.grid.lock().unwrap().selected_text()
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn pointer(
+        &self,
+        action: super::grid::PointerAction,
+        row: usize,
+        column: usize,
+        right_half: bool,
+        clicks: u8,
+        button: u8,
+        modifiers: super::grid::MouseModifiers,
+    ) -> Result<()> {
+        let bytes = self
+            .grid
+            .lock()
+            .unwrap()
+            .pointer(action, row, column, right_half, clicks, button, modifiers);
+        if let Some(bytes) = bytes {
+            self.write_mouse(bytes)?;
+        }
+        Ok(())
+    }
+    pub fn scroll(
+        &self,
+        lines: i32,
+        row: usize,
+        column: usize,
+        modifiers: super::grid::MouseModifiers,
+    ) -> Result<()> {
+        let bytes = self
+            .grid
+            .lock()
+            .unwrap()
+            .scroll(lines, row, column, modifiers);
+        if let Some(bytes) = bytes {
+            self.write_mouse(bytes)?;
+        }
+        Ok(())
+    }
+    fn write_mouse(&self, bytes: Vec<u8>) -> Result<()> {
+        self.input
+            .lock()
+            .unwrap()
+            .as_ref()
+            .context("Terminal has exited")?
+            .send(bytes)
+            .context("Write terminal mouse input")
+    }
+
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         let bytes = self.grid.lock().unwrap().key(key, control, alt);
         if let Some(bytes) = bytes {
@@ -155,6 +210,9 @@ impl TerminalSession {
             grid.resize(size);
         }
         Ok(())
+    }
+    pub fn size(&self) -> GridSize {
+        self.grid.lock().unwrap().size()
     }
     pub fn snapshot(&self) -> GridSnapshot {
         self.grid.lock().unwrap().snapshot()

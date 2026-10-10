@@ -1,6 +1,6 @@
 //! Rust ownership of the AppKit view, Metal layer and CEF-style OSR input route.
 use super::input_view::{InputEvent, InputState, InputView};
-use super::terminal::ffi::NativeViewHost;
+use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
 use crate::terminal_session::TerminalHandle;
 use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
@@ -43,6 +43,19 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
                     InputEvent::Text(text) => terminal.write(&text)?,
                     InputEvent::Key { key, control, alt } => terminal.key(&key, control, alt)?,
                     InputEvent::Preedit(text) => terminal.set_preedit(&text),
+                    InputEvent::Mouse(event) => terminal.mouse_input(&event)?,
+                    InputEvent::Copy => {
+                        if let Some(text) = terminal.session.core.selected_text() {
+                            let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+                            board.clearContents();
+                            unsafe {
+                                board.setString_forType(
+                                    &objc2_foundation::NSString::from_str(&text),
+                                    objc2_app_kit::NSPasteboardTypeString,
+                                );
+                            }
+                        }
+                    }
                 }
             }
             Ok(())
@@ -163,6 +176,13 @@ impl MacTerminalView {
         self.layer.setContentsScale(ratio);
         self.layer
             .setDrawableSize(NSSize::new((width * ratio).ceil(), (height * ratio).ceil()));
+    }
+    pub fn motion(&self, event: &NativeMouseEvent) {
+        self.assert_ui();
+        if self.osr.get() {
+            (self.state.emit)(InputEvent::Mouse(*event))
+                .unwrap_or_else(|error| eprintln!("Terminal mouse: {error:#}"));
+        }
     }
     pub fn focus(&self) {
         self.assert_ui();

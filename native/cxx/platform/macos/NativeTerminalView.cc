@@ -54,6 +54,32 @@ class NativeTerminalMacOSView final : public NativeTerminalView {
   }
   void OnMotionEvent(native_view_motion_event_t* event) override {
     if (event->type == kNativeEventDown) Focus();
+    if (!platform_->uses_osr()) return;
+    uint8_t kind = 0;
+    if (event->signal_kind == kNativeSignalScroll || event->type == kNativeEventPanZoomUpdate) {
+      kind = 4;
+    } else {
+      switch (event->type) {
+        case kNativeEventDown:
+          kind = 1;
+          break;
+        case kNativeEventUp:
+          kind = 2;
+          break;
+        case kNativeEventMove:
+        case kNativeEventHover:
+          kind = 3;
+          break;
+        case kNativeEventCancel:
+          kind = 5;
+          break;
+        default:
+          return;
+      }
+    }
+    platform_->motion(NativeMouseEvent{kind, event->x, event->y, -event->deltaY, true,
+                                       event->buttons, bool(event->shiftKey), bool(event->ctrlKey),
+                                       bool(event->altKey), 0});
   }
 
  protected:

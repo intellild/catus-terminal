@@ -117,6 +117,7 @@ pub fn get_terminal_session_info(id: u32) -> napi::Result<TerminalSessionInfo> {
 pub struct TerminalHandle {
     pub(crate) session: Arc<Session>,
     pub(crate) preedit: Arc<Mutex<String>>,
+    pub(crate) mouse: Arc<Mutex<crate::platform::MouseState>>,
 }
 
 #[cfg(feature = "native-view")]
@@ -124,6 +125,7 @@ pub fn acquire_terminal(id: u32) -> Result<Box<TerminalHandle>> {
     Ok(Box::new(TerminalHandle {
         session: session(id)?,
         preedit: Arc::new(Mutex::new(String::new())),
+        mouse: Arc::new(Mutex::new(crate::platform::MouseState::default())),
     }))
 }
 

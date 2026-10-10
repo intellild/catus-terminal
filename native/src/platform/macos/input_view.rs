@@ -1,5 +1,6 @@
 //! AppKit text-input client, implemented with objc2 like winit's macOS view.
 //! AppKit owns composition/keyboard interpretation; only committed text reaches PTY.
+use super::terminal::ffi::NativeMouseEvent;
 use anyhow::Result;
 use objc2::{
     AnyThread, DefinedClass, MainThreadOnly, define_class, msg_send,
@@ -8,7 +9,7 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSEvent, NSEventModifierFlags, NSPasteboard, NSPasteboardTypeString, NSTextInputClient,
-    NSTextInputContext, NSView,
+    NSTextInputContext, NSTrackingArea, NSTrackingAreaOptions, NSView,
 };
 use objc2_foundation::{
     MainThreadMarker, NSArray, NSAttributedString, NSAttributedStringKey, NSCopying, NSNotFound,
@@ -27,6 +28,8 @@ pub(super) enum InputEvent {
         alt: bool,
     },
     Preedit(String),
+    Mouse(NativeMouseEvent),
+    Copy,
 }
 
 pub(super) struct InputState {
@@ -77,7 +80,29 @@ define_class!(
         #[unsafe(method(acceptsFirstMouse:))]
         fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool { true }
         #[unsafe(method(mouseDown:))]
-        fn mouse_down(&self, _event: &NSEvent) { (self.ivars().focus)(); if let Some(window) = self.window() { window.makeFirstResponder(Some(self)); } }
+        fn mouse_down(&self, event: &NSEvent) { self.pointer_event(event, 1); (self.ivars().focus)(); if let Some(window) = self.window() { window.makeFirstResponder(Some(self)); } }
+        #[unsafe(method(mouseMoved:))]
+        fn mouse_moved(&self, event: &NSEvent) { self.pointer_event(event, 3); }
+        #[unsafe(method(mouseDragged:))]
+        fn mouse_dragged(&self, event: &NSEvent) { self.pointer_event(event, 3); }
+        #[unsafe(method(mouseUp:))]
+        fn mouse_up(&self, event: &NSEvent) { self.pointer_event(event, 2); }
+        #[unsafe(method(rightMouseDown:))]
+        fn right_mouse_down(&self, event: &NSEvent) { self.pointer_event(event, 1); }
+        #[unsafe(method(rightMouseDragged:))]
+        fn right_mouse_dragged(&self, event: &NSEvent) { self.pointer_event(event, 3); }
+        #[unsafe(method(rightMouseUp:))]
+        fn right_mouse_up(&self, event: &NSEvent) { self.pointer_event(event, 2); }
+        #[unsafe(method(otherMouseDown:))]
+        fn other_mouse_down(&self, event: &NSEvent) { self.pointer_event(event, 1); }
+        #[unsafe(method(otherMouseDragged:))]
+        fn other_mouse_dragged(&self, event: &NSEvent) { self.pointer_event(event, 3); }
+        #[unsafe(method(otherMouseUp:))]
+        fn other_mouse_up(&self, event: &NSEvent) { self.pointer_event(event, 2); }
+        #[unsafe(method(scrollWheel:))]
+        fn scroll_wheel(&self, event: &NSEvent) { self.pointer_event(event, 4); }
+        #[unsafe(method(copy:))]
+        fn copy(&self, _sender: Option<&AnyObject>) { self.ivars().emit(InputEvent::Copy); }
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) { self.handle_key(event, None); }
         #[unsafe(method(paste:))]
@@ -164,7 +189,21 @@ define_class!(
 impl InputView {
     pub(super) fn new(mtm: MainThreadMarker, state: Rc<InputState>) -> Retained<Self> {
         let allocated = Self::alloc(mtm).set_ivars(state);
-        unsafe { msg_send![super(allocated), initWithFrame: NSRect::default()] }
+        let view: Retained<Self> =
+            unsafe { msg_send![super(allocated), initWithFrame: NSRect::default()] };
+        let tracking = unsafe {
+            NSTrackingArea::initWithRect_options_owner_userInfo(
+                NSTrackingArea::alloc(),
+                NSRect::default(),
+                NSTrackingAreaOptions::MouseMoved
+                    | NSTrackingAreaOptions::ActiveAlways
+                    | NSTrackingAreaOptions::InVisibleRect,
+                Some(&view),
+                None,
+            )
+        };
+        view.addTrackingArea(&tracking);
+        view
     }
     pub(super) fn reset_composition(&self) {
         *self.ivars().marked.borrow_mut() = NSAttributedString::new();
@@ -173,9 +212,51 @@ impl InputView {
             .set(NSRange::new(NSNotFound as usize, 0));
         self.ivars().emit(InputEvent::Preedit(String::new()));
     }
+    fn pointer_event(&self, event: &NSEvent, kind: u8) {
+        let point = self.convertPoint_fromView(event.locationInWindow(), None);
+        let mods = event.modifierFlags();
+        let buttons = match if kind == 4 || event.r#type() == objc2_app_kit::NSEventType::MouseMoved
+        {
+            -1
+        } else {
+            event.buttonNumber()
+        } {
+            0 => 1,
+            1 => 2,
+            2 => 4,
+            _ => 0,
+        };
+        self.ivars().emit(InputEvent::Mouse(NativeMouseEvent {
+            kind,
+            x: point.x as f32,
+            y: point.y as f32,
+            wheel: if kind == 4 {
+                event.scrollingDeltaY()
+            } else {
+                0.
+            },
+            precise: kind == 4 && event.hasPreciseScrollingDeltas(),
+            buttons,
+            shift: mods.contains(NSEventModifierFlags::Shift),
+            control: mods.contains(NSEventModifierFlags::Control),
+            alt: mods.contains(NSEventModifierFlags::Option),
+            clicks: if kind == 1 {
+                event.clickCount().clamp(1, 3) as u8
+            } else {
+                1
+            },
+        }));
+    }
     pub(super) fn handle_key(&self, event: &NSEvent, context: Option<&NSTextInputContext>) {
         let modifiers = event.modifierFlags();
         if modifiers.contains(NSEventModifierFlags::Command) {
+            if event
+                .charactersIgnoringModifiers()
+                .is_some_and(|key| key.to_string().eq_ignore_ascii_case("c"))
+            {
+                self.ivars().emit(InputEvent::Copy);
+                return;
+            }
             if !self.performKeyEquivalent(event) {
                 unsafe {
                     let _: () = msg_send![super(self), keyDown: event];

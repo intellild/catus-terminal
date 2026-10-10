@@ -21,6 +21,7 @@ function draw() {
 }
 
 process.stdin.on('data', (text) => {
+  let history = false;
   for (const character of text) {
     if (character === '\x03') {
       process.exit(0);
@@ -31,6 +32,9 @@ process.stdin.on('data', (text) => {
       }
       if (input === 'reset') {
         state = 'ready';
+      }
+      if (input === 'history') {
+        history = true;
       }
       if (input === 'exit') {
         process.exit(0);
@@ -43,6 +47,9 @@ process.stdin.on('data', (text) => {
     }
   }
   draw();
+  if (history) {
+    process.stdout.write(Array.from({ length: 40 }, (_, row) => `history ${row}\r\n`).join(''));
+  }
 });
 process.stdout.on('resize', draw);
 draw();

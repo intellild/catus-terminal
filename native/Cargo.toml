@@ -29,7 +29,7 @@ tokio = { version = "1.53.2", default-features = false, features = ["process", "
 [target.'cfg(target_os = "macos")'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["metal"], optional = true }
 objc2 = { version = "0.6", optional = true }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSView", "NSResponder", "NSWindow", "NSEvent", "NSTextInputClient", "NSTextInputContext", "NSPasteboard", "objc2-quartz-core"], optional = true }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSGraphicsContext", "NSView", "NSResponder", "NSWindow", "NSEvent", "NSTextInputClient", "NSTextInputContext", "NSPasteboard", "NSTrackingArea", "objc2-core-foundation", "objc2-quartz-core"], optional = true }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSAttributedString", "NSGeometry", "NSObject", "NSRange"], optional = true }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-metal"], optional = true }
 objc2-metal = { version = "0.3", default-features = false, features = ["MTLDevice", "MTLTexture", "MTLAllocation", "MTLResource", "MTLPixelFormat", "objc2-io-surface"], optional = true }

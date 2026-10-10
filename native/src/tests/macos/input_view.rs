@@ -72,5 +72,28 @@ pub(crate) fn run_native_input_tests() {
             matches!(events.borrow().last(), Some(InputEvent::Preedit(text)) if text.is_empty())
         );
     }
+    for (kind, native_kind) in [
+        (objc2_app_kit::NSEventType::LeftMouseDown, 1),
+        (objc2_app_kit::NSEventType::LeftMouseDragged, 3),
+        (objc2_app_kit::NSEventType::LeftMouseUp, 2),
+    ] {
+        let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+            kind, NSPoint::new(24., 18.), NSEventModifierFlags::Shift, 0., 0, None, 0, 2, 1.,
+        ).unwrap();
+        unsafe {
+            let _: () = match native_kind {
+                1 => objc2::msg_send![&*input, mouseDown: &*event],
+                2 => objc2::msg_send![&*input, mouseUp: &*event],
+                _ => objc2::msg_send![&*input, mouseDragged: &*event],
+            };
+        }
+        assert!(
+            matches!(events.borrow().last(), Some(InputEvent::Mouse(mouse)) if mouse.kind == native_kind && mouse.buttons == 1 && mouse.shift)
+        );
+    }
+    unsafe {
+        let _: () = objc2::msg_send![&*input, copy: std::ptr::null::<AnyObject>()];
+    }
+    assert!(matches!(events.borrow().last(), Some(InputEvent::Copy)));
     println!("Rust terminal NSView input tests passed");
 }

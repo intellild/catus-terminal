@@ -14,7 +14,9 @@ mod macos;
 #[cfg(all(test, feature = "native-view", target_os = "macos"))]
 pub(crate) use macos::test_support;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
-pub(crate) use macos::{GPU_BACKENDS, load_font_size, monotonic_now_ns, post_frame_to_ui};
+pub(crate) use macos::{
+    GPU_BACKENDS, MouseState, load_font_size, monotonic_now_ns, post_frame_to_ui,
+};
 
 #[cfg(all(feature = "native-view", not(target_os = "macos")))]
 compile_error!("Native terminal views currently implement macOS only");
