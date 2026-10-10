@@ -73,8 +73,9 @@ terminal 的 extension module 负责组件注册和窗口生命周期。新增�
 `Module` 持有初始 C 引用，未交给宿主时 Drop 会 unref；factory 用 `into_raw()` 转交给 Lynx。
 `on_destroy` 只通知生命周期，最后一次 unref 的 finalizer 才回收 `Box<T>`。
 在支持 unwind 的构建中，桥接捕获回调/析构 panic，避免其跨越 C ABI。
-构建时 bindgen 从 pnpm 安装的 `lynx-library-headers` 生成 C ABI 类型、回调和函数声明，
-产物写入 Cargo `OUT_DIR`，不提交生成代码；仅生成桥接所需接口，并复用 napi-rs 的 N-API 类型。
+`binding/binding.h` 汇总 SDK 头文件，并将 C++ invoke 状态常量暴露为 enum。
+构建时 bindgen 通过此入口从 pnpm 安装的 `lynx-library-headers` 生成 C ABI 类型、回调和函数声明，
+产物写入 Cargo `OUT_DIR`，不提交生成代码；按相关 C API 分组过滤，并复用 napi-rs 的 N-API 类型。
 SDK 头文件变动自动触发重新生成；测试用独立 C 宿主替身和生成的回调类型验证绑定和释放。
 生成需要 libclang，macOS 可使用 Xcode Command Line Tools 提供的版本；自定义安装可设置 `LIBCLANG_PATH`。
 
