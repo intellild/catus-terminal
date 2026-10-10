@@ -20,6 +20,7 @@ fn main() -> Result<()> {
     // cxx-build tracks bridge sources; rustc tracks modules and include_str! shaders.
     cxx_build::bridges(macos::BRIDGES)
         .include("cxx")
+        .file("cxx/common/NativeFrameCallbacks.cc")
         .std("c++17")
         .compile("catus-cxx-bridge");
     let package_root =

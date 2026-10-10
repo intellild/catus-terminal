@@ -15,7 +15,8 @@ mod macos;
 pub(crate) use macos::test_support;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 pub(crate) use macos::{
-    GPU_BACKENDS, MouseState, load_font_size, monotonic_now_ns, post_frame_to_ui,
+    GPU_BACKENDS, MouseState, NativeFrameCallbacks, create_native_frame_callbacks, load_font_size,
+    monotonic_now_ns, post_frame_to_ui,
 };
 
 #[cfg(all(feature = "native-view", not(target_os = "macos")))]

@@ -104,7 +104,7 @@ class NativeTerminalMacOSView final : public NativeTerminalView {
 };
 }  // namespace
 
-lynx_native_view_t* CreateNativeTerminalView(void* opaque) {
+extern "C" lynx_native_view_t* catus_create_native_terminal_view(void* opaque) {
   auto host = static_cast<NativeFrameCallbacks*>(opaque)->shared_from_this();
   return (new NativeTerminalMacOSView(std::move(host)))->native_view();
 }

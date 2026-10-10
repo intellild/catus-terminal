@@ -41,6 +41,7 @@ impl Default for CallbackRegistry {
     }
 }
 
+#[derive(Clone)]
 pub struct FrameCallbacks {
     registry: Arc<CallbackRegistry>,
 }
@@ -82,7 +83,7 @@ impl FrameCallbacks {
     }
 
     #[cfg(test)]
-    fn dispatch(&self, deadline: i64, now: impl Fn() -> i64) {
+    pub(crate) fn dispatch(&self, deadline: i64, now: impl Fn() -> i64) {
         self.registry.dispatch(deadline, now);
     }
 }

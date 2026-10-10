@@ -1,7 +1,7 @@
 //! Generic Rust lifecycle adapter for the public Lynx extension C API.
 //!
-//! This module does not register an extension or change the terminal's C++
-//! implementation. A future factory can return `Module::new(extension)?.into_raw()`.
+//! `register<T>` installs a factory which creates a concrete Rust extension,
+//! binds its lifecycle callbacks and transfers the initial C reference to Lynx.
 //! The host supplies the C symbols; this is not a standalone Node capability.
 mod ffi;
 
@@ -17,6 +17,30 @@ use anyhow::{Result, bail};
 use napi::sys::{napi_env, napi_value};
 
 pub use ffi::{LynxView, RawModule, VsyncObserver};
+pub(crate) use ffi::{catus_create_native_terminal_view, lynx_view_register_native_view};
+
+/// Register a concrete extension factory. The name is retained by the host, so
+/// it must have static storage. Each created module owns a fresh `T::default()`.
+pub fn register<T: Extension + Default>(name: &'static CStr, lazy: bool) {
+    // SAFETY: The factory has the SDK signature; its opaque argument is unused.
+    unsafe {
+        ffi::lynx_env_register_extension_module(
+            name.as_ptr(),
+            Some(create::<T>),
+            lazy,
+            std::ptr::null_mut(),
+        );
+    }
+}
+
+unsafe extern "C" fn create<T: Extension + Default>(_opaque: *mut c_void) -> *mut RawModule {
+    let mut raw = std::ptr::null_mut();
+    contain_panic(|| match Module::new(T::default()) {
+        Ok(module) => raw = module.into_raw(),
+        Err(error) => eprintln!("Create Rust Lynx extension: {error:#}"),
+    });
+    raw
+}
 
 /// Callbacks may run on different Lynx threads, so state must use interior
 /// synchronization. UI callbacks run on UI; runtime attach/ready/detach run on
@@ -171,4 +195,4 @@ unsafe extern "C" fn runtime_ready<T: Extension>(
 
 #[cfg(test)]
 #[path = "../tests/lynx_extension.rs"]
-mod tests;
+pub(crate) mod tests;

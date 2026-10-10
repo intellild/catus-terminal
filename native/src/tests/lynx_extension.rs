@@ -1,6 +1,6 @@
 use super::*;
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -10,16 +10,16 @@ use std::{
 // A small C-host substitute: tests exercise the installed ABI callback table,
 // not a parallel trait dispatcher. Each handle owns its data/finalizer.
 #[derive(Clone, Copy, Default)]
-struct Callbacks {
-    view_create: ffi::lynx_extension_module_on_lynx_view_create_func,
-    view_destroy: ffi::lynx_extension_module_on_lynx_view_destroy_func,
+pub(crate) struct Callbacks {
+    pub(crate) view_create: ffi::lynx_extension_module_on_lynx_view_create_func,
+    pub(crate) view_destroy: ffi::lynx_extension_module_on_lynx_view_destroy_func,
     runtime_init: ffi::lynx_extension_module_on_runtime_init_func,
     runtime_attach: ffi::lynx_extension_module_on_runtime_attach_func,
     runtime_ready: ffi::lynx_extension_module_on_runtime_ready_func,
     runtime_detach: ffi::lynx_extension_module_on_runtime_detach_func,
-    foreground: ffi::lynx_extension_module_on_enter_foreground_func,
-    background: ffi::lynx_extension_module_on_enter_background_func,
-    destroy: ffi::lynx_extension_module_on_destroy_func,
+    pub(crate) foreground: ffi::lynx_extension_module_on_enter_foreground_func,
+    pub(crate) background: ffi::lynx_extension_module_on_enter_background_func,
+    pub(crate) destroy: ffi::lynx_extension_module_on_destroy_func,
 }
 
 struct HostModule {
@@ -30,6 +30,74 @@ struct HostModule {
 
 thread_local! {
     static FAIL_CREATE: Cell<bool> = const { Cell::new(false) };
+    static REGISTRATION: RefCell<Option<Registration>> = const { RefCell::new(None) };
+    static NATIVE_REGISTRATIONS: RefCell<Vec<NativeRegistration>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct Registration {
+    pub(crate) name: String,
+    pub(crate) creator: ffi::extension_module_creator,
+    pub(crate) lazy: bool,
+}
+
+pub(crate) struct NativeRegistration {
+    pub(crate) view: usize,
+    pub(crate) name: String,
+    pub(crate) creator: ffi::lynx_native_view_creator,
+    pub(crate) opaque: usize,
+}
+
+pub(crate) fn take_registration() -> Registration {
+    REGISTRATION.with(|value| value.borrow_mut().take().unwrap())
+}
+
+pub(crate) fn take_native_registrations() -> Vec<NativeRegistration> {
+    NATIVE_REGISTRATIONS.with(|value| std::mem::take(&mut *value.borrow_mut()))
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_env_register_extension_module(
+    name: *const c_char,
+    creator: ffi::extension_module_creator,
+    lazy: bool,
+    _opaque: *mut c_void,
+) {
+    REGISTRATION.with(|value| {
+        *value.borrow_mut() = Some(Registration {
+            name: unsafe { CStr::from_ptr(name) }
+                .to_string_lossy()
+                .into_owned(),
+            creator,
+            lazy,
+        });
+    });
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_view_register_native_view(
+    view: *mut LynxView,
+    name: *const c_char,
+    creator: ffi::lynx_native_view_creator,
+    opaque: *mut c_void,
+) {
+    NATIVE_REGISTRATIONS.with(|value| {
+        value.borrow_mut().push(NativeRegistration {
+            view: view as usize,
+            name: unsafe { CStr::from_ptr(name) }
+                .to_string_lossy()
+                .into_owned(),
+            creator,
+            opaque: opaque as usize,
+        });
+    });
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn catus_create_native_terminal_view(
+    _opaque: *mut c_void,
+) -> *mut ffi::lynx_native_view_t {
+    // Component construction is verified by runtime E2E, not this C host stub.
+    std::ptr::null_mut()
 }
 
 #[unsafe(no_mangle)]
@@ -144,8 +212,16 @@ impl Extension for Probe {
     }
 }
 
-unsafe fn callbacks(raw: *mut RawModule) -> Callbacks {
+pub(crate) unsafe fn callbacks(raw: *mut RawModule) -> Callbacks {
     unsafe { (*raw.cast::<HostModule>()).callbacks }
+}
+
+pub(crate) unsafe fn with_extension<T, R>(raw: *mut RawModule, inspect: impl FnOnce(&T) -> R) -> R {
+    inspect(unsafe { &*lynx_extension_module_get_user_data(raw).cast::<T>() })
+}
+
+pub(crate) unsafe fn release(raw: *mut RawModule) {
+    unsafe { lynx_extension_module_unref(raw) };
 }
 
 #[test]

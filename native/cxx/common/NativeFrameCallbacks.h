@@ -6,12 +6,11 @@
 #include <memory>
 #include <mutex>
 
+#include "common/NativeTerminalFactory.h"
 #include "platform/UiThread.h"
 #include "rust/cxx.h"
 
 typedef struct lynx_view_t lynx_view_t;
-
-typedef struct lynx_native_view_ lynx_native_view_t;
 
 namespace catus {
 struct FrameCallbacks;
@@ -45,14 +44,15 @@ inline void render_target(const NativeFrameTarget& target, int64_t deadline) {
 
 class NativeFrameCallbacks : public std::enable_shared_from_this<NativeFrameCallbacks> {
  public:
-  NativeFrameCallbacks();
+  NativeFrameCallbacks(lynx_view_t* view, rust::Box<FrameCallbacks> callbacks);
   ~NativeFrameCallbacks();
-  FrameCallbacks& callbacks();
-  lynx_view_t* view = nullptr;
+  const FrameCallbacks& callbacks() const;
+  lynx_view_t* const view;
 
  private:
   rust::Box<FrameCallbacks> callbacks_;
 };
 
-lynx_native_view_t* CreateNativeTerminalView(void* opaque);
+std::shared_ptr<NativeFrameCallbacks> create_native_frame_callbacks(
+    lynx_view_t* view, rust::Box<FrameCallbacks> callbacks);
 }  // namespace catus
