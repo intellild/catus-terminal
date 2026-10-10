@@ -80,3 +80,30 @@ fn sgr_mouse_and_shift_override_and_alternate_scroll() {
     grid.advance(b"\x1b[?1002l\x1b[?1049h");
     assert_eq!(grid.scroll(-2, 0, 0, mods()).unwrap(), b"\x1b[B\x1b[B");
 }
+
+#[test]
+fn absolute_scroll_clamps_and_does_not_write_mouse_reports() {
+    let mut grid = grid();
+    grid.advance(b"zero\r\none\r\ntwo\r\nthree\r\nfour");
+    let state = grid.scroll_state();
+    assert_eq!(state.visible_rows, 3);
+    assert_eq!(state.history_rows, 2);
+    assert_eq!(state.offset, 0);
+    let revision = grid.revision();
+    grid.scroll_to(usize::MAX);
+    assert_eq!(grid.scroll_state().offset, 2);
+    assert!(grid.snapshot().text().starts_with("zero"));
+    assert!(grid.revision() > revision);
+    let revision = grid.revision();
+    grid.scroll_to(2);
+    assert_eq!(grid.revision(), revision);
+    grid.advance(b"\x1b[?1002h\x1b[?1006h");
+    grid.scroll_to(1);
+    assert_eq!(grid.scroll_state().offset, 1);
+    grid.scroll_to(0);
+    assert_eq!(grid.scroll_state().offset, 0);
+    grid.advance(b"\x1b[?1049h");
+    grid.scroll_to(500);
+    assert_eq!(grid.scroll_state().history_rows, 0);
+    assert_eq!(grid.scroll_state().offset, 0);
+}

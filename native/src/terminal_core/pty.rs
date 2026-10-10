@@ -138,6 +138,13 @@ impl TerminalSession {
             .send(bytes)
             .context("Send PTY input")
     }
+    #[cfg(feature = "native-view")]
+    pub(crate) fn try_scroll_state(&self) -> Result<Option<super::grid::ScrollState>> {
+        self.try_grid(|grid| grid.scroll_state())
+    }
+    pub fn scroll_to(&self, offset: usize) {
+        self.grid.lock().unwrap().scroll_to(offset);
+    }
     pub fn scroll_multiplier(&self, modifiers: super::grid::MouseModifiers) -> f64 {
         self.grid.lock().unwrap().scroll_multiplier(modifiers)
     }

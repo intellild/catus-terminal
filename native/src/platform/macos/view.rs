@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::{NSEvent, NSEventType, NSTextInputContext, NSView};
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
-use objc2_quartz_core::CAMetalLayer;
+use objc2_quartz_core::{CALayer, CAMetalLayer};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -21,6 +21,7 @@ pub struct MacTerminalView {
     context: RefCell<Option<Retained<NSTextInputContext>>>,
     osr: Cell<bool>,
     attached: Cell<bool>,
+    overlay_mask: Cell<Option<(f64, f64, f64)>>,
 }
 
 /// Create the Rust-owned native terminal adapter.
@@ -85,6 +86,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
         context: RefCell::new(None),
         osr: Cell::new(parent.is_none_or(|parent| parent.window().is_none())),
         attached: Cell::new(false),
+        overlay_mask: Cell::new(None),
     }))
 }
 
@@ -122,6 +124,11 @@ impl MacTerminalView {
         self.blur();
         self.terminal.borrow_mut().take();
         self.input.setHidden(true);
+        self.state.overlay_width.set(0.);
+        self.overlay_mask.set(None);
+        unsafe {
+            self.layer.setMask(None);
+        }
     }
     pub fn attach(&self) {
         self.assert_ui();
@@ -238,10 +245,43 @@ impl MacTerminalView {
         self.detach();
         self.clear_terminal();
     }
+    fn update_overlay(&self, terminal: &TerminalHandle) {
+        // AppKit subviews sit above Lynx's composited UI. Reveal the overlay strip
+        // without resizing the terminal grid, and let Lynx receive hits there.
+        let Ok(scroll) = terminal.scroll_state() else {
+            return;
+        };
+        let width = if scroll.history_rows > 0 { 12. } else { 0. };
+        let bounds = self.input.bounds();
+        let key = (bounds.size.width, bounds.size.height, width);
+        if self.overlay_mask.get() == Some(key) {
+            return;
+        }
+        self.overlay_mask.set(Some(key));
+        self.state.overlay_width.set(width);
+        if width == 0. {
+            unsafe {
+                self.layer.setMask(None);
+            }
+        } else {
+            let mask = CALayer::layer();
+            mask.setFrame(NSRect::new(
+                NSPoint::new(0., 0.),
+                NSSize::new((bounds.size.width - width).max(0.), bounds.size.height),
+            ));
+            mask.setBackgroundColor(Some(&objc2_core_graphics::CGColor::new_generic_rgb(
+                0., 0., 0., 1.,
+            )));
+            unsafe {
+                self.layer.setMask(Some(&mask));
+            }
+        }
+    }
     pub fn render_native(&self, deadline: i64) -> Result<bool> {
         self.assert_ui();
         let binding = self.terminal.borrow();
         let terminal = binding.as_ref().context("Terminal is not bound")?;
+        self.update_overlay(terminal);
         let rendered =
             unsafe { terminal.render_layer(Retained::as_ptr(&self.layer) as usize, deadline)? };
         if rendered {

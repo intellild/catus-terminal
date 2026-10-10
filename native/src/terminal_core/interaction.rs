@@ -1,5 +1,13 @@
 //! Alacritty history/selection and terminal mouse reporting; no OS/GPU APIs.
 use super::TerminalGrid;
+use alacritty_terminal::grid::Dimensions;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScrollState {
+    pub offset: usize,
+    pub history_rows: usize,
+    pub visible_rows: usize,
+}
 use alacritty_terminal::{
     grid::Scroll,
     index::{Column, Point, Side},
@@ -23,6 +31,22 @@ pub enum PointerAction {
 }
 
 impl TerminalGrid {
+    pub fn scroll_state(&self) -> ScrollState {
+        ScrollState {
+            offset: self.term.grid().display_offset(),
+            history_rows: self.term.grid().history_size(),
+            visible_rows: self.size.rows,
+        }
+    }
+    pub fn scroll_to(&mut self, offset: usize) {
+        let before = self.term.grid().display_offset();
+        let target = offset.min(self.term.grid().history_size());
+        self.term
+            .scroll_display(Scroll::Delta(target as i32 - before as i32));
+        if self.term.grid().display_offset() != before {
+            self.revision += 1;
+        }
+    }
     pub fn scroll_multiplier(&self, modifiers: MouseModifiers) -> f64 {
         if self.term.mode().intersects(TermMode::MOUSE_MODE) && !modifiers.shift {
             1.

@@ -368,4 +368,4 @@ mod tests;
 
 #[path = "interaction.rs"]
 mod interaction;
-pub use interaction::{MouseModifiers, PointerAction};
+pub use interaction::{MouseModifiers, PointerAction, ScrollState};

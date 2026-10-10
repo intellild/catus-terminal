@@ -95,5 +95,14 @@ pub(crate) fn run_native_input_tests() {
         let _: () = objc2::msg_send![&*input, copy: std::ptr::null::<AnyObject>()];
     }
     assert!(matches!(events.borrow().last(), Some(InputEvent::Copy)));
+    input.setFrame(NSRect::new(NSPoint::new(0., 0.), NSSize::new(200., 100.)));
+    input.ivars().overlay_width.set(12.);
+    let hit: *mut NSView = unsafe { objc2::msg_send![&*input, hitTest: NSPoint::new(195., 50.)] };
+    assert!(
+        hit.is_null(),
+        "Lynx overlay strip must receive hits instead of the NSView"
+    );
+    let hit: *mut NSView = unsafe { objc2::msg_send![&*input, hitTest: NSPoint::new(100., 50.)] };
+    assert!(!hit.is_null(), "terminal content retains native input");
     println!("Rust terminal NSView input tests passed");
 }
