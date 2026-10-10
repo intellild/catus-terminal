@@ -1,6 +1,7 @@
 //! Convert logical native input coordinates into terminal cells.
 use super::terminal::ffi::NativeMouseEvent;
 use crate::{
+    binding::types::MouseButton,
     terminal_core::grid::{MouseModifiers, PointerAction},
     terminal_session::TerminalHandle,
 };
@@ -61,9 +62,9 @@ impl TerminalHandle {
             return Ok(());
         }
         let button = match event.buttons {
-            bits if bits & 1 != 0 => 0,
-            bits if bits & 4 != 0 => 1,
-            bits if bits & 2 != 0 => 2,
+            buttons if buttons.contains(MouseButton::Primary) => 0,
+            buttons if buttons.contains(MouseButton::Middle) => 1,
+            buttons if buttons.contains(MouseButton::Secondary) => 2,
             _ => mouse.button,
         };
         let mut clicks = event.clicks;

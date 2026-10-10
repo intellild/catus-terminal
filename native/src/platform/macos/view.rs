@@ -62,9 +62,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
             Ok(())
         },
         move || {
-            if host.request_focus != 0 {
-                let callback: unsafe extern "C" fn(usize) =
-                    unsafe { std::mem::transmute(host.request_focus) };
+            if let Some(callback) = host.request_focus {
                 unsafe {
                     callback(host.native_view);
                 }
@@ -214,9 +212,7 @@ impl MacTerminalView {
         }
     }
     fn register_ime(&self, handler: usize, opaque: usize) {
-        if self.host.register_ime != 0 {
-            let callback: unsafe extern "C" fn(usize, usize, usize) =
-                unsafe { std::mem::transmute(self.host.register_ime) };
+        if let Some(callback) = self.host.register_ime {
             unsafe {
                 callback(self.host.lynx_view, handler, opaque);
             }
@@ -293,13 +289,13 @@ impl MacTerminalView {
     /// Surface must be a live, borrowed Lynx IOSurface for this call.
     pub unsafe fn render_osr(
         &self,
-        surface: &super::surface::IOSurface,
+        surface: &objc2_io_surface::IOSurfaceRef,
         deadline: i64,
     ) -> Result<bool> {
         self.assert_ui();
         let binding = self.terminal.borrow();
         let terminal = binding.as_ref().context("Terminal is not bound")?;
-        let rendered = unsafe { terminal.render_surface(surface.as_native(), deadline)? };
+        let rendered = unsafe { terminal.render_surface(surface, deadline)? };
         if rendered {
             self.update_cursor(terminal);
         }

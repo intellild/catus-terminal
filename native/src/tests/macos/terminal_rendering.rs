@@ -1,4 +1,5 @@
 use super::*;
+use crate::terminal_session::acquire_terminal;
 use crate::terminal_session::{
     TerminalSessionCommand, close_terminal_session, create_terminal_session,
 };
@@ -415,7 +416,7 @@ fn native_mouse_selection_and_precision_scroll_refresh_the_surface() {
         y: 8. + ch * 0.5,
         wheel: 0.,
         precise: true,
-        buttons: 1,
+        buttons: crate::binding::types::MouseButton::Primary.into(),
         shift: false,
         control: false,
         alt: false,

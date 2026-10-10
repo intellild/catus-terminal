@@ -1,12 +1,14 @@
 use anyhow::Error;
 #[cfg(feature = "native-view")]
+pub mod binding;
+#[cfg(feature = "native-view")]
 mod frame;
 #[cfg(feature = "native-view")]
 mod frame_callbacks;
 #[cfg(feature = "native-view")]
 mod frame_driver;
 #[cfg(feature = "native-view")]
-pub mod lynx_extension;
+mod native_terminal_view;
 #[cfg(feature = "native-view")]
 mod terminal_extension;
 #[cfg(feature = "native-view")]

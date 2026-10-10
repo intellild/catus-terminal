@@ -2,14 +2,18 @@
 use std::{ptr::NonNull, sync::OnceLock};
 
 use crate::{
+    binding::{
+        extension::{self, Extension, LynxView},
+        native_view,
+        protocol::{ElementName, ExtensionName},
+    },
     frame_callbacks::{FrameCallbacks, create_frame_callbacks},
-    lynx_extension::{self, Extension, LynxView},
-    platform::{NativeFrameCallbacks, create_native_frame_callbacks},
+    native_terminal_view::{NativeTerminalView, TerminalHost},
 };
 
 struct TerminalExtension {
     frames: Box<FrameCallbacks>,
-    host: OnceLock<cxx::SharedPtr<NativeFrameCallbacks>>,
+    host: OnceLock<Box<TerminalHost>>,
 }
 
 impl Default for TerminalExtension {
@@ -24,21 +28,15 @@ impl Default for TerminalExtension {
 impl Extension for TerminalExtension {
     fn on_view_create(&self, view: NonNull<LynxView>) {
         let host = self.host.get_or_init(|| {
-            // SAFETY: Lynx invokes view creation on UI. Both owners share the
-            // same Rust registry; native views retain the C++ shared pointer.
-            unsafe {
-                create_native_frame_callbacks(view.as_ptr(), Box::new((*self.frames).clone()))
-            }
+            Box::new(TerminalHost {
+                view: view.as_ptr() as usize,
+                frames: (*self.frames).clone(),
+            })
         });
-        // SAFETY: The host stays alive throughout registration. Created native
-        // views acquire their own shared ownership before using the opaque data.
+        // SAFETY: Lynx creates native views on UI; the extension owns the
+        // immutable factory context throughout this window's lifetime.
         unsafe {
-            lynx_extension::lynx_view_register_native_view(
-                view.as_ptr(),
-                c"native-terminal".as_ptr(),
-                Some(lynx_extension::catus_create_native_terminal_view),
-                host.as_ptr().cast_mut().cast(),
-            );
+            native_view::register::<NativeTerminalView>(view, ElementName::Terminal, host);
         }
     }
 
@@ -66,7 +64,7 @@ impl Drop for TerminalExtension {
 }
 
 pub(crate) fn register_terminal_extension() {
-    lynx_extension::register::<TerminalExtension>(c"CatusNativeTerminalElement", false);
+    extension::register::<TerminalExtension>(ExtensionName::Terminal, false);
 }
 
 #[cfg(test)]

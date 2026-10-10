@@ -27,9 +27,6 @@ endif()
 add_library(catus_native STATIC
   common/NativeTerminalRegistration.cc
 )
-if(APPLE)
-  target_sources(catus_native PRIVATE platform/macos/NativeTerminalView.cc)
-endif()
 target_compile_features(catus_native PRIVATE cxx_std_17)
 target_include_directories(catus_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"

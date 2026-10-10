@@ -4,7 +4,31 @@ use crate::renderer::create_terminal_renderer;
 use crate::terminal_session::{SessionRenderer, TerminalHandle};
 use anyhow::{Context, Result, anyhow};
 
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct NativeScrollState {
+    pub(crate) offset: u32,
+    pub(crate) history_rows: u32,
+    pub(crate) visible_rows: u32,
+}
+
 impl TerminalHandle {
+    pub(crate) fn scroll_state(&self) -> Result<NativeScrollState> {
+        use anyhow::Context;
+        let state = self
+            .session
+            .core
+            .try_scroll_state()?
+            .context("Terminal grid busy")?;
+        Ok(NativeScrollState {
+            offset: state.offset as u32,
+            history_rows: state.history_rows as u32,
+            visible_rows: state.visible_rows as u32,
+        })
+    }
+    pub(crate) fn scroll_to(&self, offset: u32) {
+        self.session.core.scroll_to(offset as usize);
+    }
+
     pub(crate) fn set_preedit(&self, text: &str) {
         *self.preedit.lock().unwrap() = text.to_owned();
         self.invalidate_frame();

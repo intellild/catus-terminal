@@ -1,6 +1,7 @@
 //! AppKit text-input client, implemented with objc2 like winit's macOS view.
 //! AppKit owns composition/keyboard interpretation; only committed text reaches PTY.
 use super::terminal::ffi::NativeMouseEvent;
+use crate::binding::types::{MouseButton, MouseButtons};
 use anyhow::Result;
 use objc2::{
     AnyThread, DefinedClass, MainThreadOnly, define_class, msg_send,
@@ -236,10 +237,10 @@ impl InputView {
         } else {
             event.buttonNumber()
         } {
-            0 => 1,
-            1 => 2,
-            2 => 4,
-            _ => 0,
+            0 => MouseButton::Primary.into(),
+            1 => MouseButton::Secondary.into(),
+            2 => MouseButton::Middle.into(),
+            _ => MouseButtons::EMPTY,
         };
         self.ivars().emit(InputEvent::Mouse(NativeMouseEvent {
             kind,
