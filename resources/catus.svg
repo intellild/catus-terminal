@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Catus Terminal</title>
+  <desc id="desc">A white terminal frame with cat ears integrated into its upper corners enclosing a green dollar sign and underscore on a black rounded square.</desc>
+  <rect width="512" height="512" rx="112" fill="#08090B"/>
+  <path
+    d="M64 384 V92 C64 74 74 69 88 80 L152 132 C162 140 168 144 180 144 H332 C344 144 350 140 360 132 L424 80 C438 69 448 74 448 92 V384 C448 419 419 448 384 448 H128 C93 448 64 419 64 384 Z"
+    stroke="#F4F5F7"
+    stroke-width="26"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <g transform="translate(0 16)" stroke="#58E88B" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M250 249 C242 237 231 233 219 233 C202 233 191 242 191 255 C191 270 203 275 220 280 C238 285 250 291 250 305 C250 319 238 328 221 328 C206 328 194 322 187 311"/>
+    <path d="M220 221 V340"/>
+    <path d="M282 330 H330"/>
+  </g>
+</svg>

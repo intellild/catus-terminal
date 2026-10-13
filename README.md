@@ -307,6 +307,38 @@ pnpm run test:e2e:update # 显式生成或更新截图基准，更新后检查 P
 pnpm run test:rust   # Rust 生命周期/异常/多线程测试、fmt、clippy
 pnpm run test:napi   # 实际 Node-API 扩展的构造、方法、句柄、异常测试
 pnpm run pack        # 本机 macOS 应用打包，不发布
+pnpm run pack:dir    # 生成本机 .app 目录，不生成安装包
+pnpm run build:icons # 从 SVG 重新生成应用图标
+```
+
+应用使用官方 `@lynx-js/lynxtron-builder` 打包，配置位于 `electron-builder.yml`。
+`pnpm run pack` 先生成图标并构建原生库、Lynx UI 与 desktop 主进程，再使用与当前
+Lynxtron 版本匹配的 release runtime 打包；产物位于 `dist/`，不会自动发布。
+例如，在 Apple Silicon Mac 上运行 `pnpm run pack:dir`，会生成
+`dist/mac-arm64/Catus Terminal.app`；`pnpm run pack` 还会生成 DMG 和 ZIP 安装产物。
+应用目前的原生视图只支持 macOS，Windows 图标已配置，但暂不支持 Windows 应用构建。
+
+AutoLink 将 `@catus/native` 暂存到 `dist/desktop/.lynxtron/native/node_modules/@catus/native/`，
+打包器再将它放入 `.app/Contents/Resources/app.asar.unpacked/.lynxtron/native/`。
+源码中的 `native/` 目录不会原样出现在应用根目录。模块加载及终端呈现的验证结果见
+[打包验证记录](docs/packaging-verification.md)。macOS 显示器休眠时，普通窗口的
+MTS RAF 回调会停止，终端可能保持空白；验证自动呈现需要唤醒显示器。
+
+`resources/catus.svg` 是图标源文件。修改后运行 `pnpm build:icons`，即可使用
+`@resvg/resvg-js` 生成 1024px PNG、多尺寸 macOS ICNS 和 Windows ICO；`pnpm run pack`
+会自动执行这一步。生成文件随源码保存，打包器通过各平台的 `icon` 配置使用它们。
+
+```text
+resources/catus.svg → scripts/build-icons.mjs
+  生成 catus.png / catus.icns / catus.ico
+       ↓
+pnpm build → native/build.mjs + lynx.config.ts + rsbuild.config.ts
+  构建 native、Lynx bundle、desktop 主进程和 AutoLink 原生包
+       ↓
+lynxtron-builder → electron-builder.yml
+  使用 Catus 图标和匹配的 Lynxtron release runtime
+       ↓
+dist/mac-arm64/Catus Terminal.app + DMG / ZIP
 ```
 
 根目录 `tsconfig.json` 使用 `files: []` 和 `references` 组织三个 TypeScript 项目：

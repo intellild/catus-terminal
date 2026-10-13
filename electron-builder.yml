@@ -21,17 +21,19 @@ npmRebuild: false
 extraResources:
   - from: src/assets
     to: assets
-icon: lynxtron.png
+icon: resources/catus.png
 electronBranding:
   projectName: lynxtron
   productName: Lynxtron
 mac:
+  icon: resources/catus.icns
   artifactName: CatusTerminal-v${version}-darwin-${arch}.${ext}
   extendInfo:
     CFBundleURLSchemes:
       - CatusTerminal
   identity: null
 win:
+  icon: resources/catus.ico
   target:
     - target: nsis
       arch: x64
