@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    binding::types::MouseButtons, terminal_core::pty::TerminalSession, terminal_session::Session,
+    binding::types::MouseButtons, terminal_core::session::TerminalSession,
+    terminal_session::Session,
 };
 use std::sync::{Arc, Mutex, mpsc::Receiver};
 

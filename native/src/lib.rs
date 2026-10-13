@@ -23,6 +23,7 @@ pub mod terminal_core;
 mod terminal_session;
 #[cfg(feature = "native-view")]
 pub mod text;
+mod workspace;
 pub use terminal_session::{
     TerminalSessionCommand, TerminalSessionInfo, close_terminal_session, create_terminal_session,
     detach_terminal_session, get_terminal_session_info, write_terminal_session,

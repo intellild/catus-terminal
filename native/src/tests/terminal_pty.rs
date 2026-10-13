@@ -1,4 +1,5 @@
 use super::*;
+use std::thread;
 use std::time::{Duration, Instant};
 
 impl TerminalSession {
@@ -10,12 +11,7 @@ impl TerminalSession {
         (
             Self {
                 grid: Arc::new(Mutex::new(grid)),
-                master: Mutex::new(None),
-                child: Mutex::new(None),
-                input: Mutex::new(Some(tx)),
-                exited: Arc::new(AtomicBool::new(false)),
-                error: Arc::new(Mutex::new(None)),
-                tmux: None,
+                pty: Pty::recording(tx, Arc::new(PlainPtyDelegate)),
                 shell: "recording".into(),
             },
             rx,
@@ -49,7 +45,7 @@ fn stored_pty_errors_keep_their_causes_across_repeated_reads() {
         TerminalSession::command("/bin/sh", &["-i".into()], GridSize::new(80, 24)).unwrap();
     let source = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
     let reason = source.to_string();
-    *terminal.error.lock().unwrap() = Some(
+    terminal.pty.set_error(
         anyhow::Error::new(source)
             .context("Write PTY input")
             .into_boxed_dyn_error()

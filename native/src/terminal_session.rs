@@ -1,17 +1,14 @@
 //! Session ownership and numeric handles; the computation module stays GPU-independent.
-use crate::terminal_core::{grid::GridSize, pty::TerminalSession};
-use anyhow::{Context, Result, anyhow};
+use crate::{terminal_core::session::TerminalSession, workspace::Workspaces};
+use anyhow::Result;
 use napi_derive::napi;
-use std::{
-    collections::HashMap,
-    sync::{Arc, LazyLock, Mutex},
-};
+use std::sync::{Arc, LazyLock, Mutex};
 
 #[cfg(feature = "native-view")]
 use crate::{frame::Viewport, renderer::TerminalRenderer};
 
-static SESSIONS: LazyLock<Mutex<HashMap<u32, Arc<Session>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static WORKSPACES: LazyLock<Mutex<Workspaces>> =
+    LazyLock::new(|| Mutex::new(Workspaces::default()));
 
 pub(crate) struct Session {
     pub core: TerminalSession,
@@ -27,6 +24,7 @@ pub(crate) struct SessionRenderer {
 
 #[napi(object)]
 pub struct TerminalSessionCommand {
+    pub workspace_id: Option<String>,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
@@ -34,43 +32,12 @@ pub struct TerminalSessionCommand {
 }
 
 fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
-    if id == 0 {
-        return Err(anyhow!(
-            "Terminal session ID 0 is reserved for an unbound view"
-        ));
-    }
-    // Keep the entry reserved through PTY creation so concurrent callers cannot replace it.
-    let mut sessions = SESSIONS.lock().unwrap();
-    let std::collections::hash_map::Entry::Vacant(entry) = sessions.entry(id) else {
-        return Err(anyhow!("Duplicate terminal session ID: {id}"));
-    };
-    let size = GridSize::new(80, 24);
-    let core = match command {
-        Some(command) => TerminalSession::command_with_tmux(
-            &command.program,
-            &command.args,
-            command.cwd.as_deref(),
-            size,
-            command.tmux,
-        )?,
-        None => TerminalSession::default_shell(size)?,
-    };
-    let session = Arc::new(Session {
-        core,
-        #[cfg(feature = "native-view")]
-        rendering: Mutex::new(None),
-    });
-    entry.insert(session);
-    Ok(())
+    // Hold the registry through creation so concurrent callers cannot replace a handle.
+    WORKSPACES.lock().unwrap().create_session(id, command)
 }
 
 fn session(id: u32) -> Result<Arc<Session>> {
-    SESSIONS
-        .lock()
-        .unwrap()
-        .get(&id)
-        .cloned()
-        .with_context(|| format!("Unknown or released terminal session: {id}"))
+    WORKSPACES.lock().unwrap().session(id)
 }
 
 #[napi]
@@ -83,19 +50,12 @@ pub fn create_terminal_session(
 
 #[napi]
 pub fn close_terminal_session(id: u32) {
-    // Removal prevents new bindings; outstanding native handles see the closed PTY.
-    let removed = SESSIONS.lock().unwrap().remove(&id);
-    if let Some(session) = removed {
-        session.core.close();
-    }
+    WORKSPACES.lock().unwrap().close_session(id);
 }
 
 #[napi]
 pub fn detach_terminal_session(id: u32) {
-    let removed = SESSIONS.lock().unwrap().remove(&id);
-    if let Some(session) = removed {
-        session.core.detach();
-    }
+    WORKSPACES.lock().unwrap().detach_session(id);
 }
 
 #[napi]

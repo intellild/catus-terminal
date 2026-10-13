@@ -1,6 +1,11 @@
-//! PTY transport. Blocking I/O and VT parsing run outside the Lynx/UI threads.
-use super::grid::{GridSize, GridSnapshot, TerminalGrid};
-use anyhow::{Context, Result, anyhow};
+//! Shared PTY ownership, blocking I/O threads, errors and child-process cleanup.
+mod delegate;
+mod plain;
+mod tmux;
+use super::grid::{GridSize, TerminalGrid};
+use anyhow::{Context, Result};
+pub(crate) use delegate::PtyDelegate;
+pub(crate) use plain::PlainPtyDelegate;
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::{
     io::{Read, Write},
@@ -11,67 +16,26 @@ use std::{
     },
     thread,
 };
+pub(crate) use tmux::TmuxPtyDelegate;
 
 type PtyError = Arc<dyn std::error::Error + Send + Sync>;
 
-pub struct TerminalSession {
-    grid: Arc<Mutex<TerminalGrid>>,
+pub(crate) struct Pty {
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
     input: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
     exited: Arc<AtomicBool>,
     error: Arc<Mutex<Option<PtyError>>>,
-    pub(super) tmux: Option<Arc<Mutex<super::tmux::TmuxClient>>>,
-    pub shell: String,
+    delegate: Arc<dyn PtyDelegate>,
 }
-impl TerminalSession {
-    pub fn default_shell(size: GridSize) -> Result<Self> {
-        let (mut command, shell) = crate::platform::default_shell_command();
-        command.env("TERM", "xterm-256color");
-        command.env("COLORTERM", "truecolor");
-        Self::spawn(command, size, shell)
-    }
-    #[cfg(test)]
-    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
-        Self::command_in_directory(program, args, None, size)
-    }
-    #[cfg(test)]
-    pub(crate) fn command_in_directory(
-        program: &str,
-        args: &[String],
-        cwd: Option<&str>,
-        size: GridSize,
-    ) -> Result<Self> {
-        Self::command_with_tmux(program, args, cwd, size, None)
-    }
-    pub(crate) fn command_with_tmux(
-        program: &str,
-        args: &[String],
-        cwd: Option<&str>,
-        size: GridSize,
-        tmux: Option<super::tmux::TmuxOptions>,
-    ) -> Result<Self> {
-        let mut command = CommandBuilder::new(program);
-        if let Some(cwd) = cwd {
-            command.cwd(cwd);
-        }
-        command.args(args);
-        command.env("TERM", "xterm-256color");
-        command.env("COLORTERM", "truecolor");
-        if tmux.is_some() {
-            command.env_remove("TMUX");
-        }
-        Self::spawn_transport(command, size, program.to_owned(), tmux)
-    }
-    fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self> {
-        Self::spawn_transport(command, size, shell, None)
-    }
-    fn spawn_transport(
-        command: CommandBuilder,
+impl Pty {
+    pub(super) fn spawn(
+        mut command: CommandBuilder,
         size: GridSize,
         shell: String,
-        tmux: Option<super::tmux::TmuxOptions>,
-    ) -> Result<Self> {
+        delegate: Arc<dyn PtyDelegate>,
+    ) -> Result<(Self, Arc<Mutex<TerminalGrid>>)> {
+        delegate.configure_command(&mut command);
         let pair = native_pty_system()
             .openpty(pty_size(size))
             .context("Open terminal PTY")?;
@@ -86,11 +50,9 @@ impl TerminalSession {
             .with_context(|| format!("Spawn terminal process {shell}"))?;
         drop(pair.slave);
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
-        let tmux =
-            tmux.map(|options| Arc::new(Mutex::new(super::tmux::TmuxClient::new(options, size))));
-        // tmux's own VT parser answers terminal queries. A second answer from our
-        // rendering grid would be injected as user input into the pane.
-        let replies = if tmux.is_some() {
+        // A backend that answers VT queries must not receive duplicate replies
+        // from the local rendering grid as user input.
+        let replies = if delegate.answers_queries() {
             mpsc::channel().0
         } else {
             tx.clone()
@@ -99,14 +61,12 @@ impl TerminalSession {
         let exited = Arc::new(AtomicBool::new(false));
         let error: Arc<Mutex<Option<PtyError>>> = Arc::new(Mutex::new(None));
         let session = Self {
-            grid: grid.clone(),
             master: Mutex::new(Some(pair.master)),
             child: Mutex::new(Some(child)),
             input: Mutex::new(Some(tx.clone())),
             exited: exited.clone(),
             error: error.clone(),
-            tmux: tmux.clone(),
-            shell,
+            delegate: delegate.clone(),
         };
         let write_error = error.clone();
         let write_exited = exited.clone();
@@ -136,6 +96,7 @@ impl TerminalSession {
                 }
             })
             .context("Start PTY writer thread")?;
+        let read_grid = grid.clone();
         thread::Builder::new()
             .name("terminal-pty-reader".into())
             .spawn(move || {
@@ -144,22 +105,14 @@ impl TerminalSession {
                     match reader.read(&mut buffer) {
                         Ok(0) => break,
                         Ok(count) => {
-                            let mut grid = grid.lock().unwrap();
-                            if let Some(tmux) = &tmux {
-                                if let Err(err) =
-                                    tmux.lock()
-                                        .unwrap()
-                                        .advance(&buffer[..count], &mut grid, &tx)
-                                {
-                                    *error.lock().unwrap() = Some(
-                                        err.context("Read tmux control output")
-                                            .into_boxed_dyn_error()
-                                            .into(),
-                                    );
-                                    break;
-                                }
-                            } else {
-                                grid.advance(&buffer[..count]);
+                            let mut grid = read_grid.lock().unwrap();
+                            if let Err(err) = delegate.advance(&buffer[..count], &mut grid, &tx) {
+                                *error.lock().unwrap() = Some(
+                                    err.context("Process terminal output")
+                                        .into_boxed_dyn_error()
+                                        .into(),
+                                );
+                                break;
                             }
                         }
                         Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -178,132 +131,38 @@ impl TerminalSession {
                 exited.store(true, Ordering::Release);
             })
             .context("Start PTY reader thread")?;
-        Ok(session)
+        Ok((session, grid))
     }
-    pub fn write(&self, bytes: Vec<u8>) -> Result<()> {
-        if self.exited() {
-            return Err(anyhow!("Shell has exited"));
-        }
-        self.grid.lock().unwrap().clear_interaction();
-        self.send_input(bytes)
-    }
-    fn send_input(&self, bytes: Vec<u8>) -> Result<()> {
+    pub(super) fn write(&self, bytes: Vec<u8>) -> Result<()> {
         let input = self.input.lock().unwrap();
         let tx = input.as_ref().context("Terminal is closed")?;
-        if let Some(tmux) = &self.tmux {
-            tmux.lock().unwrap().input(bytes, tx)
-        } else {
-            tx.send(bytes).context("Send PTY input")
-        }
+        self.delegate.input(bytes, tx)
     }
-    #[cfg(feature = "native-view")]
-    pub(crate) fn try_scroll_state(&self) -> Result<Option<super::grid::ScrollState>> {
-        self.try_grid(|grid| grid.scroll_state())
-    }
-    pub fn scroll_to(&self, offset: usize) {
-        self.grid.lock().unwrap().scroll_to(offset);
-    }
-    pub fn scroll_multiplier(&self, modifiers: super::grid::MouseModifiers) -> f64 {
-        self.grid.lock().unwrap().scroll_multiplier(modifiers)
-    }
-    pub fn selected_text(&self) -> Option<String> {
-        self.grid.lock().unwrap().selected_text()
-    }
-    #[allow(clippy::too_many_arguments)]
-    pub fn pointer(
-        &self,
-        action: super::grid::PointerAction,
-        row: usize,
-        column: usize,
-        right_half: bool,
-        clicks: u8,
-        button: u8,
-        modifiers: super::grid::MouseModifiers,
-    ) -> Result<()> {
-        let bytes = self
-            .grid
-            .lock()
-            .unwrap()
-            .pointer(action, row, column, right_half, clicks, button, modifiers);
-        if let Some(bytes) = bytes {
-            self.write_mouse(bytes)?;
+    pub(super) fn resize(&self, size: GridSize) -> Result<()> {
+        if let Some(tx) = self.input.lock().unwrap().as_ref() {
+            let master = self.master.lock().unwrap();
+            self.delegate.resize(size, master.as_deref(), tx)?;
         }
         Ok(())
     }
-    pub fn scroll(
-        &self,
-        lines: i32,
-        row: usize,
-        column: usize,
-        modifiers: super::grid::MouseModifiers,
-    ) -> Result<()> {
-        let bytes = self
-            .grid
-            .lock()
-            .unwrap()
-            .scroll(lines, row, column, modifiers);
-        if let Some(bytes) = bytes {
-            self.write_mouse(bytes)?;
-        }
-        Ok(())
+    #[cfg(test)]
+    pub(super) fn ready(&self) -> bool {
+        self.delegate.ready()
     }
-    fn write_mouse(&self, bytes: Vec<u8>) -> Result<()> {
-        self.send_input(bytes)
-    }
-
-    pub fn paste(&self, text: &str) -> Result<()> {
-        let bytes = self.grid.lock().unwrap().paste(text);
-        self.write(bytes)
-    }
-    pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
-        let bytes = self.grid.lock().unwrap().key(key, control, alt);
-        if let Some(bytes) = bytes {
-            self.write(bytes)?;
-        }
-        Ok(())
-    }
-    pub fn resize(&self, size: GridSize) -> Result<()> {
-        let mut grid = self.grid.lock().unwrap();
-        if grid.size() != size {
-            if let Some(tmux) = &self.tmux {
-                if let Some(tx) = self.input.lock().unwrap().as_ref() {
-                    tmux.lock().unwrap().resize(size, tx)?;
-                }
-            } else if let Some(master) = self.master.lock().unwrap().as_ref() {
-                master
-                    .resize(pty_size(size))
-                    .context("Resize terminal PTY")?;
-            }
-            grid.resize(size);
-        }
-        Ok(())
-    }
-    pub fn size(&self) -> GridSize {
-        self.grid.lock().unwrap().size()
-    }
-    pub fn snapshot(&self) -> GridSnapshot {
-        self.grid.lock().unwrap().snapshot()
-    }
-    #[cfg(feature = "native-view")]
-    pub(crate) fn try_snapshot(&self) -> Result<Option<GridSnapshot>> {
-        self.try_grid(|grid| grid.snapshot())
-    }
-    #[cfg(feature = "native-view")]
-    pub(crate) fn try_revision(&self) -> Result<Option<u64>> {
-        self.try_grid(|grid| grid.revision())
-    }
-    #[cfg(feature = "native-view")]
-    fn try_grid<T>(&self, read: impl FnOnce(&TerminalGrid) -> T) -> Result<Option<T>> {
-        match self.grid.try_lock() {
-            Ok(grid) => Ok(Some(read(&grid))),
-            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                Err(anyhow!("Terminal grid lock poisoned"))
-            }
+    #[cfg(test)]
+    pub(super) fn recording(tx: mpsc::Sender<Vec<u8>>, delegate: Arc<dyn PtyDelegate>) -> Self {
+        Self {
+            master: Mutex::new(None),
+            child: Mutex::new(None),
+            input: Mutex::new(Some(tx)),
+            exited: Arc::new(AtomicBool::new(false)),
+            error: Arc::new(Mutex::new(None)),
+            delegate,
         }
     }
-    pub fn revision(&self) -> u64 {
-        self.grid.lock().unwrap().revision()
+    #[cfg(test)]
+    pub(super) fn set_error(&self, error: PtyError) {
+        *self.error.lock().unwrap() = Some(error);
     }
     pub fn exited(&self) -> bool {
         let mut child = self.child.lock().unwrap();
@@ -328,25 +187,23 @@ impl TerminalSession {
         self.close_transport(true);
     }
     fn close_transport(&self, preserve: bool) {
-        if let Some(tmux) = &self.tmux
-            && let Some(tx) = self.input.lock().unwrap().as_ref()
-        {
-            tmux.lock().unwrap().close(preserve, tx);
-        }
+        let grace = self
+            .input
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|tx| self.delegate.close(preserve, tx))
+            .unwrap_or_default();
         if let Some(mut child) = self.child.lock().unwrap().take() {
             // portable-pty's Unix kill waits briefly after SIGHUP. Keep both it and
             // reaping outside the UI thread when closing a tab.
-            let control = self.tmux.is_some();
             thread::spawn(move || {
-                if control {
-                    // Let the writer deliver kill-window/detach-client before
-                    // terminating the control connection (including SSH).
-                    for _ in 0..50 {
-                        if matches!(child.try_wait(), Ok(Some(_))) {
-                            return;
-                        }
-                        thread::sleep(std::time::Duration::from_millis(10));
+                let deadline = std::time::Instant::now() + grace;
+                while std::time::Instant::now() < deadline {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        return;
                     }
+                    thread::sleep(std::time::Duration::from_millis(10));
                 }
                 let _ = child.kill();
                 let _ = child.wait();
@@ -357,7 +214,7 @@ impl TerminalSession {
         self.exited.store(true, Ordering::Release);
     }
 }
-impl Drop for TerminalSession {
+impl Drop for Pty {
     fn drop(&mut self) {
         self.detach();
     }
@@ -372,5 +229,5 @@ fn pty_size(size: GridSize) -> PtySize {
 }
 
 #[cfg(test)]
-#[path = "../tests/terminal_pty.rs"]
+#[path = "../tests/pty.rs"]
 mod tests;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::terminal_core::pty::TerminalSession;
+use crate::{terminal_core::pty::TmuxPtyDelegate, terminal_core::session::TerminalSession};
 use std::{
     process::Command,
     thread,
@@ -111,12 +111,12 @@ impl Server {
             "4",
             "/bin/sh -i",
         ];
-        TerminalSession::command_with_tmux(
+        TerminalSession::command_with_delegate(
             "tmux",
             &args.map(String::from),
             Some("/tmp"),
             GridSize::new(20, 4),
-            Some(options(window)),
+            std::sync::Arc::new(TmuxPtyDelegate::new(options(window), GridSize::new(20, 4))),
         )
         .unwrap()
     }
@@ -141,8 +141,7 @@ fn wait(terminal: &TerminalSession, condition: impl Fn() -> bool) {
     }
 }
 fn ready(terminal: &TerminalSession) -> bool {
-    let client = terminal.tmux.as_ref().unwrap().lock().unwrap();
-    client.live && !client.syncing
+    terminal.ready()
 }
 
 #[test]
