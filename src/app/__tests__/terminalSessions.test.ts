@@ -104,6 +104,21 @@ test('creation errors stay in atom state, never bind a missing ID, and are not c
   expect(registry.get(sessionViewAtom).terminalError).toBe('');
 });
 
+test('explicit tab closure closes the window; registry disposal detaches remaining sessions', () => {
+  const detachTerminalSession = rstest.fn((id: number) => {
+    live.delete(id);
+  });
+  registry.set(terminalHostAtom, { ...host, detachTerminalSession });
+  start();
+  newTab(registry);
+  closeTab(registry, 2);
+  expect(host.closeTerminalSession).toHaveBeenCalledWith(2);
+  expect(detachTerminalSession).not.toHaveBeenCalled();
+  registry.dispose();
+  expect(detachTerminalSession).toHaveBeenCalledWith(1);
+  expect([...live]).toEqual([]);
+});
+
 test('SFTP tabs have no PTY; closing during connection still releases the late connection', async () => {
   const close = rstest.fn(async () => {});
   let finish!: (fs: import('../../shared/sftp').RemoteFs) => void;

@@ -164,6 +164,14 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 - Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
   远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
 - 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
+- Workspace 设置中的 **Use tmux** 复选框启用 tmux control mode（JSON 字段 `tmux: true`，默认关闭）。
+  本地使用本机 tmux，SSH workspace 使用远端 tmux，目标机器需安装 tmux 3.2 或更新版本。
+  每个 workspace 使用 `catus-<workspace ID>` session，每个 terminal tab 对应独立窗口；
+  使用独立的 `-L catus` socket，Shell、自定义命令和工作目录仍由 workspace 配置决定。
+  关闭 tab 删除对应窗口，退出应用只断开控制连接，tmux 中的进程继续运行。
+  重开相同 tab ID 时会重新连接已有窗口，并读取屏幕、历史和光标状态；应用仍不自动导入所有保留窗口。
+  例如 shell workspace 可以在应用外通过 `tmux -L catus attach -t catus-shell` 连接。
+  修改配置仍只影响新建 tab；SFTP 不受 tmux 选项影响。
 
 默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。
 首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过

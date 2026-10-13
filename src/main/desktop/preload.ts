@@ -12,6 +12,7 @@ import nativeBinding from '@catus/native/lynxtron';
 import { listShells } from './shells';
 import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
 import { resolveLaunch } from '../../shared/workspaces';
+import { resolveTmuxLaunch } from '../../shared/launch';
 import { createWorkspaceHost } from './workspaceConfig';
 import { TextEncoder, TextDecoder } from 'node:util';
 const workspaces = createWorkspaceHost();
@@ -32,6 +33,14 @@ contextBridge.exposeInLynxBTS({
           }
         : profile && environment
           ? (() => {
+              if (profile.tmux) {
+                return resolveTmuxLaunch(
+                  profile,
+                  environment,
+                  id,
+                  process.env.CATUS_E2E_TMUX_SOCKET,
+                );
+              }
               const launch = resolveLaunch(profile, environment);
               return { program: launch.command, args: [...launch.args], cwd: launch.cwd };
             })()
@@ -39,7 +48,8 @@ contextBridge.exposeInLynxBTS({
     ),
   dispatchAnimationFrame: () => nativeBinding.dispatchAnimationFrame(),
   closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),
-  ...(process.env.CATUS_E2E_PTY
+  detachTerminalSession: (id: number) => nativeBinding.detachTerminalSession(id),
+  ...(process.env.CATUS_E2E_PTY || process.env.CATUS_E2E_TMUX_SOCKET
     ? { getTerminalSessionInfo: (id: number) => nativeBinding.getTerminalSessionInfo(id) }
     : {}),
   echo: (message: string) => {

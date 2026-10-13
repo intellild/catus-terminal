@@ -15,6 +15,7 @@ impl TerminalSession {
                 input: Mutex::new(Some(tx)),
                 exited: Arc::new(AtomicBool::new(false)),
                 error: Arc::new(Mutex::new(None)),
+                tmux: None,
                 shell: "recording".into(),
             },
             rx,

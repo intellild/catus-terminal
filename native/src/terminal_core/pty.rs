@@ -21,6 +21,7 @@ pub struct TerminalSession {
     input: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
     exited: Arc<AtomicBool>,
     error: Arc<Mutex<Option<PtyError>>>,
+    pub(super) tmux: Option<Arc<Mutex<super::tmux::TmuxClient>>>,
     pub shell: String,
 }
 impl TerminalSession {
@@ -34,11 +35,21 @@ impl TerminalSession {
     pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
         Self::command_in_directory(program, args, None, size)
     }
+    #[cfg(test)]
     pub(crate) fn command_in_directory(
         program: &str,
         args: &[String],
         cwd: Option<&str>,
         size: GridSize,
+    ) -> Result<Self> {
+        Self::command_with_tmux(program, args, cwd, size, None)
+    }
+    pub(crate) fn command_with_tmux(
+        program: &str,
+        args: &[String],
+        cwd: Option<&str>,
+        size: GridSize,
+        tmux: Option<super::tmux::TmuxOptions>,
     ) -> Result<Self> {
         let mut command = CommandBuilder::new(program);
         if let Some(cwd) = cwd {
@@ -47,9 +58,20 @@ impl TerminalSession {
         command.args(args);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        Self::spawn(command, size, program.to_owned())
+        if tmux.is_some() {
+            command.env_remove("TMUX");
+        }
+        Self::spawn_transport(command, size, program.to_owned(), tmux)
     }
     fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self> {
+        Self::spawn_transport(command, size, shell, None)
+    }
+    fn spawn_transport(
+        command: CommandBuilder,
+        size: GridSize,
+        shell: String,
+        tmux: Option<super::tmux::TmuxOptions>,
+    ) -> Result<Self> {
         let pair = native_pty_system()
             .openpty(pty_size(size))
             .context("Open terminal PTY")?;
@@ -64,16 +86,26 @@ impl TerminalSession {
             .with_context(|| format!("Spawn terminal process {shell}"))?;
         drop(pair.slave);
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
-        let grid = Arc::new(Mutex::new(TerminalGrid::new(size, tx.clone())));
+        let tmux =
+            tmux.map(|options| Arc::new(Mutex::new(super::tmux::TmuxClient::new(options, size))));
+        // tmux's own VT parser answers terminal queries. A second answer from our
+        // rendering grid would be injected as user input into the pane.
+        let replies = if tmux.is_some() {
+            mpsc::channel().0
+        } else {
+            tx.clone()
+        };
+        let grid = Arc::new(Mutex::new(TerminalGrid::new(size, replies)));
         let exited = Arc::new(AtomicBool::new(false));
         let error: Arc<Mutex<Option<PtyError>>> = Arc::new(Mutex::new(None));
         let session = Self {
             grid: grid.clone(),
             master: Mutex::new(Some(pair.master)),
             child: Mutex::new(Some(child)),
-            input: Mutex::new(Some(tx)),
+            input: Mutex::new(Some(tx.clone())),
             exited: exited.clone(),
             error: error.clone(),
+            tmux: tmux.clone(),
             shell,
         };
         let write_error = error.clone();
@@ -81,10 +113,15 @@ impl TerminalSession {
         thread::Builder::new()
             .name("terminal-pty-writer".into())
             .spawn(move || {
-                while !write_exited.load(Ordering::Acquire) {
+                loop {
                     let bytes = match rx.recv_timeout(std::time::Duration::from_millis(100)) {
                         Ok(bytes) => bytes,
-                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if write_exited.load(Ordering::Acquire) {
+                                break;
+                            }
+                            continue;
+                        }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
@@ -106,7 +143,25 @@ impl TerminalSession {
                 loop {
                     match reader.read(&mut buffer) {
                         Ok(0) => break,
-                        Ok(count) => grid.lock().unwrap().advance(&buffer[..count]),
+                        Ok(count) => {
+                            let mut grid = grid.lock().unwrap();
+                            if let Some(tmux) = &tmux {
+                                if let Err(err) =
+                                    tmux.lock()
+                                        .unwrap()
+                                        .advance(&buffer[..count], &mut grid, &tx)
+                                {
+                                    *error.lock().unwrap() = Some(
+                                        err.context("Read tmux control output")
+                                            .into_boxed_dyn_error()
+                                            .into(),
+                                    );
+                                    break;
+                                }
+                            } else {
+                                grid.advance(&buffer[..count]);
+                            }
+                        }
                         Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
                         Err(err) if crate::platform::pty_reader_closed(&err) => break,
                         Err(err) => {
@@ -130,13 +185,16 @@ impl TerminalSession {
             return Err(anyhow!("Shell has exited"));
         }
         self.grid.lock().unwrap().clear_interaction();
-        self.input
-            .lock()
-            .unwrap()
-            .as_ref()
-            .context("Terminal is closed")?
-            .send(bytes)
-            .context("Send PTY input")
+        self.send_input(bytes)
+    }
+    fn send_input(&self, bytes: Vec<u8>) -> Result<()> {
+        let input = self.input.lock().unwrap();
+        let tx = input.as_ref().context("Terminal is closed")?;
+        if let Some(tmux) = &self.tmux {
+            tmux.lock().unwrap().input(bytes, tx)
+        } else {
+            tx.send(bytes).context("Send PTY input")
+        }
     }
     #[cfg(feature = "native-view")]
     pub(crate) fn try_scroll_state(&self) -> Result<Option<super::grid::ScrollState>> {
@@ -190,13 +248,7 @@ impl TerminalSession {
         Ok(())
     }
     fn write_mouse(&self, bytes: Vec<u8>) -> Result<()> {
-        self.input
-            .lock()
-            .unwrap()
-            .as_ref()
-            .context("Terminal has exited")?
-            .send(bytes)
-            .context("Write terminal mouse input")
+        self.send_input(bytes)
     }
 
     pub fn paste(&self, text: &str) -> Result<()> {
@@ -213,7 +265,11 @@ impl TerminalSession {
     pub fn resize(&self, size: GridSize) -> Result<()> {
         let mut grid = self.grid.lock().unwrap();
         if grid.size() != size {
-            if let Some(master) = self.master.lock().unwrap().as_ref() {
+            if let Some(tmux) = &self.tmux {
+                if let Some(tx) = self.input.lock().unwrap().as_ref() {
+                    tmux.lock().unwrap().resize(size, tx)?;
+                }
+            } else if let Some(master) = self.master.lock().unwrap().as_ref() {
                 master
                     .resize(pty_size(size))
                     .context("Resize terminal PTY")?;
@@ -266,10 +322,32 @@ impl TerminalSession {
             .map(|error| anyhow::Error::new(error.clone()))
     }
     pub fn close(&self) {
+        self.close_transport(false);
+    }
+    pub fn detach(&self) {
+        self.close_transport(true);
+    }
+    fn close_transport(&self, preserve: bool) {
+        if let Some(tmux) = &self.tmux
+            && let Some(tx) = self.input.lock().unwrap().as_ref()
+        {
+            tmux.lock().unwrap().close(preserve, tx);
+        }
         if let Some(mut child) = self.child.lock().unwrap().take() {
             // portable-pty's Unix kill waits briefly after SIGHUP. Keep both it and
             // reaping outside the UI thread when closing a tab.
+            let control = self.tmux.is_some();
             thread::spawn(move || {
+                if control {
+                    // Let the writer deliver kill-window/detach-client before
+                    // terminating the control connection (including SSH).
+                    for _ in 0..50 {
+                        if matches!(child.try_wait(), Ok(Some(_))) {
+                            return;
+                        }
+                        thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                }
                 let _ = child.kill();
                 let _ = child.wait();
             });
@@ -281,7 +359,7 @@ impl TerminalSession {
 }
 impl Drop for TerminalSession {
     fn drop(&mut self) {
-        self.close();
+        self.detach();
     }
 }
 fn pty_size(size: GridSize) -> PtySize {

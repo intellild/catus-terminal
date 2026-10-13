@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select';
 import { Input } from '../ui/Input';
+import { Checkbox } from '../ui/Checkbox';
 import type { ShellOption } from '../../../shared/shells';
 import type { WorkspaceEnvironment } from '../../../shared/workspaces';
 import { launchPreview } from '../../../shared/launch';
@@ -54,7 +55,7 @@ export function WorkspaceSettings({
   ];
   const preview =
     draft.type === 'ssh' && draft.host.trim() && environment
-      ? launchPreview({ ...draft, args: [] }, environment)
+      ? launchPreview({ ...draft, tmux: draft.tmux === 'true', args: [] }, environment)
       : '';
   return (
     <view className="absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]">
@@ -198,6 +199,20 @@ export function WorkspaceSettings({
                 </>
               ) : null}
               <Field name="cwd" label={t('workspace.cwd')} />
+              <FormItem>
+                <Checkbox
+                  id="profile-tmux"
+                  checked={draft.tmux === 'true'}
+                  disabled={editor.saving}
+                  onCheckedChange={(checked) => {
+                    'background only';
+                    onChange('tmux', String(checked));
+                  }}
+                >
+                  <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
+                </Checkbox>
+                <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
+              </FormItem>
               <view className="flex flex-row gap-[14px]">
                 <view className="flex-1">
                   <Field name="icon" label={t('workspace.icon')} />

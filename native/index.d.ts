@@ -25,6 +25,8 @@ export declare function createTerminalSession(
   command?: TerminalSessionCommand | undefined | null,
 ): void;
 
+export declare function detachTerminalSession(id: number): void;
+
 /**
  * Temporary JS RAF adapter. The JS timestamp has a different clock origin;
  * start a 60 Hz rendering budget on the native monotonic clock at receipt.
@@ -58,12 +60,20 @@ export interface TerminalSessionCommand {
   program: string;
   args: Array<string>;
   cwd?: string;
+  tmux?: TmuxOptions;
 }
 
 export interface TerminalSessionInfo {
   shell: string;
   exited: boolean;
   text: string;
+}
+
+export interface TmuxOptions {
+  session: string;
+  window: string;
+  command: string;
+  cwd: string;
 }
 
 export declare function writeTerminalSession(id: number, text: string): void;

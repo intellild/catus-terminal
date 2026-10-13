@@ -30,6 +30,7 @@ pub struct TerminalSessionCommand {
     pub program: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
+    pub tmux: Option<crate::terminal_core::tmux::TmuxOptions>,
 }
 
 fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
@@ -45,11 +46,12 @@ fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>)
     };
     let size = GridSize::new(80, 24);
     let core = match command {
-        Some(command) => TerminalSession::command_in_directory(
+        Some(command) => TerminalSession::command_with_tmux(
             &command.program,
             &command.args,
             command.cwd.as_deref(),
             size,
+            command.tmux,
         )?,
         None => TerminalSession::default_shell(size)?,
     };
@@ -85,6 +87,14 @@ pub fn close_terminal_session(id: u32) {
     let removed = SESSIONS.lock().unwrap().remove(&id);
     if let Some(session) = removed {
         session.core.close();
+    }
+}
+
+#[napi]
+pub fn detach_terminal_session(id: u32) {
+    let removed = SESSIONS.lock().unwrap().remove(&id);
+    if let Some(session) = removed {
+        session.core.detach();
     }
 }
 

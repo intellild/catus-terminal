@@ -25,7 +25,7 @@ mod terminal_session;
 pub mod text;
 pub use terminal_session::{
     TerminalSessionCommand, TerminalSessionInfo, close_terminal_session, create_terminal_session,
-    get_terminal_session_info, write_terminal_session,
+    detach_terminal_session, get_terminal_session_info, write_terminal_session,
 };
 #[cfg(feature = "native-view")]
 mod terminal_view;
