@@ -10,7 +10,7 @@
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
 import { listShells } from './shells';
-import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
+import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
 import { resolveLaunch } from '../../shared/workspaces';
 import { resolveTmuxLaunch } from '../../shared/launch';
 import { createWorkspaceHost } from './workspaceConfig';
@@ -23,7 +23,11 @@ contextBridge.exposeInLynxBTS({
   listShells,
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
-  createTerminalSession: (id: number, profile?: Workspace, environment?: WorkspaceEnvironment) =>
+  createTerminalSession: (
+    id: number,
+    profile?: WorkspaceSettings,
+    environment?: WorkspaceEnvironment,
+  ) =>
     nativeBinding.createTerminalSession(
       id,
       process.env.CATUS_E2E_PTY

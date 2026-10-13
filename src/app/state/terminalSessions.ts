@@ -1,11 +1,15 @@
 import type { TerminalTab } from './session';
-import type { Workspace, WorkspaceEnvironment } from '../../shared/workspaces';
+import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
 import type { RemoteFs, SftpHost } from '../../shared/sftp';
 import { sftpClient } from '../api/sftp';
 import * as Atom from 'effect/reactivity/Atom';
 
 export interface TerminalHost {
-  createTerminalSession(id: number, profile?: Workspace, environment?: WorkspaceEnvironment): void;
+  createTerminalSession(
+    id: number,
+    profile?: WorkspaceSettings,
+    environment?: WorkspaceEnvironment,
+  ): void;
   closeTerminalSession(id: number): void;
   detachTerminalSession?(id: number): void;
 }

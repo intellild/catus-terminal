@@ -2,7 +2,7 @@ import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import { terminalSessionsAtom } from './terminalSessions';
-import type { Workspace, WorkspaceConfigPayload } from '../../shared/workspaces';
+import type { WorkspaceSettings, WorkspaceConfigPayload } from '../../shared/workspaces';
 
 export interface TerminalTab {
   readonly id: number;
@@ -10,10 +10,10 @@ export interface TerminalTab {
   readonly kind: 'terminal' | 'sftp';
   readonly number: number;
   // Snapshot launch options: edits affect new tabs, not existing sessions.
-  readonly profile: Workspace;
+  readonly profile: WorkspaceSettings;
 }
 export interface WorkspaceState {
-  readonly profile: Workspace;
+  readonly profile: WorkspaceSettings;
   readonly tabIds: readonly number[];
   readonly activeTabId: number | undefined;
 }
@@ -50,7 +50,7 @@ export const activeWorkspaceAtom = Atom.make((get) => {
 export const workspaceProfilesAtom = Atom.make((get) =>
   get(workspaceIdsAtom).map((id) => get(workspaceAtom(id))!.profile),
 ).pipe(
-  Atom.withEquality<readonly Workspace[]>(
+  Atom.withEquality<readonly WorkspaceSettings[]>(
     (a, b) => a.length === b.length && a.every((profile, index) => profile === b[index]),
   ),
 );
@@ -256,7 +256,7 @@ export const editorAtom = Atom.make<EditorState>({
   saving: false,
   error: '',
 }).pipe(Atom.keepAlive);
-export function editWorkspace(workspace: Workspace): EditorState {
+export function editWorkspace(workspace: WorkspaceSettings): EditorState {
   return {
     open: true,
     draft: {
@@ -273,7 +273,7 @@ export function editWorkspace(workspace: Workspace): EditorState {
     error: '',
   };
 }
-export function createDraft(workspaces: readonly Workspace[]): EditorState {
+export function createDraft(workspaces: readonly WorkspaceSettings[]): EditorState {
   let number = 1;
   while (workspaces.some((workspace) => workspace.id === `workspace-${number}`)) {
     number += 1;
