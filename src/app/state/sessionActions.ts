@@ -204,6 +204,7 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
         }
         const profile = {
           ...fields,
+          tmux: fields.tmux === 'true',
           name: fields.name.trim(),
           host: fields.host.trim(),
           command: fields.command.trim(),

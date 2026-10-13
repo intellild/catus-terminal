@@ -44,6 +44,67 @@ export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnviro
 }
 
 export function launchPreview(workspace: Workspace, environment: WorkspaceEnvironment): string {
+  if (workspace.tmux) {
+    const launch = resolveTmuxLaunch(workspace, environment, 1);
+    return [launch.program, ...launch.args].map(quoteShell).join(' ');
+  }
   const launch = resolveLaunch(workspace, environment);
   return [launch.command, ...launch.args].map(quoteShell).join(' ');
+}
+
+// Stable names allow the same tabs to reconnect after an app restart. A dedicated
+// socket keeps Catus sessions separate from the user's ordinary tmux server.
+export function resolveTmuxLaunch(
+  workspace: Workspace,
+  environment: WorkspaceEnvironment,
+  tabId: number,
+  socket = 'catus',
+) {
+  const launch = resolveLaunch(workspace, environment);
+  const session = `catus-${workspace.id}`;
+  const window = `tab-${tabId}`;
+  const remote = workspace.type === 'ssh';
+  const shell =
+    !workspace.shell || workspace.shell === '$SHELL'
+      ? ''
+      : workspace.shell === 'custom'
+        ? workspace.command.trim()
+        : `exec ${quoteShell(workspace.shell)} -l`;
+  const command = remote
+    ? [
+        workspace.remoteCommand?.trim(),
+        shell || (workspace.remoteCommand?.trim() ? 'exec "$SHELL" -l' : ''),
+      ]
+        .filter(Boolean)
+        .join('; ')
+    : [launch.command, ...launch.args].map(quoteShell).join(' ');
+  // Remote ~ is expanded by tmux, not using the local account's home directory.
+  const cwd = remote ? workspace.cwd.replace(/^~(?=\/|$)/, '#{HOME}') : launch.cwd;
+  const tmux = { session, window, command, cwd };
+  const args = [
+    '-L',
+    socket,
+    '-CC',
+    'new-session',
+    '-A',
+    '-s',
+    session,
+    '-n',
+    window,
+    '-x',
+    '80',
+    '-y',
+    '24',
+    '-c',
+    cwd,
+    ...(command ? [command] : []),
+  ];
+  return remote
+    ? {
+        program: 'ssh',
+        args: ['-tt', '--', workspace.host!.trim(), ['tmux', ...args].map(quoteShell).join(' ')],
+        cwd: launch.cwd,
+        tmux,
+      }
+    : { program: 'tmux', args, cwd: launch.cwd, tmux };
 }

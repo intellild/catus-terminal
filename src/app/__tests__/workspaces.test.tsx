@@ -266,6 +266,9 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   await waitForTerminal();
   await openEditor(root);
   await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
+  expect(root.querySelector('#profile-tmux')?.className).not.toContain('ui-checked');
+  fireEvent.tap(root.querySelector('#profile-tmux')!);
+  expect(root.querySelector('#profile-tmux')?.className).toContain('ui-checked');
   fireEvent.tap(root.querySelector('#profile-shell')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
@@ -279,9 +282,10 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   expect(root.querySelector('#editor-error')).not.toBeNull();
   await changeInput(root, '#profile-host', 'user@server');
   await changeInput(root, '#profile-remoteCommand', 'cd /srv && exec bash -l');
-  expect(root.querySelector('#ssh-command-preview')?.textContent).toBe(
-    "'ssh' '-t' '--' 'user@server' 'cd /srv && exec bash -l; printf hello'",
+  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain(
+    "'ssh' '-tt' '--' 'user@server'",
   );
+  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain('tmux');
   fireEvent.tap(root.querySelector('#workspace-type-local')!);
   expect((root.querySelector('#profile-command') as HTMLInputElement).value).toBe('printf hello');
   fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
@@ -295,9 +299,23 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
     command: 'printf hello',
     shell: 'custom',
     args: [],
+    tmux: true,
   });
   // Already running terminals keep their old profile.
   expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
+  await openEditor(root);
+  expect(root.querySelector('#profile-tmux')?.className).toContain('ui-checked');
+  fireEvent.tap(root.querySelector('#close-settings')!);
+  fireEvent.tap(root.querySelector('#new-tab')!);
+  await rstest.waitFor(() =>
+    expect(
+      (NativeModules.nodejs.exposed as TerminalHost).createTerminalSession,
+    ).toHaveBeenCalledTimes(2),
+  );
+  const calls = rstest.mocked((NativeModules.nodejs.exposed as TerminalHost).createTerminalSession)
+    .mock.calls;
+  expect(calls[0]![1]?.tmux).toBeUndefined();
+  expect(calls[1]![1]?.tmux).toBe(true);
 });
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {

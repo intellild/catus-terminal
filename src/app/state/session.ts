@@ -236,6 +236,7 @@ export interface WorkspaceDraft {
   readonly type: 'local' | 'ssh';
   readonly host: string;
   readonly remoteCommand: string;
+  readonly tmux: string;
   readonly args: string;
   readonly cwd: string;
   readonly icon: string;
@@ -264,6 +265,7 @@ export function editWorkspace(workspace: Workspace): EditorState {
       shell: workspace.shell ?? (workspace.command === '$SHELL' ? '$SHELL' : 'custom'),
       host: workspace.host ?? '',
       remoteCommand: workspace.remoteCommand ?? '',
+      tmux: String(workspace.tmux ?? false),
       args: JSON.stringify(workspace.args),
       isNew: false,
     },
@@ -286,6 +288,7 @@ export function createDraft(workspaces: readonly Workspace[]): EditorState {
       type: 'local',
       host: '',
       remoteCommand: '',
+      tmux: 'false',
       command: '$SHELL',
       shell: '$SHELL',
       args: '["-l"]',

@@ -9,6 +9,7 @@ export const WorkspaceSchema = Schema.Struct({
   type: Schema.optional(Schema.Literals(['local', 'ssh'])),
   host: Schema.optional(Schema.String),
   remoteCommand: Schema.optional(Schema.String),
+  tmux: Schema.optional(Schema.Boolean),
   // $SHELL uses the account default; custom uses the command field.
   shell: Schema.optional(NonEmpty),
   command: NonEmpty,

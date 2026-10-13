@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createWriteStream } from 'node:fs';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -42,13 +42,15 @@ export class LynxApp {
   private client = '';
   private session = 0;
   private operation = 0;
+  private tmuxSocket = '';
 
-  async start(options: { ssh?: boolean; windowless?: boolean } = {}) {
+  async start(options: { ssh?: boolean; windowless?: boolean; tmux?: boolean } = {}) {
     if (process.platform !== 'darwin') {
       throw new Error('Native terminal E2E requires macOS + Metal.');
     }
     await mkdir('.tmp/e2e/artifacts', { recursive: true });
     this.temporary = await mkdtemp(path.join(tmpdir(), 'catus-e2e-'));
+    this.tmuxSocket = options.tmux ? path.basename(this.temporary) : '';
     const configuration = path.join(this.temporary, 'workspaces.json');
     await writeFile(
       configuration,
@@ -63,6 +65,15 @@ export class LynxApp {
             command: '$SHELL',
             args: [],
             cwd: '~',
+            ...(options.tmux
+              ? {
+                  tmux: true,
+                  shell: 'custom',
+                  command: [process.execPath, path.resolve('tests/fixtures/fake-pty.mjs')]
+                    .map((value) => "'" + value.replace(/'/g, "'\\''") + "'")
+                    .join(' '),
+                }
+              : {}),
           },
           {
             ...(options.ssh
@@ -128,7 +139,8 @@ export class LynxApp {
           CATUS_E2E_UPLOAD_FILE: options.ssh
             ? path.join(this.temporary, 'uploaded.txt')
             : undefined,
-          CATUS_E2E_PTY: path.resolve('tests/fixtures/fake-pty.mjs'),
+          CATUS_E2E_PTY: options.tmux ? undefined : path.resolve('tests/fixtures/fake-pty.mjs'),
+          CATUS_E2E_TMUX_SOCKET: this.tmuxSocket || undefined,
           CATUS_E2E_NODE: process.execPath,
           CATUS_E2E_WINDOWLESS:
             options.windowless === undefined
@@ -203,9 +215,23 @@ export class LynxApp {
     }, 3_000);
     try {
       await closed;
+      this.session = 0;
     } finally {
       globalThis.clearTimeout(timer);
     }
+  }
+
+  tmuxWindows() {
+    if (!this.tmuxSocket) {
+      throw new Error('This fixture has no tmux server');
+    }
+    return execFileSync(
+      'tmux',
+      ['-L', this.tmuxSocket, 'list-windows', '-t', 'catus-test', '-F', '#{window_name}'],
+      { encoding: 'utf8' },
+    )
+      .trim()
+      .split('\n');
   }
 
   async close() {
@@ -217,6 +243,13 @@ export class LynxApp {
       }
     } finally {
       await this.stopProcess();
+      if (this.tmuxSocket) {
+        try {
+          execFileSync('tmux', ['-L', this.tmuxSocket, 'kill-server'], { stdio: 'ignore' });
+        } catch {
+          /* Closing the last tab may already have stopped this isolated server. */
+        }
+      }
       if (this.temporary) {
         await rm(this.temporary, { recursive: true, force: true });
       }

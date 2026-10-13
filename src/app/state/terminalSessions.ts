@@ -7,6 +7,7 @@ import * as Atom from 'effect/reactivity/Atom';
 export interface TerminalHost {
   createTerminalSession(id: number, profile?: Workspace, environment?: WorkspaceEnvironment): void;
   closeTerminalSession(id: number): void;
+  detachTerminalSession?(id: number): void;
 }
 
 // Tests can supply a host without mounting React or loading a native addon.
@@ -36,7 +37,12 @@ export const terminalSessionsAtom = Atom.make((get) => {
   const errors = new Map<number, string>();
   get.addFinalizer(() => {
     for (const id of sessions) {
-      nativeHost().closeTerminalSession(id);
+      const host = nativeHost();
+      if (host.detachTerminalSession) {
+        host.detachTerminalSession(id);
+      } else {
+        host.closeTerminalSession(id);
+      }
     }
     for (const id of remote.keys()) {
       releaseRemote(id);

@@ -25,7 +25,12 @@ test('first load writes built-in defaults; saves round-trip through a new host',
   const config = {
     ...initial.config,
     workspaces: [
-      { ...initial.config.workspaces[0]!, name: 'Personal shell', command: '/bin/bash' },
+      {
+        ...initial.config.workspaces[0]!,
+        name: 'Personal shell',
+        command: '/bin/bash',
+        tmux: true,
+      },
     ],
   };
   await host.saveWorkspaces(config);

@@ -16,6 +16,7 @@ impl FakeSession {
         create_terminal_session(
             id,
             Some(TerminalSessionCommand {
+                tmux: None,
                 cwd: None,
                 program: std::env::var("CATUS_E2E_NODE").unwrap_or_else(|_| "node".into()),
                 args: vec![fixture],

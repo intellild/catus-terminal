@@ -195,6 +195,33 @@ OSR pointer cancel 使用记忆中的按键、位置和按下时修饰键补发 
 OSR 使用 Lynx 合成；网格数据始终留在 native。
 
 
+## tmux control mode
+
+`TerminalSessionCommand.tmux` 提供 session/window 名、Shell 命令和工作目录。
+`terminal_core/tmux.rs` 在 PTY 读线程解析 `-CC` 的 DCS 握手、命令结果和异步输出，
+仅将匹配 pane 的解码字节交给 Alacritty；终端查询由 tmux 自己响应。
+输入通过 `send-keys -H` 传递原始字节，覆盖键盘、鼠标报告和粘贴。
+连接时读取已有窗口或创建独立窗口，关闭自动重命名，按该 tab 的 native layout resize。
+使用 `capture-pane` 恢复屏幕和历史、备用屏幕、光标及输入模式，再接续增量输出。
+tmux 3.7+ 的 `pane_private_modes` 还能恢复 bracketed-paste 等 private modes。
+resize 使用 `resize-window`，只修改对应窗口，并重新捕获服务端 reflow 后的内容。
+`closeTerminalSession` 删除窗口；`detachTerminalSession` 和 Drop 仅断开控制连接。
+协议单测和独立 socket 上的真实 tmux 回归位于 `src/tests/tmux.rs`，
+真实 Lynx 渲染及输入验收位于 `../tests/e2e/tmux.test.ts`。
+
+```text
+Workspace tmux checkbox → preload resolveTmuxLaunch()
+       ↓
+terminal_core/pty.rs
+  本地 tmux / SSH -tt → tmux -CC
+       ↓
+terminal_core/tmux.rs
+  命令结果 / 屏幕捕获 / pane 输出 / 输入和 resize
+       ↓
+terminal_core/grid.rs
+  Alacritty 网格 → 现有 native renderer
+```
+
 ## 构建与加载
 
 `native-terminal` 使用 `CatusNativeTerminalElement` 注册。参考 Lynx CEF 的 macOS 适配：
