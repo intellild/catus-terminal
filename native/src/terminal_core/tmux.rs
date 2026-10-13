@@ -53,6 +53,10 @@ pub struct TmuxClient {
 }
 
 impl TmuxClient {
+    #[cfg(test)]
+    pub(crate) fn ready(&self) -> bool {
+        self.live && !self.syncing
+    }
     pub fn new(options: TmuxOptions, size: GridSize) -> Self {
         Self {
             options,

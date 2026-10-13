@@ -32,21 +32,25 @@ contextBridge.exposeInLynxBTS({
       id,
       process.env.CATUS_E2E_PTY
         ? {
+            workspaceId: profile?.id,
             program: process.env.CATUS_E2E_NODE ?? process.execPath,
             args: [process.env.CATUS_E2E_PTY],
           }
         : profile && environment
           ? (() => {
               if (profile.tmux) {
-                return resolveTmuxLaunch(
-                  profile,
-                  environment,
-                  id,
-                  process.env.CATUS_E2E_TMUX_SOCKET,
-                );
+                return {
+                  workspaceId: profile.id,
+                  ...resolveTmuxLaunch(profile, environment, id, process.env.CATUS_E2E_TMUX_SOCKET),
+                };
               }
               const launch = resolveLaunch(profile, environment);
-              return { program: launch.command, args: [...launch.args], cwd: launch.cwd };
+              return {
+                workspaceId: profile.id,
+                program: launch.command,
+                args: [...launch.args],
+                cwd: launch.cwd,
+              };
             })()
           : undefined,
     ),
