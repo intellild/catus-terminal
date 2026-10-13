@@ -1,7 +1,7 @@
 import { Button } from '../ui/Button';
 import { useTranslation } from '../../i18n';
 import type { ReactNode } from '@lynx-js/react';
-import type { Workspace } from '../../../shared/workspaces';
+import type { WorkspaceSettings } from '../../../shared/workspaces';
 import type { TerminalTab } from '../../state/session';
 
 export function TerminalContent({
@@ -14,7 +14,7 @@ export function TerminalContent({
   onAdd,
 }: {
   children?: ReactNode;
-  workspace?: Workspace;
+  workspace?: WorkspaceSettings;
   activeTab?: TerminalTab;
   tabCount?: number;
   loading?: boolean;

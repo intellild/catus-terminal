@@ -1,7 +1,7 @@
 import 'background-only';
 import * as Atom from 'effect/reactivity/Atom';
 import type { TerminalTab } from './session';
-import type { Workspace } from '../../shared/workspaces';
+import type { WorkspaceSettings } from '../../shared/workspaces';
 import {
   editorAtom,
   loadAtom,
@@ -59,9 +59,11 @@ export const workspaceViewAtom = Atom.family((id: string) =>
       running: !!state?.tabIds.length,
     };
   }).pipe(
-    Atom.withEquality<{ workspace: Workspace | undefined; active: boolean; running: boolean }>(
-      (a, b) => a.workspace === b.workspace && a.active === b.active && a.running === b.running,
-    ),
+    Atom.withEquality<{
+      workspace: WorkspaceSettings | undefined;
+      active: boolean;
+      running: boolean;
+    }>((a, b) => a.workspace === b.workspace && a.active === b.active && a.running === b.running),
   ),
 );
 export const workspacesViewAtom = Atom.make((get) => ({

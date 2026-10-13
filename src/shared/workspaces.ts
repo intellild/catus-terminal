@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema';
 
 const NonEmpty = Schema.String.check(Schema.isMinLength(1));
-export const WorkspaceSchema = Schema.Struct({
+export const WorkspaceSettingsSchema = Schema.Struct({
   id: NonEmpty,
   name: NonEmpty,
   icon: NonEmpty,
@@ -18,9 +18,9 @@ export const WorkspaceSchema = Schema.Struct({
 });
 export const WorkspaceConfigSchema = Schema.Struct({
   version: Schema.Literal(1),
-  workspaces: Schema.Array(WorkspaceSchema).check(Schema.isMinLength(1)),
+  workspaces: Schema.Array(WorkspaceSettingsSchema).check(Schema.isMinLength(1)),
 });
-export type Workspace = typeof WorkspaceSchema.Type;
+export type WorkspaceSettings = typeof WorkspaceSettingsSchema.Type;
 export type WorkspaceConfig = typeof WorkspaceConfigSchema.Type;
 
 export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {

@@ -1,10 +1,10 @@
-import type { Workspace, WorkspaceEnvironment } from './workspaces';
+import type { WorkspaceSettings, WorkspaceEnvironment } from './workspaces';
 
 export function quoteShell(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
-export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnvironment) {
+export function resolveLaunch(workspace: WorkspaceSettings, environment: WorkspaceEnvironment) {
   const cwd =
     workspace.cwd === '~'
       ? environment.home
@@ -43,7 +43,10 @@ export function resolveLaunch(workspace: Workspace, environment: WorkspaceEnviro
     : { command: environment.shell, args: ['-lc', workspace.command], cwd };
 }
 
-export function launchPreview(workspace: Workspace, environment: WorkspaceEnvironment): string {
+export function launchPreview(
+  workspace: WorkspaceSettings,
+  environment: WorkspaceEnvironment,
+): string {
   if (workspace.tmux) {
     const launch = resolveTmuxLaunch(workspace, environment, 1);
     return [launch.program, ...launch.args].map(quoteShell).join(' ');
@@ -55,7 +58,7 @@ export function launchPreview(workspace: Workspace, environment: WorkspaceEnviro
 // Stable names allow the same tabs to reconnect after an app restart. A dedicated
 // socket keeps Catus sessions separate from the user's ordinary tmux server.
 export function resolveTmuxLaunch(
-  workspace: Workspace,
+  workspace: WorkspaceSettings,
   environment: WorkspaceEnvironment,
   tabId: number,
   socket = 'catus',
