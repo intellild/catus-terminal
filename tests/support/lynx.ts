@@ -227,7 +227,7 @@ export class LynxApp {
     }
     return execFileSync(
       'tmux',
-      ['-L', this.tmuxSocket, 'list-windows', '-t', 'catus-test', '-F', '#{window_name}'],
+      ['-L', this.tmuxSocket, 'list-windows', '-t', '=catus', '-F', '#{window_name}'],
       { encoding: 'utf8' },
     )
       .trim()

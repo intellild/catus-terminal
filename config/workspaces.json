@@ -11,7 +11,8 @@
         "-l"
       ],
       "cwd": "~",
-      "type": "local"
+      "type": "local",
+      "tmuxSessionName": "catus"
     }
   ]
 }

@@ -269,6 +269,16 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   expect(root.querySelector('#profile-tmux')?.className).not.toContain('ui-checked');
   fireEvent.tap(root.querySelector('#profile-tmux')!);
   expect(root.querySelector('#profile-tmux')?.className).toContain('ui-checked');
+  expect((root.querySelector('#profile-tmuxSessionName') as HTMLInputElement).value).toBe('catus');
+  await changeInput(root, '#profile-tmuxSessionName', 'dev:invalid');
+  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#workspace-editor-form')?.textContent).toContain(
+      'Enter a session name without dots, colons or control characters',
+    ),
+  );
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  await changeInput(root, '#profile-tmuxSessionName', 'dev-session');
   fireEvent.tap(root.querySelector('#profile-shell')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
@@ -279,7 +289,7 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   expect(root.querySelector('#profile-command')).not.toBeNull();
   fireEvent.tap(root.querySelector('#save-workspace')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
-  expect(root.querySelector('#editor-error')).not.toBeNull();
+  await rstest.waitFor(() => expect(root.querySelector('#editor-error')).not.toBeNull());
   await changeInput(root, '#profile-host', 'user@server');
   await changeInput(root, '#profile-remoteCommand', 'cd /srv && exec bash -l');
   expect(root.querySelector('#ssh-command-preview')?.textContent).toContain(
@@ -300,6 +310,7 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
     shell: 'custom',
     args: [],
     tmux: true,
+    tmuxSessionName: 'dev-session',
   });
   // Already running terminals keep their old profile.
   expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
@@ -339,6 +350,41 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(
     defaults.workspaces.length,
   );
+});
+
+test('Hook Form shows Schema field errors, revalidates corrections and resets on reopening', async () => {
+  const host = makeHost();
+  renderApp(host);
+  const root = elementTree.root!;
+  await waitForTerminal();
+  await openEditor(root);
+  await changeInput(root, '#profile-name', ' ');
+  await changeInput(root, '#profile-cwd', ' ');
+  await changeInput(root, '#profile-color', '#xyz');
+  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('#workspace-editor-form')?.textContent).toContain(
+      'Use a six-digit hex color',
+    ),
+  );
+  expect(root.querySelector('#workspace-editor-form')?.textContent).toContain('Required');
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  await changeInput(root, '#profile-name', ' Updated shell ');
+  await changeInput(root, '#profile-cwd', ' ~/work ');
+  await changeInput(root, '#profile-color', '#aabbcc');
+  await rstest.waitFor(() => expect(root.querySelector('#editor-error')).toBeNull());
+  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]).toMatchObject({
+    name: 'Updated shell',
+    cwd: '~/work',
+    color: '#aabbcc',
+    tmux: false,
+    args: ['-l'],
+  });
+  await openEditor(root);
+  expect(root.querySelector('#editor-error')).toBeNull();
+  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Updated shell');
 });
 
 test('React unmount and remount preserve global sessions; atom writes release them', async () => {

@@ -4,6 +4,12 @@ import { cn } from '../../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { Checkbox } from '../ui/Checkbox';
+import { useEffect, useMemo } from '@lynx-js/react';
+import { useForm } from 'react-hook-form';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
+import * as Schema from 'effect/Schema';
+import * as SchemaIssue from 'effect/SchemaIssue';
+import { WorkspaceFormSchema } from '../../../shared/workspaces';
 import type { ShellOption } from '../../../shared/shells';
 import type { WorkspaceEnvironment } from '../../../shared/workspaces';
 import { launchPreview } from '../../../shared/launch';
@@ -19,16 +25,7 @@ import {
   FormSubmit,
 } from '../ui/Form';
 
-export function WorkspaceSettings({
-  editor,
-  shells,
-  onRetryShells,
-  configPath,
-  environment,
-  onClose,
-  onChange,
-  onSave,
-}: {
+interface WorkspaceSettingsProps {
   editor: EditorState;
   shells: { options: readonly ShellOption[]; loading: boolean; error: string };
   onRetryShells(): void;
@@ -37,12 +34,59 @@ export function WorkspaceSettings({
   onClose(): void;
   onChange(field: keyof WorkspaceDraft, value: string): void;
   onSave(): void;
-}) {
+}
+
+export function WorkspaceSettings(props: WorkspaceSettingsProps) {
+  const draft = props.editor.draft;
+  return props.editor.open && draft ? (
+    <WorkspaceEditor key={draft.id} {...props} draft={draft} />
+  ) : null;
+}
+
+function WorkspaceEditor({
+  editor,
+  shells,
+  onRetryShells,
+  configPath,
+  environment,
+  onClose,
+  onChange,
+  onSave,
+  draft,
+}: WorkspaceSettingsProps & { draft: WorkspaceDraft }) {
   const { t } = useTranslation();
-  const draft = editor.draft;
-  if (!editor.open || !draft) {
-    return null;
-  }
+  const resolver = useMemo(() => {
+    const translateIssue = (message: string) =>
+      message.startsWith('validation.') ? t(message) : message;
+    return standardSchemaResolver<WorkspaceDraft, unknown, typeof WorkspaceFormSchema.Type>(
+      Schema.toStandardSchemaV1(WorkspaceFormSchema.annotate({}), {
+        leafHook: (issue) => translateIssue(SchemaIssue.defaultLeafHook(issue)),
+        checkHook: (issue) => {
+          const message = SchemaIssue.defaultCheckHook(issue);
+          return message === undefined ? undefined : translateIssue(message);
+        },
+      }),
+    );
+  }, [t]);
+  const form = useForm<WorkspaceDraft, unknown, typeof WorkspaceFormSchema.Type>({
+    defaultValues: draft,
+    resolver,
+    shouldFocusError: false,
+  });
+  useEffect(() => {
+    // Registry commands can update dependent fields (shell, command and args).
+    // Sync only those values; resetting on every input cancels RHF revalidation.
+    let changed = false;
+    for (const name of Object.keys(draft) as (keyof WorkspaceDraft)[]) {
+      if (form.getValues(name) !== draft[name]) {
+        form.setValue(name, draft[name]);
+        changed = true;
+      }
+    }
+    if (changed && form.formState.isSubmitted) {
+      void form.trigger();
+    }
+  }, [draft, form]);
   const shellOptions = [
     { value: '$SHELL', label: t('workspace.defaultShell') },
     ...shells.options,
@@ -72,12 +116,15 @@ export function WorkspaceSettings({
         <scroll-view scroll-y className="shrink min-h-0">
           <view key={draft.id} id="workspace-editor-form">
             <Form
-              control={{
-                values: { ...draft },
-                disabled: editor.saving,
-                errors: editor.fieldErrors,
-                onChange: (name, value) => onChange(name as keyof WorkspaceDraft, value),
-                onSubmit: onSave,
+              control={form.control}
+              disabled={editor.saving}
+              onChange={(name, value) => {
+                'background only';
+                onChange(name as keyof WorkspaceDraft, value);
+              }}
+              onSubmit={() => {
+                'background only';
+                return form.handleSubmit(onSave)();
               }}
             >
               <Field name="name" label={t('workspace.name')} />
@@ -199,20 +246,29 @@ export function WorkspaceSettings({
                 </>
               ) : null}
               <Field name="cwd" label={t('workspace.cwd')} />
-              <FormItem>
-                <Checkbox
-                  id="profile-tmux"
-                  checked={draft.tmux === 'true'}
-                  disabled={editor.saving}
-                  onCheckedChange={(checked) => {
-                    'background only';
-                    onChange('tmux', String(checked));
-                  }}
-                >
-                  <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
-                </Checkbox>
-                <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
-              </FormItem>
+              <FormField
+                name="tmux"
+                render={({ field }) => (
+                  <FormItem>
+                    <Checkbox
+                      id="profile-tmux"
+                      checked={field.value === 'true'}
+                      disabled={field.disabled}
+                      onCheckedChange={(checked) => {
+                        'background only';
+                        field.onChange(String(checked));
+                      }}
+                    >
+                      <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
+                    </Checkbox>
+                    <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {draft.tmux === 'true' ? (
+                <Field name="tmuxSessionName" label={t('workspace.tmuxSessionName')} />
+              ) : null}
               <view className="flex flex-row gap-[14px]">
                 <view className="flex-1">
                   <Field name="icon" label={t('workspace.icon')} />
@@ -222,12 +278,12 @@ export function WorkspaceSettings({
                 </view>
               </view>
               <FormDescription>{t('workspace.changes')}</FormDescription>
-              {editor.error ? (
+              {editor.error || Object.keys(form.formState.errors).length ? (
                 <text
                   id="editor-error"
                   className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
                 >
-                  {editor.error}
+                  {editor.error || t('validation.fields')}
                 </text>
               ) : null}
               <view className="flex flex-row items-center gap-[14px] mt-[20px]">

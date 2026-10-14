@@ -99,6 +99,11 @@ macOS 默认还会尝试 Xcode 工具链。
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
 workspace 设置表单通过项目 UI 组件使用官方 Lynx UI Input。
+表单使用 React Hook Form，`FormField` 通过 `useController` 绑定 Lynx 受控组件。
+`src/shared/workspaces.ts` 集中定义配置与表单 Schema，表单通过
+`Schema.toStandardSchemaV1` 和 `standardSchemaResolver` 显示字段错误。
+Schema 同时将 args JSON 和 tmux 字符串转换为启动参数类型；Effect registry
+保留草稿、Shell 检测及配置保存，并在保存时用同一 Schema 再次校验。
 
 `src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装官方
 `@lynx-js/lynx-ui-input`，统一样式并将表单 `onChange` 映射到 `onInput`，
@@ -166,11 +171,13 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 - 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
 - Workspace 设置中的 **Use tmux** 复选框启用 tmux control mode（JSON 字段 `tmux: true`，默认关闭）。
   本地使用本机 tmux，SSH workspace 使用远端 tmux，目标机器需安装 tmux 3.2 或更新版本。
-  每个 workspace 使用 `catus-<workspace ID>` session，每个 terminal tab 对应独立窗口；
+  **Session name**（JSON 字段 `tmuxSessionName`）默认使用 `catus`，
+  可以指定已有 session 的名称；启动时优先 attach，session 不存在时再创建。
+  每个 terminal tab 对应独立窗口；
   使用独立的 `-L catus` socket，Shell、自定义命令和工作目录仍由 workspace 配置决定。
   关闭 tab 删除对应窗口，退出应用只断开控制连接，tmux 中的进程继续运行。
   重开相同 tab ID 时会重新连接已有窗口，并读取屏幕、历史和光标状态；应用仍不自动导入所有保留窗口。
-  例如 shell workspace 可以在应用外通过 `tmux -L catus attach -t catus-shell` 连接。
+  例如 shell workspace 可以在应用外通过 `tmux -L catus attach -t catus` 连接。
   修改配置仍只影响新建 tab；SFTP 不受 tmux 选项影响。
 
 默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。

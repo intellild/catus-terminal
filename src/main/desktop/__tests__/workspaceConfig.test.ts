@@ -30,6 +30,7 @@ test('first load writes built-in defaults; saves round-trip through a new host',
         name: 'Personal shell',
         command: '/bin/bash',
         tmux: true,
+        tmuxSessionName: 'personal-shell',
       },
     ],
   };

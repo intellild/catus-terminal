@@ -28,6 +28,9 @@ importers:
       '@formatjs/intl-pluralrules':
         specifier: ^5.4.6
         version: 5.4.6
+      '@hookform/resolvers':
+        specifier: ^5.9.1
+        version: 5.9.1(@sinclair/typebox@0.34.52)(ajv@8.20.0)(effect@4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909))(react-hook-form@7.90.0(@types/react@18.3.31)(react@19.2.4))(typanion@3.14.0)
       '@lynx-js/lynx-ui-checkbox':
         specifier: ^3.139.0
         version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
@@ -55,6 +58,9 @@ importers:
       react:
         specifier: 19.2.4
         version: 19.2.4
+      react-hook-form:
+        specifier: ^7.90.0
+        version: 7.90.0(@types/react@18.3.31)(react@19.2.4)
       react-i18next:
         specifier: ~15.4.1
         version: 15.4.1(i18next@24.2.3(typescript@5.9.3))(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
@@ -397,6 +403,84 @@ packages:
 
   '@formatjs/intl-pluralrules@5.4.6':
     resolution: {integrity: sha512-2HlOq+c7KsSps829SJ3B5987coX5mzKx9NbPcNwQ07eq8FBHgB3HfMoxt5HvLsdk4oQwCjAEnocbtd+wVwZ2Kg==}
+
+  '@hookform/resolvers@5.9.1':
+    resolution: {integrity: sha512-7b7vsbraJxKgjVSA1Nur9tLwj539WGJUBLA7QNvXnFoT2pM5Z7G+6rlukk4B2/QrTZy6huRtH6wKeESPKuIr6w==}
+    peerDependencies:
+      '@sinclair/typebox': '>=0.25.24'
+      '@standard-schema/spec': ^1.0.0
+      '@typeschema/main': '>=0.13.7'
+      '@vinejs/vine': ^2.0.0 || ^3.0.0 || ^4.0.0
+      ajv: ^8.12.0
+      ajv-errors: ^3.0.0
+      ajv-formats: ^2.1.1
+      arktype: ^2.0.0
+      ata-validator: ^1.2.0
+      class-transformer: '>=0.4.0'
+      class-validator: '>=0.12.0'
+      computed-types: ^1.0.0
+      effect: ^3.10.3
+      fluentvalidation-ts: ^3.0.0
+      fp-ts: ^2.7.0
+      io-ts: ^2.0.0
+      joi: ^17.0.0 || ^18.0.0
+      nope-validator: '>=0.12.0'
+      react-hook-form: ^7.55.0
+      superstruct: '>=0.12.0'
+      typanion: ^3.3.2
+      valibot: '>=0.31.0 || ^1.0.0-beta.4 || ^1.0.0-rc'
+      vest: '>=6.0.0'
+      yup: ^1.0.0
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@sinclair/typebox':
+        optional: true
+      '@standard-schema/spec':
+        optional: true
+      '@typeschema/main':
+        optional: true
+      '@vinejs/vine':
+        optional: true
+      ajv:
+        optional: true
+      ajv-errors:
+        optional: true
+      ajv-formats:
+        optional: true
+      arktype:
+        optional: true
+      ata-validator:
+        optional: true
+      class-transformer:
+        optional: true
+      class-validator:
+        optional: true
+      computed-types:
+        optional: true
+      effect:
+        optional: true
+      fluentvalidation-ts:
+        optional: true
+      fp-ts:
+        optional: true
+      io-ts:
+        optional: true
+      joi:
+        optional: true
+      nope-validator:
+        optional: true
+      superstruct:
+        optional: true
+      typanion:
+        optional: true
+      valibot:
+        optional: true
+      vest:
+        optional: true
+      yup:
+        optional: true
+      zod:
+        optional: true
 
   '@inquirer/ansi@2.0.8':
     resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
@@ -1888,6 +1972,9 @@ packages:
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
+
+  '@standard-schema/utils@0.3.0':
+    resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
   '@swc-next/decoder@0.2.2':
     resolution: {integrity: sha512-eEGT7Y7StyAQ3M5imF5kkzOJYoiGQZb+CAQ5nLjLVT5npxyaWTiA/3wMYfNpNjQ66eSeCfEQd1mRW8XBhzeEjQ==}
@@ -4283,6 +4370,16 @@ packages:
     peerDependencies:
       react: ^19.3.0
 
+  react-hook-form@7.90.0:
+    resolution: {integrity: sha512-+NdG0FLzCPhFOp2NNxaUYLF9fyZhNjx9FTBBSYWF71/l6BBlmIc/j6xlp3DbaHWLJbIG7Zd8oznA19xJClU97w==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.8.0 || ^17 || ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   react-i18next@15.4.1:
     resolution: {integrity: sha512-ahGab+IaSgZmNPYXdV1n+OYky95TGpFwnKRflX/16dY04DsYYKHtVLjeny7sBSCREEcoMbAgSkFiGLF5g5Oofw==}
     peerDependencies:
@@ -5429,6 +5526,16 @@ snapshots:
       '@formatjs/intl-localematcher': 0.6.2
       decimal.js: 10.6.0
       tslib: 2.8.1
+
+  '@hookform/resolvers@5.9.1(@sinclair/typebox@0.34.52)(ajv@8.20.0)(effect@4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909))(react-hook-form@7.90.0(@types/react@18.3.31)(react@19.2.4))(typanion@3.14.0)':
+    dependencies:
+      '@standard-schema/utils': 0.3.0
+      react-hook-form: 7.90.0(@types/react@18.3.31)(react@19.2.4)
+    optionalDependencies:
+      '@sinclair/typebox': 0.34.52
+      ajv: 8.20.0
+      effect: 4.0.0(patch_hash=0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909)
+      typanion: 3.14.0
 
   '@inquirer/ansi@2.0.8': {}
 
@@ -6901,6 +7008,8 @@ snapshots:
   '@sindresorhus/is@4.6.0': {}
 
   '@socket.io/component-emitter@3.1.2': {}
+
+  '@standard-schema/utils@0.3.0': {}
 
   '@swc-next/decoder@0.2.2': {}
 
@@ -9453,6 +9562,12 @@ snapshots:
     dependencies:
       react: 19.2.4
       scheduler: 0.28.0
+
+  react-hook-form@7.90.0(@types/react@18.3.31)(react@19.2.4):
+    dependencies:
+      react: 19.2.4
+    optionalDependencies:
+      '@types/react': 18.3.31
 
   react-i18next@15.4.1(i18next@24.2.3(typescript@5.9.3))(react-dom@19.3.0(react@19.2.4))(react@19.2.4):
     dependencies:

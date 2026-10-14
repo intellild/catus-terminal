@@ -13,10 +13,13 @@ test('local tmux tabs use a shared workspace session, stable window targets and 
     1,
   );
   const second = resolveTmuxLaunch({ ...profile, tmux: true }, environment, 2);
-  expect(first.program).toBe('tmux');
-  expect(first.args).toContain('-CC');
+  expect(first.program).toBe('/bin/sh');
+  expect(first.args[0]).toBe('-c');
+  expect(first.args[1]).toContain("'has-session' '-t' '=catus'");
+  expect(first.args[1]).toContain("then exec 'tmux' '-L' 'catus' '-CC' 'attach-session'");
+  expect(first.args[1]).toContain("else exec 'tmux' '-L' 'catus' '-CC' 'new-session' '-A'");
   expect(first.tmux).toEqual({
-    session: `catus-${profile.id}`,
+    session: 'catus',
     window: 'tab-1',
     command: "'/bin/bash' '-l'",
     cwd: '/Users/test/my files',
@@ -56,4 +59,31 @@ test('legacy config remains valid and tmux accepts only a boolean', () => {
   expect(() =>
     parseWorkspaceConfig({ version: 1, workspaces: [{ ...profile, tmux: 'true' }] }),
   ).toThrow();
+});
+
+test('configured tmux session names override the default locally and over SSH', () => {
+  const configured = { ...profile, tmux: true, tmuxSessionName: " dev team's session " };
+  const local = resolveTmuxLaunch(configured, environment, 1);
+  const remote = resolveTmuxLaunch({ ...configured, type: 'ssh', host: 'server' }, environment, 1);
+  expect(local.tmux.session).toBe("dev team's session");
+  expect(remote.tmux.session).toBe(local.tmux.session);
+  expect(remote.args[3]?.split('; else')[0]).toBe(local.args[1]?.split('; else')[0]);
+  expect(local.args[1]).toContain("'=dev team'\\''s session'");
+});
+
+test('tmux session names reject invalid tmux targets and protocol control characters', () => {
+  for (const tmuxSessionName of [
+    '',
+    ' ',
+    'dev.work',
+    'dev:work',
+    'dev\nwork',
+    'dev\rwork',
+    'dev\0work',
+    42,
+  ]) {
+    expect(() =>
+      parseWorkspaceConfig({ version: 1, workspaces: [{ ...profile, tmuxSessionName }] }),
+    ).toThrow();
+  }
 });

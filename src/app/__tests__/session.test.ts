@@ -128,7 +128,7 @@ test('configuration validates IDs and commands and resolves the account shell an
   ).toThrow('Duplicate');
   expect(() =>
     parseWorkspaceConfig({ version: 1, workspaces: [{ ...defaults.workspaces[0], command: ' ' }] }),
-  ).toThrow('blank');
+  ).toThrow('validation.required');
 });
 
 test('SSH launch uses argv and quotes preview without interpolating a host into a shell', async () => {

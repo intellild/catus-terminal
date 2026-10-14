@@ -4,19 +4,31 @@ import { cn } from '../../lib/utils';
 import { createContext, useContext } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { TextProps, ViewProps } from '@lynx-js/types';
+import { useController } from 'react-hook-form';
+import type { Control, FieldValues } from 'react-hook-form';
 
-// RHF-style field bindings without DOM refs or browser submit events.
-export interface FormControl {
-  values: Readonly<Record<string, string | boolean>>;
-  errors?: Readonly<Record<string, string>>;
+interface FormBindings {
+  control: Control;
   disabled?: boolean;
   onChange(name: string, value: string): void;
-  onSubmit(): void;
+  onSubmit(): void | Promise<void>;
 }
-const FormContext = createContext<FormControl | null>(null);
+const FormContext = createContext<FormBindings | null>(null);
 const FieldContext = createContext<{ name: string; error: string }>({ name: '', error: '' });
-export function Form({ control, children }: { control: FormControl; children: ReactNode }) {
-  return <FormContext.Provider value={control}>{children}</FormContext.Provider>;
+export function Form<Values extends FieldValues, Output>({
+  control,
+  children,
+  ...bindings
+}: Omit<FormBindings, 'control'> & {
+  control: Control<Values, unknown, Output>;
+  children: ReactNode;
+}) {
+  // Field names are typed by the caller; the context erases the form's value type.
+  return (
+    <FormContext.Provider value={{ ...bindings, control: control as unknown as Control }}>
+      {children}
+    </FormContext.Provider>
+  );
 }
 export function FormField({
   name,
@@ -28,22 +40,24 @@ export function FormField({
     fieldState: { error: string };
   }): ReactNode;
 }) {
-  const control = useContext(FormContext);
-  if (!control) {
+  const bindings = useContext(FormContext);
+  if (!bindings) {
     throw new Error('FormField requires Form');
   }
-  const error = control.errors?.[name] ?? '';
+  const { field, fieldState } = useController({ name, control: bindings.control });
+  const error = fieldState.error?.message ?? '';
   return (
     <FieldContext.Provider value={{ name, error }}>
       {render({
         field: {
           name,
-          value: String(control.values[name] ?? ''),
-          disabled: !!control.disabled,
+          value: String(field.value ?? ''),
+          disabled: !!bindings.disabled,
           onChange: (value) => {
             'background only';
-            if (!control.disabled) {
-              control.onChange(name, value);
+            if (!bindings.disabled) {
+              field.onChange(value);
+              bindings.onChange(name, value);
             }
           },
         },
