@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverAnchor, usePopover } from '../component
 
 function Toggle() {
   const { open, setOpen } = usePopover();
-  return <view id="toggle-popover" bindtap={() => setOpen(!open)} />;
+  return <view data-automation-id="toggle-popover" bindtap={() => setOpen(!open)} />;
 }
 
 function Fixture({ delay }: { delay?: number }) {
@@ -13,7 +13,7 @@ function Fixture({ delay }: { delay?: number }) {
     <Popover delay={delay}>
       <PopoverAnchor>
         <Toggle />
-        <PopoverContent id="test-popover-content" modal={false}>
+        <PopoverContent data-automation-id="test-popover-content" modal={false}>
           Details
         </PopoverContent>
       </PopoverAnchor>
@@ -32,8 +32,10 @@ const advance = (milliseconds: number) =>
   act(() => {
     rstest.advanceTimersByTime(milliseconds);
   });
-const toggle = () => fireEvent.tap(elementTree.root!.querySelector('#toggle-popover')!);
-const contentCount = () => elementTree.root!.querySelectorAll('#test-popover-content').length;
+const toggle = () =>
+  fireEvent.tap(elementTree.root!.querySelector('[data-automation-id=toggle-popover]')!);
+const contentCount = () =>
+  elementTree.root!.querySelectorAll('[data-automation-id=test-popover-content]').length;
 
 test.each([undefined, 40, 0])('popover delays opening and closing with delay=%s', (delay) => {
   render(<Fixture delay={delay} />, { enableMainThread: true });
@@ -107,7 +109,10 @@ test('outside taps close a popover without waiting for Presence to enable its bu
       <Popover>
         <PopoverAnchor>
           <Toggle />
-          <PopoverContent id="test-popover-content" dismissClassName="popover-dismiss">
+          <PopoverContent
+            data-automation-id="test-popover-content"
+            dismissClassName="popover-dismiss"
+          >
             Details
           </PopoverContent>
         </PopoverAnchor>

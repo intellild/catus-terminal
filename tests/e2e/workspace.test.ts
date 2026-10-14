@@ -14,34 +14,34 @@ afterEach(async () => {
 });
 
 test('workspace Schema validation blocks a blank SSH host and allows a local workspace', async () => {
-  await app.tap('#add-workspace');
-  await waitFor('workspace Hook Form', () => app.node('#profile-name'));
-  await app.tap('#workspace-type-ssh');
-  await waitFor('SSH host field', () => app.node('#profile-host'));
-  await app.invoke('#save-workspace', 'scrollIntoView', {
+  await app.automation('add-workspace').tap();
+  await waitFor('workspace Hook Form', () => app.automation('profile-name').node());
+  await app.automation('workspace-type-ssh').tap();
+  await waitFor('SSH host field', () => app.automation('profile-host').node());
+  await app.automation('save-workspace').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.tap('#save-workspace');
-  await waitFor('Schema validation error', () => app.node('#editor-error'));
-  expect(await app.node('#workspace-workspace-1')).toBeUndefined();
+  await app.automation('save-workspace').tap();
+  await waitFor('Schema validation error', () => app.automation('editor-error').node());
+  expect(await app.automation('workspace-workspace-1').node()).toBeUndefined();
   await writeFile('.tmp/e2e/artifacts/workspace-schema-validation.png', await app.screenshot());
-  await app.invoke('#workspace-type-local', 'scrollIntoView', {
+  await app.automation('workspace-type-local').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.tap('#workspace-type-local');
-  await app.invoke('#save-workspace', 'scrollIntoView', {
+  await app.automation('workspace-type-local').tap();
+  await app.automation('save-workspace').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.tap('#save-workspace');
-  await waitFor('saved local workspace', () => app.node('#workspace-workspace-1'));
-  expect(await app.node('#editor-error')).toBeUndefined();
+  await app.automation('save-workspace').tap();
+  await waitFor('saved local workspace', () => app.automation('workspace-workspace-1').node());
+  expect(await app.automation('editor-error').node()).toBeUndefined();
 });
 
 test('Button hover changes pixels without activating and restores them on leave', async ({
   skip,
 }) => {
   try {
-    await app.hover('#application-status');
+    await app.automation('application-status').hover();
   } catch (error) {
     // Lynxtron 0.0.28 has no native mouse CDP handler. Keep this check enabled
     // automatically when the runtime gains it; touch emulation cannot test hover.
@@ -54,26 +54,28 @@ test('Button hover changes pixels without activating and restores them on leave'
     }
     throw error;
   }
-  const normal = await app.screenshot('#add-workspace');
-  await app.hover('#add-workspace');
+  const normal = await app.automation('add-workspace').screenshot();
+  await app.automation('add-workspace').hover();
   const hovered = await waitFor('Button hover pixels', async () => {
-    const image = await app.screenshot('#add-workspace');
+    const image = await app.automation('add-workspace').screenshot();
     return comparePng(normal, image).changed > 100 ? image : undefined;
   });
-  expect(await app.node('#profile-shell')).toBeUndefined();
+  expect(await app.automation('profile-shell').node()).toBeUndefined();
   await expectScreenshot('button-add-workspace', normal);
   await expectScreenshot('button-add-workspace-hover', hovered);
-  await app.hover('#application-status');
+  await app.automation('application-status').hover();
   await waitFor('Button mouseleave restores pixels', async () =>
-    comparePng(normal, await app.screenshot('#add-workspace')).changed === 0 ? true : undefined,
+    comparePng(normal, await app.automation('add-workspace').screenshot()).changed === 0
+      ? true
+      : undefined,
   );
-  await app.tap('#add-workspace');
-  await waitFor('Button still opens the form', () => app.node('#profile-shell'));
+  await app.automation('add-workspace').tap();
+  await waitFor('Button still opens the form', () => app.automation('profile-shell').node());
 });
 
 test('English TOML translations render with correct plurals in Lynx', async () => {
   const summary = async () => {
-    const node = await app.node('#session-summary');
+    const node = await app.automation('session-summary').node();
     if (!node) {
       return undefined;
     }
@@ -86,158 +88,173 @@ test('English TOML translations render with correct plurals in Lynx', async () =
   const expectSummary = (expected: string) =>
     waitFor(expected, async () => ((await summary()) === expected ? true : undefined));
   await expectSummary('1 workspace open · 1 tab');
-  await app.tap('#new-tab');
+  await app.automation('new-tab').tap();
   await expectSummary('1 workspace open · 2 tabs');
-  await app.tap('#close-tab-2');
+  await app.automation('close-tab-2').tap();
   await expectSummary('1 workspace open · 1 tab');
-  await app.tap('#close-tab-1');
+  await app.automation('close-tab-1').tap();
   await expectSummary('0 workspaces open · 0 tabs');
 });
 
 // TODO: re-enable after switching editor targets no longer times out on the SSH Host field.
 test.skip('workspace modal switches local and SSH fields with a command preview', async () => {
-  await app.rightClick('#workspace-test');
-  await app.tap('#workspace-menu-edit');
-  await waitFor('local shell select', () => app.node('#profile-shell'));
-  await expectScreenshot('workspace-editor-local', await app.screenshot('#workspace-editor-form'));
-  await app.tap('#close-settings');
-  await app.rightClick('#workspace-other');
-  await app.tap('#workspace-menu-edit');
-  await waitFor('SSH host input', () => app.node('#profile-host'));
-  expect(await app.node('#profile-shell')).toBeDefined();
-  expect(await app.node('#ssh-command-preview')).toBeDefined();
-  await expectScreenshot('workspace-editor-ssh', await app.screenshot('#workspace-editor-form'));
-  await app.tap('#workspace-type-local');
-  await waitFor('local shell select', () => app.node('#profile-shell'));
-  expect(await app.node('#profile-host')).toBeUndefined();
-  await app.tap('#close-settings');
+  await app.automation('workspace-test').rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await waitFor('local shell select', () => app.automation('profile-shell').node());
+  await expectScreenshot(
+    'workspace-editor-local',
+    await app.automation('workspace-editor-form').screenshot(),
+  );
+  await app.automation('close-settings').tap();
+  await app.automation('workspace-other').rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await waitFor('SSH host input', () => app.automation('profile-host').node());
+  expect(await app.automation('profile-shell').node()).toBeDefined();
+  expect(await app.automation('ssh-command-preview').node()).toBeDefined();
+  await expectScreenshot(
+    'workspace-editor-ssh',
+    await app.automation('workspace-editor-form').screenshot(),
+  );
+  await app.automation('workspace-type-local').tap();
+  await waitFor('local shell select', () => app.automation('profile-shell').node());
+  expect(await app.automation('profile-host').node()).toBeUndefined();
+  await app.automation('close-settings').tap();
   await waitFor('closed modal', async () =>
-    !(await app.node('#profile-shell')) ? true : undefined,
+    !(await app.automation('profile-shell').node()) ? true : undefined,
   );
 });
 
 test('SFTP browser uses native directory APIs and keeps terminal ownership separate', async () => {
-  const surface = (await app.node('#terminal-surface'))!;
-  await app.tap('#workspace-other');
-  await waitFor('SSH terminal', () => app.node('#tab-2'));
-  await app.tap('#new-sftp-tab');
-  await waitFor('remote directory listing', () => app.node('#sftp-entry-0'));
-  expect(await app.node('#sftp-error')).toBeUndefined();
+  const surface = (await app.automation('terminal-surface').node())!;
+  await app.automation('workspace-other').tap();
+  await waitFor('SSH terminal', () => app.automation('tab-2').node());
+  await app.automation('new-sftp-tab').tap();
+  await waitFor('remote directory listing', () => app.automation('sftp-entry-0').node());
+  expect(await app.automation('sftp-error').node()).toBeUndefined();
   expect(await app.sessionExists(2)).toBe(true);
   expect(await app.sessionExists(3)).toBe(false);
-  expect((await app.node('#terminal-surface'))!.nodeId).toBe(surface.nodeId);
-  expect(await app.node('#sftp-breadcrumb-ellipsis')).toBeDefined();
-  expect(await app.node('#sftp-breadcrumb-current')).toBeDefined();
-  expect(await app.node('#sftp-entry-1')).toBeDefined(); // docs, readme.txt
-  expect(await app.node('#sftp-entry-2')).toBeUndefined(); // .cache and .env are hidden
-  expect(await app.node('#session-label')).toBeUndefined();
-  expect(await app.node('#session-directory')).toBeUndefined();
-  const visibleDirectory = await app.screenshot('#sftp-list');
-  await app.tap('#sftp-show-hidden');
-  await waitFor('hidden directory visible', () => app.node('#sftp-entry-3'));
-  await expectScreenshot('sftp-toolbar-hidden-directories', await app.screenshot('#sftp-toolbar'));
-  await app.tap('#sftp-show-hidden');
+  expect((await app.automation('terminal-surface').node())!.nodeId).toBe(surface.nodeId);
+  expect(await app.automation('sftp-breadcrumb-ellipsis').node()).toBeDefined();
+  expect(await app.automation('sftp-breadcrumb-current').node()).toBeDefined();
+  expect(await app.automation('sftp-entry-1').node()).toBeDefined(); // docs, readme.txt
+  expect(await app.automation('sftp-entry-2').node()).toBeUndefined(); // .cache and .env are hidden
+  expect(await app.automation('session-label').node()).toBeUndefined();
+  expect(await app.automation('session-directory').node()).toBeUndefined();
+  const visibleDirectory = await app.automation('sftp-list').screenshot();
+  await app.automation('sftp-show-hidden').tap();
+  await waitFor('hidden directory visible', () => app.automation('sftp-entry-3').node());
+  await expectScreenshot(
+    'sftp-toolbar-hidden-directories',
+    await app.automation('sftp-toolbar').screenshot(),
+  );
+  await app.automation('sftp-show-hidden').tap();
   // Recycled cells may remain in the DOM; compare the rendered viewport.
   await waitFor('hidden files removed from the viewport', async () =>
-    comparePng(visibleDirectory, await app.screenshot('#sftp-list')).changed === 0
+    comparePng(visibleDirectory, await app.automation('sftp-list').screenshot()).changed === 0
       ? true
       : undefined,
   );
-  await expectScreenshot('sftp-toolbar', await app.screenshot('#sftp-toolbar'));
-  await expectScreenshot('sftp-directory', await app.screenshot('#sftp-list'));
-  await app.tap('#sftp-entry-0'); // Directories sort before files.
-  await waitFor('empty docs directory', () => app.node('#sftp-empty'));
-  await app.tap('#tab-2');
-  await app.tap('#tab-3');
-  expect(await app.node('#sftp-empty')).toBeDefined();
-  await app.tap('#sftp-up');
-  await waitFor('parent directory listing', () => app.node('#sftp-entry-1'));
-  await app.tap('#sftp-refresh');
-  await waitFor('refreshed directory', () => app.node('#sftp-entry-1'));
+  await expectScreenshot('sftp-toolbar', await app.automation('sftp-toolbar').screenshot());
+  await expectScreenshot('sftp-directory', await app.automation('sftp-list').screenshot());
+  await app.automation('sftp-entry-0').tap(); // Directories sort before files.
+  await waitFor('empty docs directory', () => app.automation('sftp-empty').node());
+  await app.automation('tab-2').tap();
+  await app.automation('tab-3').tap();
+  expect(await app.automation('sftp-empty').node()).toBeDefined();
+  await app.automation('sftp-up').tap();
+  await waitFor('parent directory listing', () => app.automation('sftp-entry-1').node());
+  await app.automation('sftp-refresh').tap();
+  await waitFor('refreshed directory', () => app.automation('sftp-entry-1').node());
   await waitFor('upload button enabled after refresh', async () => {
-    const button = await app.node('#sftp-upload');
+    const button = await app.automation('sftp-upload').node();
     return button && !app.attribute(button, 'class')?.includes('opacity-50') ? true : undefined;
   });
-  await app.tap('#sftp-upload');
+  await app.automation('sftp-upload').tap();
   await waitFor('uploaded file appears after refresh', () =>
     app.node('[data-filename="uploaded.txt"]'),
   );
-  await expectScreenshot('sftp-uploaded-directory', await app.screenshot('#sftp-list'));
+  await expectScreenshot('sftp-uploaded-directory', await app.automation('sftp-list').screenshot());
   await app.tap('[data-downloadfile="uploaded.txt"]');
   await waitFor('download saved to selected path', async () =>
     (await app.downloadedFile()) === 'Uploaded fixture' ? true : undefined,
   );
-  expect(await app.node('#sftp-error')).toBeUndefined();
-  await app.tap('#close-tab-3');
+  expect(await app.automation('sftp-error').node()).toBeUndefined();
+  await app.automation('close-tab-3').tap();
   await waitFor('SFTP browser released', async () =>
-    !(await app.node('#sftp-browser')) ? true : undefined,
+    !(await app.automation('sftp-browser').node()) ? true : undefined,
   );
   expect(await app.sessionExists(2)).toBe(true);
-  await app.tap('#new-sftp-tab');
-  await waitFor('reopened remote directory', () => app.node('#sftp-entry-1'));
-  expect(await app.node('#sftp-error')).toBeUndefined();
-  await app.tap('#close-tab-4');
+  await app.automation('new-sftp-tab').tap();
+  await waitFor('reopened remote directory', () => app.automation('sftp-entry-1').node());
+  expect(await app.automation('sftp-error').node()).toBeUndefined();
+  await app.automation('close-tab-4').tap();
   await waitFor('reopened SFTP browser released', async () =>
-    !(await app.node('#sftp-browser')) ? true : undefined,
+    !(await app.automation('sftp-browser').node()) ? true : undefined,
   );
 });
 
 test('shell Select detects local and remote candidates and exposes custom command input', async () => {
-  await app.rightClick('#workspace-test');
-  await app.tap('#workspace-menu-edit');
-  await waitFor('local shell select', () => app.node('#profile-shell'));
-  await app.tap('#profile-shell');
-  await app.visibleTarget('#profile-shell-option-1');
-  await app.invoke('#profile-shell-option-custom', 'scrollIntoView', {
+  await app.automation('workspace-test').rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await waitFor('local shell select', () => app.automation('profile-shell').node());
+  await app.automation('profile-shell').tap();
+  await app.automation('profile-shell-option-1').visibleTarget();
+  await app.automation('profile-shell-option-custom').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.tap('#profile-shell-option-custom');
-  await waitFor('custom command input', () => app.node('#profile-command'));
-  await expectScreenshot('shell-select-local', await app.screenshot('#workspace-editor-form'));
-  await app.tap('#close-settings');
-  await app.rightClick('#workspace-other');
-  await app.tap('#workspace-menu-edit');
-  await waitFor('remote Host field', () => app.node('#profile-host'));
-  await app.tap('#profile-shell');
+  await app.automation('profile-shell-option-custom').tap();
+  await waitFor('custom command input', () => app.automation('profile-command').node());
+  await expectScreenshot(
+    'shell-select-local',
+    await app.automation('workspace-editor-form').screenshot(),
+  );
+  await app.automation('close-settings').tap();
+  await app.automation('workspace-other').rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await waitFor('remote Host field', () => app.automation('profile-host').node());
+  await app.automation('profile-shell').tap();
   // The SSH fixture reports zsh and bash. This waits for the real host process
   // result to cross the preload bridge and update the Effect atom.
-  await waitFor('remote bash candidate', () => app.node('#profile-shell-option-2'));
-  await app.tap('#profile-shell-option-2');
-  expect(await app.node('#profile-command')).toBeUndefined();
-  await expectScreenshot('shell-select-remote', await app.screenshot('#workspace-editor-form'));
-  await app.tap('#profile-shell');
-  await app.tap('#profile-shell-option-custom');
-  await waitFor('remote custom command input', () => app.node('#profile-command'));
+  await waitFor('remote bash candidate', () => app.automation('profile-shell-option-2').node());
+  await app.automation('profile-shell-option-2').tap();
+  expect(await app.automation('profile-command').node()).toBeUndefined();
+  await expectScreenshot(
+    'shell-select-remote',
+    await app.automation('workspace-editor-form').screenshot(),
+  );
+  await app.automation('profile-shell').tap();
+  await app.automation('profile-shell-option-custom').tap();
+  await waitFor('remote custom command input', () => app.automation('profile-command').node());
 });
 
 // TODO: re-enable after full-suite DevTool discovery remains available following runtime exits.
 test.skip('dock plus creates a workspace; right-click edits and deletes only the target workspace', async () => {
-  await app.tap('#add-workspace');
-  await waitFor('new workspace form', () => app.node('#profile-shell'));
+  await app.automation('add-workspace').tap();
+  await waitFor('new workspace form', () => app.automation('profile-shell').node());
   await writeFile(
     '.tmp/e2e/artifacts/workspace-add.actual.png',
-    await app.screenshot('#workspace-editor-form'),
+    await app.automation('workspace-editor-form').screenshot(),
   );
-  await app.tap('#save-workspace');
-  await waitFor('new workspace in dock', () => app.node('#workspace-workspace-1'));
+  await app.automation('save-workspace').tap();
+  await waitFor('new workspace in dock', () => app.automation('workspace-workspace-1').node());
   expect(await app.sessionExists(2)).toBe(false);
-  await app.rightClick('#workspace-other');
-  await app.visibleTarget('#workspace-menu-edit');
+  await app.automation('workspace-other').rightClick();
+  await app.automation('workspace-menu-edit').visibleTarget();
   await writeFile(
     '.tmp/e2e/artifacts/workspace-menu.actual.png',
-    await app.screenshot('#workspace-context-menu'),
+    await app.automation('workspace-context-menu').screenshot(),
   );
   expect(await app.sessionExists(2)).toBe(false);
-  await app.tap('#workspace-menu-edit');
-  await waitFor('inactive SSH workspace editor', () => app.node('#profile-host'));
-  await app.tap('#close-settings');
-  await app.tap('#workspace-workspace-1');
-  await waitFor('new workspace terminal', () => app.node('#tab-2'));
+  await app.automation('workspace-menu-edit').tap();
+  await waitFor('inactive SSH workspace editor', () => app.automation('profile-host').node());
+  await app.automation('close-settings').tap();
+  await app.automation('workspace-workspace-1').tap();
+  await waitFor('new workspace terminal', () => app.automation('tab-2').node());
   expect(await app.sessionExists(2)).toBe(true);
-  await app.rightClick('#workspace-workspace-1');
-  await app.tap('#workspace-menu-delete');
+  await app.automation('workspace-workspace-1').rightClick();
+  await app.automation('workspace-menu-delete').tap();
   await waitFor('deleted workspace', async () =>
-    !(await app.node('#workspace-workspace-1')) ? true : undefined,
+    !(await app.automation('workspace-workspace-1').node()) ? true : undefined,
   );
   expect(await app.sessionExists(2)).toBe(false);
   expect(await app.sessionExists(1)).toBe(true);
@@ -246,12 +263,12 @@ test.skip('dock plus creates a workspace; right-click edits and deletes only the
 // TODO: re-enable after windowless Select hit-testing and composed screenshots work.
 // Native mouse clicks work, but DevTool cannot reliably hit the mounted options.
 test.skip('Popover anchors the Select, escapes the form scroll view and dismisses on outside taps', async () => {
-  await app.rightClick('#workspace-test');
-  await app.tap('#workspace-menu-edit');
-  await app.tap('#profile-shell');
-  await app.visibleTarget('#profile-shell-option-1');
-  const trigger = (await app.node('#profile-shell'))!;
-  const content = (await app.node('#profile-shell-content'))!;
+  await app.automation('workspace-test').rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await app.automation('profile-shell').tap();
+  await app.automation('profile-shell-option-1').visibleTarget();
+  const trigger = (await app.automation('profile-shell').node())!;
+  const content = (await app.automation('profile-shell-content').node())!;
   const box = async (nodeId: number) =>
     (await app.cdp<{ model: { border: number[]; width: number } }>('DOM.getBoxModel', { nodeId }))
       .model;
@@ -263,7 +280,7 @@ test.skip('Popover anchors the Select, escapes the form scroll view and dismisse
     0,
   );
   const pageScreenshot = await app.screenshot();
-  const contentScreenshot = await app.screenshot('#profile-shell-content');
+  const contentScreenshot = await app.automation('profile-shell-content').screenshot();
   await writeFile('.tmp/e2e/artifacts/shell-popover.actual.png', pageScreenshot);
   await writeFile('.tmp/e2e/artifacts/shell-popover-content.actual.png', contentScreenshot);
   // A cropped node can render even when it is clipped in the page.
@@ -293,15 +310,15 @@ test.skip('Popover anchors the Select, escapes the form scroll view and dismisse
   expect(comparePng(PNG.sync.write(interior), PNG.sync.write(composited)).changed).toBe(0);
   await app.tap('.profile-shell-dismiss');
   await waitFor('closed Select', async () =>
-    !(await app.node('#profile-shell-content')) ? true : undefined,
+    !(await app.automation('profile-shell-content').node()) ? true : undefined,
   );
-  expect(await app.node('#profile-shell')).toBeDefined();
-  await app.tap('#close-settings');
-  await app.rightClick('#workspace-other');
-  await app.visibleTarget('#workspace-menu-edit');
+  expect(await app.automation('profile-shell').node()).toBeDefined();
+  await app.automation('close-settings').tap();
+  await app.automation('workspace-other').rightClick();
+  await app.automation('workspace-menu-edit').visibleTarget();
   await app.tap('.workspace-menu-dismiss');
   await waitFor('closed context menu', async () =>
-    !(await app.node('#workspace-context-menu')) ? true : undefined,
+    !(await app.automation('workspace-context-menu').node()) ? true : undefined,
   );
   expect(await app.sessionExists(2)).toBe(false);
 });
@@ -309,35 +326,35 @@ test.skip('Popover anchors the Select, escapes the form scroll view and dismisse
 // TODO: re-enable after full-suite DevTool discovery is stable; isolated execution currently passes.
 test.skip('workspace menus dismiss outside and edit the workspace that owns the instance', async () => {
   for (const id of ['test', 'other', 'test']) {
-    await app.rightClick(`#workspace-${id}`);
-    await app.visibleTarget('#workspace-menu-edit');
+    await app.automation(`workspace-${id}`).rightClick();
+    await app.automation('workspace-menu-edit').visibleTarget();
     await writeFile(`.tmp/e2e/artifacts/workspace-menu-${id}.actual.png`, await app.screenshot());
     await app.tap('.workspace-menu-dismiss');
     await waitFor('dismissed workspace menu', async () =>
-      !(await app.node('#workspace-context-menu')) ? true : undefined,
+      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
     );
   }
   for (const [id, name] of [
     ['test', 'Test'],
     ['other', 'Other'],
   ]) {
-    await app.rightClick(`#workspace-${id}`);
-    await app.tap('#workspace-menu-edit');
-    expect(await app.invoke('#profile-name', 'getValue', {})).toBe(name);
-    await app.tap('#close-settings');
+    await app.automation(`workspace-${id}`).rightClick();
+    await app.automation('workspace-menu-edit').tap();
+    expect(await app.automation('profile-name').invoke('getValue', {})).toBe(name);
+    await app.automation('close-settings').tap();
     await waitFor('closed workspace menu', async () =>
-      !(await app.node('#workspace-context-menu')) ? true : undefined,
+      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
     );
   }
 });
 
 // Capture each editor from a fresh app while the combined switching scenario is skipped.
 test.each([
-  ['test', 'workspace-editor-local', '#profile-shell'],
-  ['other', 'workspace-editor-ssh', '#profile-host'],
+  ['test', 'workspace-editor-local', 'profile-shell'],
+  ['other', 'workspace-editor-ssh', 'profile-host'],
 ])('workspace editor screenshot fixture (%s)', async (id, screenshot, field) => {
-  await app.rightClick(`#workspace-${id}`);
-  await app.tap('#workspace-menu-edit');
-  await app.visibleTarget(field);
-  await expectScreenshot(screenshot, await app.screenshot('#workspace-editor-form'));
+  await app.automation(`workspace-${id}`).rightClick();
+  await app.automation('workspace-menu-edit').tap();
+  await app.automation(field).visibleTarget();
+  await expectScreenshot(screenshot, await app.automation('workspace-editor-form').screenshot());
 });

@@ -29,11 +29,17 @@ test('mouse dragging continues outside the thumb and stops on release', async ()
       return { exec: () => options.success?.({ top: 0, height: 100 }) };
     });
   render(
-    <ScrollBar id="bar" offset={0} historyRows={80} visibleRows={20} onOffsetChange={callback} />,
+    <ScrollBar
+      data-automation-id="bar"
+      offset={0}
+      historyRows={80}
+      visibleRows={20}
+      onOffsetChange={callback}
+    />,
   );
   const root = elementTree.root!;
-  const bar = root.querySelector('#bar')!;
-  const thumb = root.querySelector('#bar-thumb')!;
+  const bar = root.querySelector('[data-automation-id=bar]')!;
+  const thumb = root.querySelector('[data-automation-id=bar-thumb]')!;
   await send(
     thumb,
     Object.assign(new CustomEvent('catchEvent:mousedown'), { pageY: 88, buttons: 1 }),
@@ -58,19 +64,23 @@ test('mouse dragging continues outside the thumb and stops on release', async ()
 test('terminal ignores stale native scroll events when switching sessions', async () => {
   render(<TerminalView id={1} sessionId={1} error="" />);
   const root = elementTree.root!;
-  const native = root.querySelector('#terminal-surface')!;
+  const native = root.querySelector('[data-automation-id=terminal-surface]')!;
   await send(
     native,
     new CustomEvent('bindEvent:scrollchange', {
       detail: { sessionId: 1, offset: 8, historyRows: 20, visibleRows: 3 },
     }),
   );
-  expect(root.querySelector('#terminal-scrollbar')?.getAttribute('data-offset')).toBe('8');
+  expect(
+    root.querySelector('[data-automation-id=terminal-scrollbar]')?.getAttribute('data-offset'),
+  ).toBe('8');
   await send(
     native,
     new CustomEvent('bindEvent:scrollchange', {
       detail: { sessionId: 2, offset: 0, historyRows: 0, visibleRows: 3 },
     }),
   );
-  expect(root.querySelector('#terminal-scrollbar')?.getAttribute('data-offset')).toBe('8');
+  expect(
+    root.querySelector('[data-automation-id=terminal-scrollbar]')?.getAttribute('data-offset'),
+  ).toBe('8');
 });

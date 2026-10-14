@@ -11,26 +11,30 @@ test('tmux workspace renders decoded pane output, forwards native input and keep
   app = new LynxApp();
   await app.start({ tmux: true });
   await app.terminalFrame([205, 77, 77]);
-  const first = (await app.node('#terminal-surface'))!;
+  const first = (await app.automation('terminal-surface').node())!;
   expect(app.attribute(first, 'terminal-id')).toBe('1');
   for (const key of [...'update', 'Enter']) {
-    await app.invoke('#terminal-surface', 'key', { key, control: false, alt: false });
+    await app.automation('terminal-surface').invoke('key', {
+      key,
+      control: false,
+      alt: false,
+    });
   }
   await app.terminalFrame([108, 158, 225]);
   await writeFile(
     '.tmp/e2e/artifacts/tmux-updated.png',
-    await app.screenshot('#terminal-viewport'),
+    await app.automation('terminal-viewport').screenshot(),
   );
-  await app.tap('#new-tab');
+  await app.automation('new-tab').tap();
   await waitFor('second tmux tab', async () => {
-    const node = await app.node('#terminal-surface');
+    const node = await app.automation('terminal-surface').node();
     return node && app.attribute(node, 'terminal-id') === '2' ? node : undefined;
   });
   await app.terminalFrame([205, 77, 77]);
-  expect((await app.node('#terminal-surface'))!.nodeId).toBe(first.nodeId);
-  await app.tap('#tab-1');
+  expect((await app.automation('terminal-surface').node())!.nodeId).toBe(first.nodeId);
+  await app.automation('tab-1').tap();
   await app.terminalFrame([108, 158, 225]);
-  await app.tap('#close-tab-2');
+  await app.automation('close-tab-2').tap();
   await waitFor('closed tmux tab released', async () =>
     !(await app.sessionExists(2)) ? true : undefined,
   );

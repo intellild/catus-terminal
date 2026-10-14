@@ -66,7 +66,7 @@ function WorkspaceItemContent({
           bindmouseenter={hover.onMouseEnter}
           bindmouseleave={hover.onMouseLeave}
           bindmousedown={menu.onMouseDown}
-          id={`workspace-${workspace.id}`}
+          data-automation-id={`workspace-${workspace.id}`}
           accessibility-label={workspace.name}
           className={cn(
             'w-9 h-9 p-0 rounded-[9px] relative',
@@ -86,14 +86,14 @@ function WorkspaceItemContent({
           </text>
           {running && (
             <view
-              id={`running-${workspace.id}`}
+              data-automation-id={`running-${workspace.id}`}
               className="absolute bottom-[2px] left-[16px] w-[4px] h-[4px] rounded-full bg-[var(--workspace-color)]"
               style={`--workspace-color: ${workspace.color}`}
             />
           )}
         </Button>
         <PopoverContent
-          id={`workspace-details-${workspace.id}`}
+          data-automation-id={`workspace-details-${workspace.id}`}
           side="right"
           align="center"
           sideOffset={12}

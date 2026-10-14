@@ -4,7 +4,7 @@ import { useTranslation } from '../../i18n';
 
 export function TabBar({ children }: { children?: ReactNode }) {
   return (
-    <scroll-view id="tab-bar-scroll" scroll-x className="shrink min-w-0 h-full">
+    <scroll-view data-automation-id="tab-bar-scroll" scroll-x className="shrink min-w-0 h-full">
       {children}
     </scroll-view>
   );
@@ -45,7 +45,7 @@ export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?():
       <Button
         variant="ghost"
         size="icon-sm"
-        id="new-tab"
+        data-automation-id="new-tab"
         className="w-[24px] h-[24px] rounded-[6px]"
         bindtap={onAdd}
       >
@@ -54,7 +54,7 @@ export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?():
       {onAddSftp ? (
         <Button
           variant="ghost"
-          id="new-sftp-tab"
+          data-automation-id="new-sftp-tab"
           className="h-[24px] px-[8px] rounded-[6px] font-normal"
           bindtap={onAddSftp}
         >

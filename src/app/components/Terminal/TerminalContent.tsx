@@ -32,13 +32,13 @@ export function TerminalContent({
               {t('terminal.loadError')}
             </text>
             <text
-              id="config-error"
+              data-automation-id="config-error"
               className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
             >
               {error}
             </text>
             <Button
-              id="retry-config"
+              data-automation-id="retry-config"
               className="h-auto py-[10px] rounded-[7px] mt-[15px]"
               bindtap={onRetry}
             >
@@ -58,7 +58,7 @@ export function TerminalContent({
               <view className="flex flex-row items-center gap-[8px] flex-1 min-w-0">
                 <text className="text-[14px] text-[#778b86]">~</text>
                 <text
-                  id="session-directory"
+                  data-automation-id="session-directory"
                   className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
                 >
                   {activeTab
@@ -69,7 +69,7 @@ export function TerminalContent({
                 </text>
               </view>
               <text
-                id="session-label"
+                data-automation-id="session-label"
                 className="text-[10px] text-[#65717f] tracking-[1px] ml-[12px]"
               >
                 {activeTab
@@ -81,12 +81,15 @@ export function TerminalContent({
           {children}
           {!error && (!children || !activeTab) ? (
             <view className="flex-1 flex flex-col items-center justify-center p-[24px]">
-              <text id="terminal-placeholder" className="text-[18px] text-[#7c8998]">
+              <text
+                data-automation-id="terminal-placeholder"
+                className="text-[18px] text-[#7c8998]"
+              >
                 {t(loading ? 'terminal.loading' : 'terminal.empty')}
               </text>
               {!loading && !activeTab ? (
                 <Button
-                  id="start-terminal"
+                  data-automation-id="start-terminal"
                   className="h-auto p-[12px] rounded-[7px] mt-[15px] font-normal"
                   bindtap={onAdd}
                 >

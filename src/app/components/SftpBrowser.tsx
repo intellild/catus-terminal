@@ -168,18 +168,18 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
   };
   return (
     <view
-      id="sftp-browser"
+      data-automation-id="sftp-browser"
       className="flex-1 min-h-0 flex flex-col p-[16px] [-x-app-region:no-drag]"
     >
       <view
-        id="sftp-toolbar"
+        data-automation-id="sftp-toolbar"
         className="shrink-0 flex flex-row items-center gap-[8px] pb-[12px] mb-[12px] border-b border-solid border-[#29313a]"
       >
         <Button
           variant="link"
           size="sm"
           disabled={transferring || listing.loading || !listing.path}
-          id="sftp-up"
+          data-automation-id="sftp-up"
           bindtap={() => {
             if (!transferring && !listing.loading && listing.path) {
               setPath(joinPath(listing.path, '..'));
@@ -189,7 +189,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.up')}</text>
         </Button>
         <Breadcrumb
-          id="sftp-path"
+          data-automation-id="sftp-path"
           className="flex-1"
           accessibility-label={t('sftp.currentDirectory', { host, path: listing.path || '.' })}
         >
@@ -197,7 +197,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             {parts.length > 3 ? (
               <>
                 <BreadcrumbItem>
-                  <BreadcrumbEllipsis id="sftp-breadcrumb-ellipsis" />
+                  <BreadcrumbEllipsis data-automation-id="sftp-breadcrumb-ellipsis" />
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
               </>
@@ -207,10 +207,12 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
                 {index ? <BreadcrumbSeparator /> : null}
                 <BreadcrumbItem>
                   {index === breadcrumbs.length - 1 ? (
-                    <BreadcrumbPage id="sftp-breadcrumb-current">{crumb.name}</BreadcrumbPage>
+                    <BreadcrumbPage data-automation-id="sftp-breadcrumb-current">
+                      {crumb.name}
+                    </BreadcrumbPage>
                   ) : (
                     <BreadcrumbLink
-                      id={`sftp-breadcrumb-${index}`}
+                      data-automation-id={`sftp-breadcrumb-${index}`}
                       disabled={transferring || listing.loading}
                       bindtap={() => setPath(crumb.path)}
                     >
@@ -223,7 +225,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           </BreadcrumbList>
         </Breadcrumb>
         <Checkbox
-          id="sftp-show-hidden"
+          data-automation-id="sftp-show-hidden"
           className="shrink-0"
           checked={showHiddenFiles}
           onCheckedChange={setShowHiddenFiles}
@@ -234,7 +236,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           variant="link"
           size="sm"
           disabled={transferring || listing.loading || !listing.path}
-          id="sftp-upload"
+          data-automation-id="sftp-upload"
           bindtap={() => {
             void upload();
           }}
@@ -247,7 +249,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           variant="link"
           size="sm"
           disabled={transferring || listing.loading}
-          id="sftp-refresh"
+          data-automation-id="sftp-refresh"
           bindtap={() => {
             if (!listing.loading) {
               setRefresh((value) => value + 1);
@@ -259,26 +261,26 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       </view>
       {listing.error ? (
         <text
-          id="sftp-error"
+          data-automation-id="sftp-error"
           className="text-[12px] text-[#e4a4a4] leading-[18px] mb-[12px] break-all"
         >
           {listing.error}
         </text>
       ) : null}
       {listing.loading ? (
-        <text id="sftp-loading" className="text-[12px] text-[#8c99a7]">
+        <text data-automation-id="sftp-loading" className="text-[12px] text-[#8c99a7]">
           {t('sftp.loading')}
         </text>
       ) : null}
       <list
-        id="sftp-list"
+        data-automation-id="sftp-list"
         list-type="single"
         scroll-orientation="vertical"
         className="flex-1 min-h-0"
       >
         {!listing.loading && !listing.error && !entries.length ? (
           <list-item key="empty" item-key="empty" estimated-main-axis-size-px={18}>
-            <text id="sftp-empty" className="text-[12px] text-[#8c99a7]">
+            <text data-automation-id="sftp-empty" className="text-[12px] text-[#8c99a7]">
               {t('sftp.empty')}
             </text>
           </list-item>
@@ -292,7 +294,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
             <Button
               variant="ghost"
               disabled={transferring || listing.loading}
-              id={`sftp-entry-${index}`}
+              data-automation-id={`sftp-entry-${index}`}
               data-filename={entry.name}
               className={cn(
                 'w-full h-auto justify-start gap-0 py-[8px] px-[10px] rounded-[6px] font-normal',
@@ -311,7 +313,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
               </text>
               {!entry.directory ? (
                 <Button
-                  id={`sftp-download-${index}`}
+                  data-automation-id={`sftp-download-${index}`}
                   data-downloadfile={entry.name}
                   variant="link"
                   size="sm"

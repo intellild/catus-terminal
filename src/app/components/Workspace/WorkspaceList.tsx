@@ -26,7 +26,7 @@ export function WorkspaceList({
       <Button
         variant="secondary"
         size="icon"
-        id="add-workspace"
+        data-automation-id="add-workspace"
         accessibility-label={t('workspace.add')}
         className="w-9 h-9 rounded-[9px] mt-[6px] mb-[2px]"
         bindtap={onAdd}

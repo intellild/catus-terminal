@@ -19,6 +19,14 @@ interface Evaluation {
   exceptionDetails?: unknown;
 }
 
+function automationSelector(id: string) {
+  // Lynx native SelectorQuery accepts these attribute values without quotes.
+  if (!/^[\w-]+$/.test(id)) {
+    throw new Error(`Invalid automation ID: ${id}`);
+  }
+  return `[data-automation-id=${id}]`;
+}
+
 export async function waitFor<T>(
   description: string,
   read: () => Promise<T | undefined>,
@@ -43,6 +51,20 @@ export class LynxApp {
   private session = 0;
   private operation = 0;
   private tmuxSocket = '';
+
+  automation(id: string) {
+    const selector = automationSelector(id);
+    return {
+      node: () => this.node(selector),
+      tap: () => this.tap(selector),
+      rightClick: () => this.rightClick(selector),
+      hover: () => this.hover(selector),
+      visibleTarget: () => this.visibleTarget(selector),
+      screenshot: () => this.screenshot(selector),
+      invoke: <T = unknown>(method: string, params: Record<string, unknown> = {}) =>
+        this.invoke<T>(selector, method, params),
+    };
+  }
 
   async start(options: { ssh?: boolean; windowless?: boolean; tmux?: boolean } = {}) {
     if (process.platform !== 'darwin') {
@@ -196,7 +218,7 @@ export class LynxApp {
     this.session = sessions.at(-1)!.session_id;
     await this.cdp('DOM.enable', { useCompression: false });
     await waitFor('bound terminal session', async () => {
-      const terminal = await this.node('#terminal-surface');
+      const terminal = await this.automation('terminal-surface').node();
       return terminal && Number(this.attribute(terminal, 'terminal-id')) > 0 ? terminal : undefined;
     });
   }
@@ -285,14 +307,15 @@ export class LynxApp {
   private async nodePath(selector: string) {
     const { root } = await this.cdp<{ root: NodeInfo }>('DOM.getDocument', { depth: -1 });
     const value = selector.slice(1);
-    const attributeSelector = /^\[([\w-]+)="([^"]*)"\]$/.exec(selector);
+    const attributeSelector = /^\[([\w-]+)=(?:"([^"]*)"|([^\]]+))\]$/.exec(selector);
     const find = (node: NodeInfo, ancestors: NodeInfo[]): NodeInfo[] | undefined => {
       const nodes = [...ancestors, node];
       const matches = attributeSelector
-        ? this.attribute(node, attributeSelector[1]!) === attributeSelector[2]
+        ? this.attribute(node, attributeSelector[1]!) ===
+          (attributeSelector[2] ?? attributeSelector[3])
         : selector.startsWith('.')
           ? this.attribute(node, 'class')?.split(/\s+/).includes(value)
-          : this.attribute(node, 'idSelector') === value;
+          : false;
       if (matches) {
         return nodes;
       }
@@ -467,7 +490,7 @@ export class LynxApp {
     return response.result as T;
   }
 
-  async screenshot(selector = '#application-layout') {
+  async screenshot(selector = automationSelector('application-layout')) {
     const result = await this.invoke<{ data: string; width: number; height: number }>(
       selector,
       'takeScreenshot',
@@ -484,7 +507,7 @@ export class LynxApp {
     let last: Buffer | undefined;
     try {
       return await waitFor('RAF presentation', async () => {
-        last = await this.screenshot('#terminal-viewport');
+        last = await this.automation('terminal-viewport').screenshot();
         return colorPixels(last, color) > 100 ? last : undefined;
       });
     } catch (error) {

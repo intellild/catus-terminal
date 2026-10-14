@@ -109,12 +109,17 @@ function WorkspaceEditor({
           <text className="text-[18px] text-[#e2e8ed]">
             {draft.isNew ? t('workspace.add') : t('workspace.edit')}
           </text>
-          <Button variant="ghost" size="icon-sm" id="close-settings" bindtap={onClose}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            data-automation-id="close-settings"
+            bindtap={onClose}
+          >
             <text className="text-[18px] text-[#9ca6b2]">×</text>
           </Button>
         </view>
         <scroll-view scroll-y className="shrink min-h-0">
-          <view key={draft.id} id="workspace-editor-form">
+          <view key={draft.id} data-automation-id="workspace-editor-form">
             <Form
               control={form.control}
               disabled={editor.saving}
@@ -133,7 +138,7 @@ function WorkspaceEditor({
                   <Button
                     variant="ghost"
                     disabled={editor.saving}
-                    id={`workspace-type-${type}`}
+                    data-automation-id={`workspace-type-${type}`}
                     key={type}
                     className={cn(
                       'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
@@ -169,20 +174,20 @@ function WorkspaceEditor({
                         onValueChange={field.onChange}
                         disabled={field.disabled}
                       >
-                        <SelectTrigger id="profile-shell">
+                        <SelectTrigger data-automation-id="profile-shell">
                           <SelectValue>
                             {shellOptions.find((option) => option.value === field.value)?.label}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent
-                          id="profile-shell-content"
+                          data-automation-id="profile-shell-content"
                           dismissClassName="profile-shell-dismiss"
                         >
                           {shellOptions.map((option, index) => (
                             <SelectItem
                               key={option.value}
                               value={option.value}
-                              id={`profile-shell-option-${option.value === 'custom' ? 'custom' : index}`}
+                              data-automation-id={`profile-shell-option-${option.value === 'custom' ? 'custom' : index}`}
                             >
                               {option.label}
                             </SelectItem>
@@ -200,7 +205,7 @@ function WorkspaceEditor({
                     {shells.error ? (
                       <view>
                         <text
-                          id="shell-load-error"
+                          data-automation-id="shell-load-error"
                           className="text-[11px] text-[#e4a4a4] break-all"
                         >
                           {shells.error}
@@ -208,7 +213,7 @@ function WorkspaceEditor({
                         <Button
                           variant="link"
                           size="sm"
-                          id="retry-shells"
+                          data-automation-id="retry-shells"
                           disabled={shells.loading || editor.saving}
                           bindtap={onRetryShells}
                         >
@@ -237,7 +242,7 @@ function WorkspaceEditor({
                   <FormItem>
                     <FormLabel>{t('workspace.commandPreview')}</FormLabel>
                     <text
-                      id="ssh-command-preview"
+                      data-automation-id="ssh-command-preview"
                       className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
                     >
                       {preview || t('workspace.enterHost')}
@@ -251,7 +256,7 @@ function WorkspaceEditor({
                 render={({ field }) => (
                   <FormItem>
                     <Checkbox
-                      id="profile-tmux"
+                      data-automation-id="profile-tmux"
                       checked={field.value === 'true'}
                       disabled={field.disabled}
                       onCheckedChange={(checked) => {
@@ -280,14 +285,14 @@ function WorkspaceEditor({
               <FormDescription>{t('workspace.changes')}</FormDescription>
               {editor.error || Object.keys(form.formState.errors).length ? (
                 <text
-                  id="editor-error"
+                  data-automation-id="editor-error"
                   className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
                 >
                   {editor.error || t('validation.fields')}
                 </text>
               ) : null}
               <view className="flex flex-row items-center gap-[14px] mt-[20px]">
-                <FormSubmit id="save-workspace">
+                <FormSubmit data-automation-id="save-workspace">
                   {editor.saving
                     ? t('common.saving')
                     : draft.isNew
@@ -297,7 +302,10 @@ function WorkspaceEditor({
               </view>
             </Form>
           </view>
-          <text id="config-path" className="text-[10px] text-[#7d8e9c] mt-[20px] break-all">
+          <text
+            data-automation-id="config-path"
+            className="text-[10px] text-[#7d8e9c] mt-[20px] break-all"
+          >
             {configPath}
           </text>
         </scroll-view>
@@ -321,7 +329,7 @@ function Field({
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Input id={`profile-${name}`} {...field} />
+            <Input data-automation-id={`profile-${name}`} {...field} />
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}
           <FormMessage />
