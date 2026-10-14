@@ -1,9 +1,9 @@
-import { i18n } from '../i18n';
 import 'background-only';
 import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
 import * as Effect from 'effect/Effect';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
+import * as Schema from 'effect/Schema';
+import { parseWorkspaceConfig, WorkspaceFormSchema } from '../../shared/workspaces';
 import type { WorkspaceConfig } from '../../shared/workspaces';
 import {
   applyConfig,
@@ -145,7 +145,6 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       get.set(editorAtom, {
         ...editor,
         error: '',
-        fieldErrors: { ...editor.fieldErrors, [field]: '' },
         draft: {
           ...editor.draft,
           [field]: value,
@@ -177,40 +176,8 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       if (!editor.draft || !state.payload || editor.saving) {
         return;
       }
-      const fieldErrors: Record<string, string> = {};
-      for (const field of ['name', 'command', 'cwd', 'icon'] as const) {
-        if (!editor.draft[field].trim()) {
-          fieldErrors[field] = i18n.t('validation.required');
-        }
-      }
-      if (!/^#[0-9a-fA-F]{6}$/.test(editor.draft.color)) {
-        fieldErrors.color = i18n.t('validation.color');
-      }
-      if (
-        editor.draft.type === 'ssh' &&
-        (!editor.draft.host.trim() || /^[\s-]|[\r\n\0]/.test(editor.draft.host))
-      ) {
-        fieldErrors.host = i18n.t('validation.host');
-      }
-      if (Object.keys(fieldErrors).length) {
-        get.set(editorAtom, { ...editor, fieldErrors, error: i18n.t('validation.fields') });
-        return;
-      }
       try {
-        const { isNew, args: inputArgs, ...fields } = editor.draft;
-        const args: unknown = JSON.parse(inputArgs);
-        if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) {
-          throw new Error(i18n.t('validation.arguments'));
-        }
-        const profile = {
-          ...fields,
-          tmux: fields.tmux === 'true',
-          name: fields.name.trim(),
-          host: fields.host.trim(),
-          command: fields.command.trim(),
-          cwd: fields.cwd.trim(),
-          args,
-        };
+        const { isNew, ...profile } = Schema.decodeUnknownSync(WorkspaceFormSchema)(editor.draft);
         get.set(persistWorkspacesAtom, {
           version: 1,
           workspaces: isNew

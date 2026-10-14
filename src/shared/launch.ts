@@ -64,7 +64,7 @@ export function resolveTmuxLaunch(
   socket = 'catus',
 ) {
   const launch = resolveLaunch(workspace, environment);
-  const session = `catus-${workspace.id}`;
+  const session = workspace.tmuxSessionName?.trim() || 'catus';
   const window = `tab-${tabId}`;
   const remote = workspace.type === 'ssh';
   const shell =
@@ -84,6 +84,7 @@ export function resolveTmuxLaunch(
   // Remote ~ is expanded by tmux, not using the local account's home directory.
   const cwd = remote ? workspace.cwd.replace(/^~(?=\/|$)/, '#{HOME}') : launch.cwd;
   const tmux = { session, window, command, cwd };
+  const prefix = ['tmux', '-L', socket];
   const args = [
     '-L',
     socket,
@@ -102,12 +103,20 @@ export function resolveTmuxLaunch(
     cwd,
     ...(command ? [command] : []),
   ];
+  const target = `=${session}`;
+  const check = [...prefix, 'has-session', '-t', target].map(quoteShell).join(' ');
+  const attach = [...prefix, '-CC', 'attach-session', '-t', target].map(quoteShell).join(' ');
+  const create = ['tmux', ...args].map(quoteShell).join(' ');
+  // Probe outside control mode: a failed control-mode attach emits %error/%exit,
+  // which would terminate the native protocol client before the fallback starts.
+  // -A handles another tab creating the session between the probe and creation.
+  const startup = `if ${check} 2>/dev/null; then exec ${attach}; else exec ${create}; fi`;
   return remote
     ? {
         program: 'ssh',
-        args: ['-tt', '--', workspace.host!.trim(), ['tmux', ...args].map(quoteShell).join(' ')],
+        args: ['-tt', '--', workspace.host!.trim(), startup],
         cwd: launch.cwd,
         tmux,
       }
-    : { program: 'tmux', args, cwd: launch.cwd, tmux };
+    : { program: '/bin/sh', args: ['-c', startup], cwd: launch.cwd, tmux };
 }

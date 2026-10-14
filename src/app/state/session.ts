@@ -2,7 +2,11 @@ import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import { terminalSessionsAtom } from './terminalSessions';
-import type { WorkspaceSettings, WorkspaceConfigPayload } from '../../shared/workspaces';
+import type {
+  WorkspaceSettings,
+  WorkspaceConfigPayload,
+  WorkspaceFormValues,
+} from '../../shared/workspaces';
 
 export interface TerminalTab {
   readonly id: number;
@@ -228,25 +232,10 @@ export const sessionViewAtom = Atom.make((get) => {
   };
 });
 
-export interface WorkspaceDraft {
-  readonly id: string;
-  readonly name: string;
-  readonly command: string;
-  readonly shell: string;
-  readonly type: 'local' | 'ssh';
-  readonly host: string;
-  readonly remoteCommand: string;
-  readonly tmux: string;
-  readonly args: string;
-  readonly cwd: string;
-  readonly icon: string;
-  readonly color: string;
-  readonly isNew: boolean;
-}
+export type WorkspaceDraft = WorkspaceFormValues;
 export interface EditorState {
   readonly open: boolean;
   readonly draft: WorkspaceDraft | null;
-  readonly fieldErrors?: Readonly<Record<string, string>>;
   readonly saving: boolean;
   readonly error: string;
 }
@@ -265,7 +254,8 @@ export function editWorkspace(workspace: WorkspaceSettings): EditorState {
       shell: workspace.shell ?? (workspace.command === '$SHELL' ? '$SHELL' : 'custom'),
       host: workspace.host ?? '',
       remoteCommand: workspace.remoteCommand ?? '',
-      tmux: String(workspace.tmux ?? false),
+      tmux: workspace.tmux ? 'true' : 'false',
+      tmuxSessionName: workspace.tmuxSessionName ?? 'catus',
       args: JSON.stringify(workspace.args),
       isNew: false,
     },
@@ -289,6 +279,7 @@ export function createDraft(workspaces: readonly WorkspaceSettings[]): EditorSta
       host: '',
       remoteCommand: '',
       tmux: 'false',
+      tmuxSessionName: 'catus',
       command: '$SHELL',
       shell: '$SHELL',
       args: '["-l"]',

@@ -13,6 +13,30 @@ afterEach(async () => {
   await app.close();
 });
 
+test('workspace Schema validation blocks a blank SSH host and allows a local workspace', async () => {
+  await app.tap('#add-workspace');
+  await waitFor('workspace Hook Form', () => app.node('#profile-name'));
+  await app.tap('#workspace-type-ssh');
+  await waitFor('SSH host field', () => app.node('#profile-host'));
+  await app.invoke('#save-workspace', 'scrollIntoView', {
+    scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
+  });
+  await app.tap('#save-workspace');
+  await waitFor('Schema validation error', () => app.node('#editor-error'));
+  expect(await app.node('#workspace-workspace-1')).toBeUndefined();
+  await writeFile('.tmp/e2e/artifacts/workspace-schema-validation.png', await app.screenshot());
+  await app.invoke('#workspace-type-local', 'scrollIntoView', {
+    scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
+  });
+  await app.tap('#workspace-type-local');
+  await app.invoke('#save-workspace', 'scrollIntoView', {
+    scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
+  });
+  await app.tap('#save-workspace');
+  await waitFor('saved local workspace', () => app.node('#workspace-workspace-1'));
+  expect(await app.node('#editor-error')).toBeUndefined();
+});
+
 test('Button hover changes pixels without activating and restores them on leave', async ({
   skip,
 }) => {
