@@ -15,7 +15,7 @@ beforeEach(async () => {
   app = new LynxApp();
   await app.start();
   await app.terminalFrame(red);
-  const node = (await app.node('#terminal-surface'))!;
+  const node = (await app.automation('terminal-surface').node())!;
   nodeId = node.nodeId;
   firstId = Number(app.attribute(node, 'terminal-id'));
   expect(firstId).toBe(1);
@@ -27,106 +27,118 @@ afterEach(async () => {
 
 async function updateTerminal() {
   for (const key of [...'update', 'Enter']) {
-    await app.invoke('#terminal-surface', 'key', { key, control: false, alt: false });
+    await app.automation('terminal-surface').invoke('key', {
+      key,
+      control: false,
+      alt: false,
+    });
   }
   await app.terminalFrame(blue);
 }
 
 test('starts the first workspace and presents the fake PTY through JS RAF', async () => {
   expect(firstId).toBeGreaterThan(0);
-  expect(await app.node('#running-test')).toBeDefined();
+  expect(await app.automation('running-test').node()).toBeDefined();
   await expectScreenshot('initial-workspace', await app.screenshot());
 });
 
 test('native key input updates the PTY and automatically repaints ANSI and Unicode text', async () => {
   await updateTerminal();
-  await expectScreenshot('updated-terminal', await app.screenshot('#terminal-viewport'));
+  await expectScreenshot(
+    'updated-terminal',
+    await app.automation('terminal-viewport').screenshot(),
+  );
 });
 
 test('new tabs get independent PTYs; switching back preserves contents and the native element', async () => {
   await updateTerminal();
-  await app.tap('#new-tab');
+  await app.automation('new-tab').tap();
   await waitFor('second session ID', async () => {
-    const node = await app.node('#terminal-surface');
+    const node = await app.automation('terminal-surface').node();
     return node && Number(app.attribute(node, 'terminal-id')) === 2 ? node : undefined;
   });
   await app.terminalFrame(red);
-  expect((await app.node('#terminal-surface'))!.nodeId).toBe(nodeId);
+  expect((await app.automation('terminal-surface').node())!.nodeId).toBe(nodeId);
   await expectScreenshot('second-tab', await app.screenshot());
-  await app.tap('#tab-1');
+  await app.automation('tab-1').tap();
   await waitFor('first session rebound', async () => {
-    const node = await app.node('#terminal-surface');
+    const node = await app.automation('terminal-surface').node();
     return node && Number(app.attribute(node, 'terminal-id')) === firstId ? node : undefined;
   });
   await app.terminalFrame(blue);
-  const node = (await app.node('#terminal-surface'))!;
+  const node = (await app.automation('terminal-surface').node())!;
   expect(node.nodeId).toBe(nodeId);
   expect(Number(app.attribute(node, 'terminal-id'))).toBe(firstId);
-  await expectScreenshot('updated-terminal', await app.screenshot('#terminal-viewport'));
+  await expectScreenshot(
+    'updated-terminal',
+    await app.automation('terminal-viewport').screenshot(),
+  );
 });
 
 test('workspace first activation creates a session and its dock indicator', async () => {
-  await app.tap('#workspace-other');
+  await app.automation('workspace-other').tap();
   await waitFor('other workspace session bound', async () => {
-    const node = await app.node('#terminal-surface');
+    const node = await app.automation('terminal-surface').node();
     return node && Number(app.attribute(node, 'terminal-id')) === 2 ? node : undefined;
   });
-  await waitFor('other workspace dock indicator', () => app.node('#running-other'));
+  await waitFor('other workspace dock indicator', () => app.automation('running-other').node());
   await app.terminalFrame(red);
-  expect(await app.node('#running-other')).toBeDefined();
-  expect(await app.node('#tab-2')).toBeDefined();
-  expect((await app.node('#terminal-surface'))!.nodeId).toBe(nodeId);
+  expect(await app.automation('running-other').node()).toBeDefined();
+  expect(await app.automation('tab-2').node()).toBeDefined();
+  expect((await app.automation('terminal-surface').node())!.nodeId).toBe(nodeId);
   await expectScreenshot('other-workspace', await app.screenshot());
 });
 
 test('closing the last tab unbinds the persistent native view and removes the dock indicator', async () => {
-  await app.tap('#new-tab');
-  await waitFor('new tab', () => app.node('#tab-2'));
-  await app.tap('#workspace-other');
-  await waitFor('other workspace tab', () => app.node('#tab-3'));
+  await app.automation('new-tab').tap();
+  await waitFor('new tab', () => app.automation('tab-2').node());
+  await app.automation('workspace-other').tap();
+  await waitFor('other workspace tab', () => app.automation('tab-3').node());
   for (const id of [1, 2, 3]) {
     await waitFor(`session ${id} created in Rust registry`, async () =>
       (await app.sessionExists(id)) ? true : undefined,
     );
   }
-  await app.tap('#close-tab-3');
+  await app.automation('close-tab-3').tap();
   await waitFor('session 3 removed from Rust registry', async () =>
     !(await app.sessionExists(3)) ? true : undefined,
   );
   expect(await app.sessionExists(1)).toBe(true);
   expect(await app.sessionExists(2)).toBe(true);
-  await app.tap('#workspace-test');
-  await app.tap('#close-tab-2');
+  await app.automation('workspace-test').tap();
+  await app.automation('close-tab-2').tap();
   await waitFor('session 2 removed from Rust registry', async () =>
     !(await app.sessionExists(2)) ? true : undefined,
   );
   expect(await app.sessionExists(1)).toBe(true);
-  await app.tap('#close-tab-1');
+  await app.automation('close-tab-1').tap();
   await waitFor('session 1 removed from Rust registry', async () =>
     !(await app.sessionExists(1)) ? true : undefined,
   );
   const node = await waitFor('session unbound', async () => {
-    const node = await app.node('#terminal-surface');
+    const node = await app.automation('terminal-surface').node();
     return node && app.attribute(node, 'terminal-id') === '0' ? node : undefined;
   });
   expect(node.nodeId).toBe(nodeId);
-  expect(await app.node('#running-test')).toBeUndefined();
-  expect(await app.node('#running-other')).toBeUndefined();
-  expect(await app.node('#terminal-placeholder')).toBeDefined();
+  expect(await app.automation('running-test').node()).toBeUndefined();
+  expect(await app.automation('running-other').node()).toBeUndefined();
+  expect(await app.automation('terminal-placeholder').node()).toBeDefined();
   await expectScreenshot('closed-tabs', await app.screenshot());
 });
 
 test('native scroll events synchronize the overlay and invoke positions history', async () => {
-  await app.invoke('#terminal-surface', 'write', { text: 'history\r' });
+  await app.automation('terminal-surface').invoke('write', { text: 'history\r' });
   await waitFor('history output parsed', async () => {
     const text = await app.evaluate(
       `globalThis.multiApps[globalThis.currentDebugAppId || globalThis.currentAppId].NativeModules.nodejs.exposed.getTerminalSessionInfo(${firstId}).text`,
     );
     return typeof text === 'string' && text.includes('history 39') ? true : undefined;
   });
-  const parsed = await app.invoke<{ historyRows: number }>('#terminal-surface', 'getScrollState');
+  const parsed = await app
+    .automation('terminal-surface')
+    .invoke<{ historyRows: number }>('getScrollState');
   const bar = await waitFor('scroll history event', async () => {
-    const node = await app.node('#terminal-scrollbar');
+    const node = await app.automation('terminal-scrollbar').node();
     return node &&
       Number(app.attribute(node, 'data-history')) === parsed.historyRows &&
       parsed.historyRows > 0
@@ -134,18 +146,20 @@ test('native scroll events synchronize the overlay and invoke positions history'
       : undefined;
   });
   const history = Number(app.attribute(bar, 'data-history'));
-  await app.invoke('#terminal-surface', 'scrollTo', { sessionId: firstId, offset: history });
+  await app.automation('terminal-surface').invoke('scrollTo', {
+    sessionId: firstId,
+    offset: history,
+  });
   await waitFor('absolute scroll callback', async () => {
-    const node = await app.node('#terminal-scrollbar');
+    const node = await app.automation('terminal-scrollbar').node();
     return node && Number(app.attribute(node, 'data-offset')) === history ? true : undefined;
   });
-  const state = await app.invoke<{ offset: number; historyRows: number }>(
-    '#terminal-surface',
-    'getScrollState',
-  );
+  const state = await app
+    .automation('terminal-surface')
+    .invoke<{ offset: number; historyRows: number }>('getScrollState');
   expect(state.offset).toBe(history);
   const overlay = await waitFor('visible overlay pixels above native texture', async () => {
-    const buffer = await app.screenshot('#terminal-viewport');
+    const buffer = await app.automation('terminal-viewport').screenshot();
     const image = PNG.sync.read(buffer);
     let pixels = 0;
     for (let y = 0; y < image.height; y++) {
@@ -159,7 +173,7 @@ test('native scroll events synchronize the overlay and invoke positions history'
     return pixels > 50 ? buffer : undefined;
   });
   await writeFile('.tmp/e2e/artifacts/terminal-scrollbar.actual.png', overlay);
-  const point = await app.visibleTarget('#terminal-scrollbar-thumb');
+  const point = await app.automation('terminal-scrollbar-thumb').visibleTarget();
   await app.cdp('Input.emulateTouchFromMouseEvent', {
     type: 'mousePressed',
     ...point,
@@ -183,12 +197,15 @@ test('native scroll events synchronize the overlay and invoke positions history'
     timestamp: Date.now() / 1000,
   });
   await waitFor('drag scroll callback', async () => {
-    const node = await app.node('#terminal-scrollbar');
+    const node = await app.automation('terminal-scrollbar').node();
     return node && Number(app.attribute(node, 'data-offset')) < history ? true : undefined;
   });
-  await app.invoke('#terminal-surface', 'scrollTo', { sessionId: firstId, offset: 0 });
+  await app.automation('terminal-surface').invoke('scrollTo', {
+    sessionId: firstId,
+    offset: 0,
+  });
   await waitFor('bottom scroll callback', async () => {
-    const node = await app.node('#terminal-scrollbar');
+    const node = await app.automation('terminal-scrollbar').node();
     return node && Number(app.attribute(node, 'data-offset')) === 0 ? true : undefined;
   });
 });

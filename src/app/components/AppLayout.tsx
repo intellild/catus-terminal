@@ -6,7 +6,7 @@ type LayoutChildren = { children?: ReactNode };
 export function AppLayout({ children }: LayoutChildren) {
   return (
     <view
-      id="application-layout"
+      data-automation-id="application-layout"
       className="w-full h-full flex flex-col bg-[#101215] relative text-[#e3e5e8]"
     >
       {children}
@@ -16,7 +16,10 @@ export function AppLayout({ children }: LayoutChildren) {
 
 export function AppLayoutHeader({ children }: LayoutChildren) {
   return (
-    <view id="window-tab-bar" className="h-[38px] shrink-0 flex flex-row items-center pr-[12px]">
+    <view
+      data-automation-id="window-tab-bar"
+      className="h-[38px] shrink-0 flex flex-row items-center pr-[12px]"
+    >
       {children}
     </view>
   );
@@ -35,7 +38,7 @@ export function AppLayoutBody({ children }: LayoutChildren) {
 export function AppLayoutSidebar({ children }: LayoutChildren) {
   return (
     <view
-      id="workspace-dock"
+      data-automation-id="workspace-dock"
       className="w-12 shrink-0 flex flex-col items-center bg-[#181b20] border-r border-solid border-[#282c32] py-[6px]"
     >
       {children}
@@ -49,7 +52,7 @@ export function AppLayoutMain({ children }: LayoutChildren) {
 
 export function AppLayoutContent({ children }: LayoutChildren) {
   return (
-    <view id="terminal-content" className="flex-1 min-h-0 flex flex-col">
+    <view data-automation-id="terminal-content" className="flex-1 min-h-0 flex flex-col">
       {children}
     </view>
   );
@@ -58,7 +61,7 @@ export function AppLayoutContent({ children }: LayoutChildren) {
 export function AppLayoutFooter({ children }: LayoutChildren) {
   return (
     <view
-      id="application-status"
+      data-automation-id="application-status"
       className="h-[26px] flex flex-row items-center justify-between py-0 px-[16px] bg-[#181c21] border-t border-solid border-[#2a3037] shrink-0"
     >
       {children}

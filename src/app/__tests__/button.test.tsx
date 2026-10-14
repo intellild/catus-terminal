@@ -12,7 +12,7 @@ test('Button renders text and CSS hover classes on the main thread without mouse
   const leave = rstest.fn();
   render(
     <Button
-      id="button"
+      data-automation-id="button"
       bindtap={onTap}
       bindmouseenter={enter}
       bindmouseleave={leave}
@@ -22,7 +22,7 @@ test('Button renders text and CSS hover classes on the main thread without mouse
     </Button>,
     { enableMainThread: true },
   );
-  const button = elementTree.root!.querySelector('#button')!;
+  const button = elementTree.root!.querySelector('[data-automation-id=button]')!;
   expect(button.querySelector('text')?.textContent).toBe('Save');
   const initial = button.getAttribute('class');
   mouse(button, 'mouseenter');
@@ -40,12 +40,12 @@ test('Button renders text and CSS hover classes on the main thread without mouse
 test('disabled Button blocks taps and removes CSS hover variants', () => {
   const onTap = rstest.fn();
   const renderButton = (disabled: boolean) => (
-    <Button id="button" variant="ghost" disabled={disabled} bindtap={onTap}>
+    <Button data-automation-id="button" variant="ghost" disabled={disabled} bindtap={onTap}>
       Delete
     </Button>
   );
   const { rerender } = render(renderButton(false), { enableMainThread: true });
-  const button = elementTree.root!.querySelector('#button')!;
+  const button = elementTree.root!.querySelector('[data-automation-id=button]')!;
   mouse(button, 'mouseenter');
   expect(button.getAttribute('class')).toContain('hover:bg-[#343d47]');
   rerender(renderButton(true));
@@ -61,19 +61,19 @@ test('Button catchtap prevents a nested close action from activating its parent'
   const select = rstest.fn();
   const close = rstest.fn();
   render(
-    <Button id="tab" bindtap={select}>
-      <Button id="close" catchtap={close}>
+    <Button data-automation-id="tab" bindtap={select}>
+      <Button data-automation-id="close" catchtap={close}>
         ×
       </Button>
     </Button>,
     { enableMainThread: true },
   );
-  fireEvent.tap(elementTree.root!.querySelector('#close')!, {
+  fireEvent.tap(elementTree.root!.querySelector('[data-automation-id=close]')!, {
     eventType: 'catchEvent',
     bubbles: true,
   });
   expect(close).toHaveBeenCalledOnce();
   expect(select).not.toHaveBeenCalled();
-  fireEvent.tap(elementTree.root!.querySelector('#tab')!);
+  fireEvent.tap(elementTree.root!.querySelector('[data-automation-id=tab]')!);
   expect(select).toHaveBeenCalledOnce();
 });

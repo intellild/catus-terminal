@@ -33,11 +33,11 @@ function WorkspaceMenuItems({
   return (
     <ContextMenuContent
       point={point}
-      id="workspace-context-menu"
+      data-automation-id="workspace-context-menu"
       dismissClassName="workspace-menu-dismiss"
     >
       <ContextMenuItem
-        id="workspace-menu-edit"
+        data-automation-id="workspace-menu-edit"
         disabled={busy}
         onSelect={() => {
           onEdit();
@@ -47,7 +47,7 @@ function WorkspaceMenuItems({
         {t('workspace.edit')}
       </ContextMenuItem>
       <ContextMenuItem
-        id="workspace-menu-delete"
+        data-automation-id="workspace-menu-delete"
         disabled={busy || !canDelete}
         destructive
         closeOnSelect={false}
@@ -56,7 +56,10 @@ function WorkspaceMenuItems({
         {busy ? t('common.saving') : t('workspace.delete')}
       </ContextMenuItem>
       {error ? (
-        <text id="workspace-menu-error" className="text-[11px] text-[#e4a4a4] break-all px-[12px]">
+        <text
+          data-automation-id="workspace-menu-error"
+          className="text-[11px] text-[#e4a4a4] break-all px-[12px]"
+        >
           {error}
         </text>
       ) : null}

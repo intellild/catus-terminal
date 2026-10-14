@@ -13,7 +13,7 @@ export function StatusBar({
     <>
       <view className="flex flex-row items-center gap-[8px]">
         <view className="w-[5px] h-[5px] rounded-[3px] bg-[#859e94]" />
-        <text id="session-summary" className="text-[10px] text-[#8997a2]">
+        <text data-automation-id="session-summary" className="text-[10px] text-[#8997a2]">
           {t('status.summary', {
             workspaces: t('status.workspaces', { count: workspaceCount }),
             tabs: t('tabs.count', { count: tabCount }),

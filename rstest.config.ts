@@ -6,7 +6,19 @@ import { defineConfig } from '@rstest/core';
 import { withLynxConfig } from '@lynx-js/react/testing-library/rstest-config';
 
 export default defineConfig({
-  extends: withLynxConfig(),
+  extends: withLynxConfig({
+    modifyRstestConfig: (config) => ({
+      ...config,
+      setupFiles: [
+        ...(Array.isArray(config.setupFiles)
+          ? config.setupFiles
+          : config.setupFiles
+            ? [config.setupFiles]
+            : []),
+        './src/app/__tests__/setup.ts',
+      ],
+    }),
+  }),
   include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
   resolve: { alias: { react$: '@lynx-js/react' } },
 });

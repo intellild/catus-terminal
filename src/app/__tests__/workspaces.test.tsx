@@ -86,7 +86,7 @@ async function changeInput(
 
 async function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
   fireEvent(
-    root.querySelector(`#workspace-${id}`)!,
+    root.querySelector(`[data-automation-id=workspace-${id}]`)!,
     Object.assign(new CustomEvent('bindEvent:mousedown'), {
       button: 0,
       buttons: 2,
@@ -94,17 +94,23 @@ async function contextMenu(root: NonNullable<typeof elementTree.root>, id: strin
       pageY: 120,
     }),
   );
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).not.toBeNull());
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull(),
+  );
 }
 async function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
   await contextMenu(root, id);
-  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
 }
 
 async function waitForTerminal() {
   await rstest.waitFor(() =>
     expect(
-      Number(elementTree.root!.querySelector('#terminal-surface')?.getAttribute('terminal-id')),
+      Number(
+        elementTree
+          .root!.querySelector('[data-automation-id=terminal-surface]')
+          ?.getAttribute('terminal-id'),
+      ),
     ).toBeGreaterThan(0),
   );
 }
@@ -141,10 +147,12 @@ test('main-thread first frame renders the layout and region fallbacks without lo
     'terminal-content',
     'application-status',
   ]) {
-    expect(root.querySelector(`#${id}`)).not.toBeNull();
+    expect(root.querySelector(`[data-automation-id=${id}]`)).not.toBeNull();
   }
-  expect(root.querySelector('#terminal-placeholder')?.textContent).toBe('Getting things ready.');
-  expect(root.querySelector('#tab-1')).toBeNull();
+  expect(root.querySelector('[data-automation-id=terminal-placeholder]')?.textContent).toBe(
+    'Getting things ready.',
+  );
+  expect(root.querySelector('[data-automation-id=tab-1]')).toBeNull();
   expect(host.loadWorkspaces).not.toHaveBeenCalled();
 });
 
@@ -166,7 +174,10 @@ test('background hydration preserves the main-thread layout nodes', async () => 
   // Capture the native element tree after IFR, before testing-library hydrates BTS.
   main.renderPage = (...args: unknown[]) => {
     const result = renderPage(...args);
-    firstFrame = ids.map((id) => ({ id, element: elementTree.root!.querySelector(`#${id}`) }));
+    firstFrame = ids.map((id) => ({
+      id,
+      element: elementTree.root!.querySelector(`[data-automation-id=${id}]`),
+    }));
     return result;
   };
   try {
@@ -178,7 +189,7 @@ test('background hydration preserves the main-thread layout nodes', async () => 
   expect(firstFrame).toHaveLength(ids.length);
   for (const { id, element } of firstFrame) {
     expect(element).not.toBeNull();
-    expect(elementTree.root!.querySelector(`#${id}`)).toBe(element);
+    expect(elementTree.root!.querySelector(`[data-automation-id=${id}]`)).toBe(element);
   }
 });
 
@@ -191,14 +202,16 @@ test('the native view stays mounted through empty/loading/error states with one 
   rstest.mocked(host.loadWorkspaces).mockRejectedValueOnce(new Error('Temporary config error'));
   const { unmount } = renderApp(host);
   const root = elementTree.root!;
-  await rstest.waitFor(() => expect(root.querySelector('#config-error')).not.toBeNull());
-  const surface = root.querySelector('#terminal-surface')!;
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=config-error]')).not.toBeNull(),
+  );
+  const surface = root.querySelector('[data-automation-id=terminal-surface]')!;
   expect(Number(surface.getAttribute('terminal-id'))).toBe(0);
   expect(raf).toHaveBeenCalledOnce();
   expect(invoke).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('#retry-config')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=retry-config]')!);
   await waitForTerminal();
-  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
   expect(raf).toHaveBeenCalledOnce();
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
@@ -212,27 +225,29 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
-  expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
-  const surface = root.querySelector('#terminal-surface')!;
+  expect(root.querySelector('[data-automation-id=session-directory]')?.textContent).toBe('$SHELL');
+  const surface = root.querySelector('[data-automation-id=terminal-surface]')!;
   const firstId = surface.getAttribute('terminal-id');
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
-  expect(root.querySelector('#running-shell')).not.toBeNull();
-  expect(root.querySelector('#running-local')).toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-local')!);
+  expect(root.querySelector('[data-automation-id=running-shell]')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=running-local]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-local]')!);
   await findByText('Local 2');
-  expect(root.querySelector('#running-local')).not.toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-local')!);
-  expect(root.querySelector('#tab-3')).toBeNull();
-  fireEvent.tap(root.querySelector('#new-tab')!);
+  expect(root.querySelector('[data-automation-id=running-local]')).not.toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-local]')!);
+  expect(root.querySelector('[data-automation-id=tab-3]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=new-tab]')!);
   await findByText('Local 3');
-  fireEvent.tap(root.querySelector('#workspace-shell')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-shell]')!);
   await findByText('Shell 1');
   await rstest.waitFor(() =>
-    expect(root.querySelector('#terminal-surface')?.getAttribute('terminal-id')).toBe(firstId),
+    expect(
+      root.querySelector('[data-automation-id=terminal-surface]')?.getAttribute('terminal-id'),
+    ).toBe(firstId),
   );
-  expect(root.querySelector('#tab-2')).toBeNull();
-  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(root.querySelector('[data-automation-id=tab-2]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
   expect(terminalHost.createTerminalSession).toHaveBeenCalledTimes(3);
   expect(rstest.mocked(terminalHost.createTerminalSession).mock.calls.map(([id]) => [id])).toEqual([
     [1],
@@ -240,23 +255,29 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
     [3],
   ]);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('#workspace-local')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-local]')!);
   await findByText('Local 3');
-  fireEvent.tap(root.querySelector('#close-tab-3')!, { eventType: 'catchEvent', bubbles: true });
-  fireEvent.tap(root.querySelector('#close-tab-2')!, { eventType: 'catchEvent', bubbles: true });
+  fireEvent.tap(root.querySelector('[data-automation-id=close-tab-3]')!, {
+    eventType: 'catchEvent',
+    bubbles: true,
+  });
+  fireEvent.tap(root.querySelector('[data-automation-id=close-tab-2]')!, {
+    eventType: 'catchEvent',
+    bubbles: true,
+  });
   await findByText('Open a terminal tab in this workspace.');
-  expect(root.querySelector('#running-local')).toBeNull();
-  expect(root.querySelector('#running-shell')).not.toBeNull();
-  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(root.querySelector('[data-automation-id=running-local]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=running-shell]')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
   await rstest.waitFor(() => expect(Number(surface.getAttribute('terminal-id'))).toBe(0));
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledTimes(2);
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(3);
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(2);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
-  fireEvent.tap(root.querySelector('#start-terminal')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=start-terminal]')!);
   await findByText('Local 4');
   await waitForTerminal();
-  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
 });
 
 test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {
@@ -265,41 +286,55 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   const root = elementTree.root!;
   await waitForTerminal();
   await openEditor(root);
-  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
-  expect(root.querySelector('#profile-tmux')?.className).not.toContain('ui-checked');
-  fireEvent.tap(root.querySelector('#profile-tmux')!);
-  expect(root.querySelector('#profile-tmux')?.className).toContain('ui-checked');
-  expect((root.querySelector('#profile-tmuxSessionName') as HTMLInputElement).value).toBe('catus');
-  await changeInput(root, '#profile-tmuxSessionName', 'dev:invalid');
-  fireEvent.tap(root.querySelector('#save-workspace')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#workspace-editor-form')?.textContent).toContain(
+    expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull(),
+  );
+  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).not.toContain(
+    'ui-checked',
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-tmux]')!);
+  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).toContain(
+    'ui-checked',
+  );
+  expect(
+    (root.querySelector('[data-automation-id=profile-tmuxSessionName]') as HTMLInputElement).value,
+  ).toBe('catus');
+  await changeInput(root, '[data-automation-id=profile-tmuxSessionName]', 'dev:invalid');
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-editor-form]')?.textContent).toContain(
       'Enter a session name without dots, colons or control characters',
     ),
   );
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
-  await changeInput(root, '#profile-tmuxSessionName', 'dev-session');
-  fireEvent.tap(root.querySelector('#profile-shell')!);
+  await changeInput(root, '[data-automation-id=profile-tmuxSessionName]', 'dev-session');
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
+    expect(root.querySelector('[data-automation-id=profile-shell-option-custom]')).not.toBeNull(),
   );
-  fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
-  await changeInput(root, '#profile-command', 'printf hello');
-  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
-  expect(root.querySelector('#profile-command')).not.toBeNull();
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-custom]')!);
+  await changeInput(root, '[data-automation-id=profile-command]', 'printf hello');
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
+  expect(root.querySelector('[data-automation-id=profile-command]')).not.toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
-  await rstest.waitFor(() => expect(root.querySelector('#editor-error')).not.toBeNull());
-  await changeInput(root, '#profile-host', 'user@server');
-  await changeInput(root, '#profile-remoteCommand', 'cd /srv && exec bash -l');
-  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain(
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=editor-error]')).not.toBeNull(),
+  );
+  await changeInput(root, '[data-automation-id=profile-host]', 'user@server');
+  await changeInput(root, '[data-automation-id=profile-remoteCommand]', 'cd /srv && exec bash -l');
+  expect(root.querySelector('[data-automation-id=ssh-command-preview]')?.textContent).toContain(
     "'ssh' '-tt' '--' 'user@server'",
   );
-  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain('tmux');
-  fireEvent.tap(root.querySelector('#workspace-type-local')!);
-  expect((root.querySelector('#profile-command') as HTMLInputElement).value).toBe('printf hello');
-  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  expect(root.querySelector('[data-automation-id=ssh-command-preview]')?.textContent).toContain(
+    'tmux',
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-local]')!);
+  expect(
+    (root.querySelector('[data-automation-id=profile-command]') as HTMLInputElement).value,
+  ).toBe('printf hello');
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
   const profile = rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!;
   expect(profile).toMatchObject({
@@ -313,11 +348,13 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
     tmuxSessionName: 'dev-session',
   });
   // Already running terminals keep their old profile.
-  expect(root.querySelector('#session-directory')?.textContent).toBe('$SHELL');
+  expect(root.querySelector('[data-automation-id=session-directory]')?.textContent).toBe('$SHELL');
   await openEditor(root);
-  expect(root.querySelector('#profile-tmux')?.className).toContain('ui-checked');
-  fireEvent.tap(root.querySelector('#close-settings')!);
-  fireEvent.tap(root.querySelector('#new-tab')!);
+  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).toContain(
+    'ui-checked',
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=new-tab]')!);
   await rstest.waitFor(() =>
     expect(
       (NativeModules.nodejs.exposed as TerminalHost).createTerminalSession,
@@ -335,18 +372,20 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
-  fireEvent.tap(root.querySelector('#add-workspace')!);
-  fireEvent.tap(root.querySelector('#save-workspace')!);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-workspace-1')).not.toBeNull());
-  expect(root.querySelector('#running-workspace-1')).toBeNull();
-  fireEvent.tap(root.querySelector('#workspace-workspace-1')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=add-workspace]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-workspace-1]')).not.toBeNull(),
+  );
+  expect(root.querySelector('[data-automation-id=running-workspace-1]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-workspace-1]')!);
   await findByText('New workspace 2');
-  expect(root.querySelector('#running-workspace-1')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=running-workspace-1]')).not.toBeNull();
   await contextMenu(root, 'workspace-1');
-  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
   await findByText('Shell 1');
-  expect(root.querySelector('#workspace-workspace-1')).toBeNull();
-  expect(root.querySelector('#tab-2')).toBeNull();
+  expect(root.querySelector('[data-automation-id=workspace-workspace-1]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=tab-2]')).toBeNull();
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(
     defaults.workspaces.length,
   );
@@ -358,22 +397,26 @@ test('Hook Form shows Schema field errors, revalidates corrections and resets on
   const root = elementTree.root!;
   await waitForTerminal();
   await openEditor(root);
-  await changeInput(root, '#profile-name', ' ');
-  await changeInput(root, '#profile-cwd', ' ');
-  await changeInput(root, '#profile-color', '#xyz');
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await changeInput(root, '[data-automation-id=profile-name]', ' ');
+  await changeInput(root, '[data-automation-id=profile-cwd]', ' ');
+  await changeInput(root, '[data-automation-id=profile-color]', '#xyz');
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#workspace-editor-form')?.textContent).toContain(
+    expect(root.querySelector('[data-automation-id=workspace-editor-form]')?.textContent).toContain(
       'Use a six-digit hex color',
     ),
   );
-  expect(root.querySelector('#workspace-editor-form')?.textContent).toContain('Required');
+  expect(root.querySelector('[data-automation-id=workspace-editor-form]')?.textContent).toContain(
+    'Required',
+  );
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
-  await changeInput(root, '#profile-name', ' Updated shell ');
-  await changeInput(root, '#profile-cwd', ' ~/work ');
-  await changeInput(root, '#profile-color', '#aabbcc');
-  await rstest.waitFor(() => expect(root.querySelector('#editor-error')).toBeNull());
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await changeInput(root, '[data-automation-id=profile-name]', ' Updated shell ');
+  await changeInput(root, '[data-automation-id=profile-cwd]', ' ~/work ');
+  await changeInput(root, '[data-automation-id=profile-color]', '#aabbcc');
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=editor-error]')).toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]).toMatchObject({
     name: 'Updated shell',
@@ -383,8 +426,10 @@ test('Hook Form shows Schema field errors, revalidates corrections and resets on
     args: ['-l'],
   });
   await openEditor(root);
-  expect(root.querySelector('#editor-error')).toBeNull();
-  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Updated shell');
+  expect(root.querySelector('[data-automation-id=editor-error]')).toBeNull();
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'Updated shell',
+  );
 });
 
 test('React unmount and remount preserve global sessions; atom writes release them', async () => {
@@ -399,7 +444,11 @@ test('React unmount and remount preserve global sessions; atom writes release th
   await waitForTerminal();
   expect(host.createTerminalSession).toHaveBeenCalledOnce();
   expect(
-    Number(elementTree.root!.querySelector('#terminal-surface')!.getAttribute('terminal-id')),
+    Number(
+      elementTree
+        .root!.querySelector('[data-automation-id=terminal-surface]')!
+        .getAttribute('terminal-id'),
+    ),
   ).toBe(id);
   act(() => closeTab(sessionRegistry, id));
   expect(host.closeTerminalSession).toHaveBeenCalledOnce();
@@ -412,7 +461,7 @@ test('terminal leaves keyboard handling to the native input client', async () =>
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const invoke = rstest.spyOn(Object.getPrototypeOf(query.selectUniqueID(0)), 'invoke');
   invoke.mockClear();
-  const surface = elementTree.root!.querySelector('#terminal-surface')!;
+  const surface = elementTree.root!.querySelector('[data-automation-id=terminal-surface]')!;
   const key = (metaKey: boolean) => {
     act(() => {
       surface.dispatchEvent(
@@ -482,10 +531,12 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
-  const surface = root.querySelector('#terminal-surface');
-  expect(root.querySelector('#new-sftp-tab')).not.toBeNull();
+  const surface = root.querySelector('[data-automation-id=terminal-surface]');
+  expect(root.querySelector('[data-automation-id=new-sftp-tab]')).not.toBeNull();
   const list = () =>
-    root.querySelector('#sftp-list')! as Parameters<typeof elementTree.enterListItemAtIndex>[0];
+    root.querySelector('[data-automation-id=sftp-list]')! as Parameters<
+      typeof elementTree.enterListItemAtIndex
+    >[0];
   let visibleCells: number[] = [];
   // The test host has no viewport: simulate native requests and recycling.
   const visibleText = (count: number) => {
@@ -498,60 +549,71 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
       .map((cell) => elementTree.__GetElementByUniqueId(cell)!.textContent)
       .join('');
   };
-  fireEvent.tap(root.querySelector('#new-sftp-tab')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=new-sftp-tab]')!);
   await rstest.waitFor(() => expect(visibleText(1)).toContain('docs'));
-  expect(root.querySelector('#sftp-path')?.textContent).toBe('…›users›home›test');
+  expect(root.querySelector('[data-automation-id=sftp-path]')?.textContent).toBe(
+    '…›users›home›test',
+  );
   expect(visibleText(1)).not.toContain('.env');
-  expect(root.querySelector('#session-label')).toBeNull();
-  expect(root.querySelector('#session-directory')).toBeNull();
+  expect(root.querySelector('[data-automation-id=session-label]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=session-directory]')).toBeNull();
   expect(visibleText(1)).not.toContain('.cache');
-  fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=sftp-show-hidden]')!);
   await rstest.waitFor(() => expect(visibleText(3)).toContain('.cache'));
   expect(visibleText(3)).toContain('.env');
   const fileRow = elementTree.__GetElementByUniqueId(visibleCells[2]!)!;
-  fireEvent.tap(fileRow.querySelector('#sftp-download-2')!, {
+  fireEvent.tap(fileRow.querySelector('[data-automation-id=sftp-download-2]')!, {
     eventType: 'catchEvent',
     bubbles: true,
   });
   await rstest.waitFor(() =>
     expect(download).toHaveBeenCalledWith('test-alias', '/srv/users/home/test/.env'),
   );
-  expect(fileRow.querySelector('#sftp-entry-2')?.getAttribute('class')).not.toContain(
-    'bg-[#35483f]',
-  );
-  fireEvent.tap(root.querySelector('#sftp-show-hidden')!);
+  expect(
+    fileRow.querySelector('[data-automation-id=sftp-entry-2]')?.getAttribute('class'),
+  ).not.toContain('bg-[#35483f]');
+  fireEvent.tap(root.querySelector('[data-automation-id=sftp-show-hidden]')!);
   await rstest.waitFor(() => expect(visibleText(1)).not.toContain('.cache'));
   expect(visibleText(1)).not.toContain('.env');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(0);
   fireEvent.tap(
-    elementTree.__GetElementByUniqueId(visibleCells[0]!)!.querySelector('#sftp-entry-0')!,
+    elementTree
+      .__GetElementByUniqueId(visibleCells[0]!)!
+      .querySelector('[data-automation-id=sftp-entry-0]')!,
   );
   await rstest.waitFor(() => {
     visibleText(1);
     expect(
-      elementTree.__GetElementByUniqueId(visibleCells[0]!)!.querySelector('#sftp-empty'),
+      elementTree
+        .__GetElementByUniqueId(visibleCells[0]!)!
+        .querySelector('[data-automation-id=sftp-empty]'),
     ).not.toBeNull();
   });
   expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users/home/test/docs', { withFileTypes: true });
-  fireEvent.tap(root.querySelector('#sftp-up')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=sftp-up]')!);
   await rstest.waitFor(() => expect(visibleText(1)).toContain('docs'));
-  fireEvent.tap(root.querySelector('#sftp-breadcrumb-0')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=sftp-breadcrumb-0]')!);
   await rstest.waitFor(() =>
     expect(fs.readdir).toHaveBeenLastCalledWith('/srv/users', { withFileTypes: true }),
   );
-  expect(root.querySelector('#sftp-breadcrumb-ellipsis')).toBeNull();
-  expect(root.querySelector('#sftp-breadcrumb-current')?.textContent).toBe('users');
+  expect(root.querySelector('[data-automation-id=sftp-breadcrumb-ellipsis]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=sftp-breadcrumb-current]')?.textContent).toBe(
+    'users',
+  );
   const reads = fs.readdir.mock.calls.length;
-  fireEvent.tap(root.querySelector('#sftp-upload')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=sftp-upload]')!);
   await rstest.waitFor(() => expect(fs.readdir.mock.calls.length).toBeGreaterThan(reads));
   expect(upload).toHaveBeenCalledWith('test-alias', '/srv/users');
-  fireEvent.tap(root.querySelector('#tab-1')!);
-  expect(root.querySelector('#terminal-surface')).toBe(surface);
+  fireEvent.tap(root.querySelector('[data-automation-id=tab-1]')!);
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
   expect(Number(surface!.getAttribute('terminal-id'))).toBe(1);
   expect(fs.close).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('#tab-2')!);
-  fireEvent.tap(root.querySelector('#close-tab-2')!, { eventType: 'catchEvent', bubbles: true });
+  fireEvent.tap(root.querySelector('[data-automation-id=tab-2]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=close-tab-2]')!, {
+    eventType: 'catchEvent',
+    bubbles: true,
+  });
   await rstest.waitFor(() => expect(fs.close).toHaveBeenCalledOnce());
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
 });
@@ -563,31 +625,39 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
   const root = elementTree.root!;
   await openEditor(root);
   await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith(undefined));
-  expect(root.querySelector('#profile-command')).toBeNull();
-  fireEvent.tap(root.querySelector('#profile-shell')!);
-  await rstest.waitFor(() => expect(root.querySelector('#profile-shell-option-1')).not.toBeNull());
-  fireEvent.tap(root.querySelector('#profile-shell-option-1')!);
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  expect(root.querySelector('[data-automation-id=profile-command]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-shell-option-1]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-1]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]).toMatchObject({
     shell: '/bin/zsh',
     command: '/bin/zsh',
     args: ['-l'],
   });
-  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).toBeNull());
-  await openEditor(root);
-  await rstest.waitFor(() => expect(root.querySelector('#profile-shell')).not.toBeNull());
-  fireEvent.tap(root.querySelector('#workspace-type-ssh')!);
-  await changeInput(root, '#profile-host', 'remote-alias');
-  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith('remote-alias'));
-  expect(root.querySelector('#ssh-command-preview')?.textContent).toContain('exec');
-  fireEvent.tap(root.querySelector('#profile-shell')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#profile-shell-option-custom')).not.toBeNull(),
+    expect(root.querySelector('[data-automation-id=profile-shell]')).toBeNull(),
   );
-  fireEvent.tap(root.querySelector('#profile-shell-option-custom')!);
-  await changeInput(root, '#profile-command', 'exec fish');
-  fireEvent.tap(root.querySelector('#save-workspace')!);
+  await openEditor(root);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
+  await changeInput(root, '[data-automation-id=profile-host]', 'remote-alias');
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith('remote-alias'));
+  expect(root.querySelector('[data-automation-id=ssh-command-preview]')?.textContent).toContain(
+    'exec',
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-shell-option-custom]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-custom]')!);
+  await changeInput(root, '[data-automation-id=profile-command]', 'exec fish');
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledTimes(2));
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces[0]).toMatchObject({
     type: 'ssh',
@@ -604,33 +674,39 @@ test('right-click edits an inactive workspace without starting it; failed deleti
   const root = elementTree.root!;
   const terminal = NativeModules.nodejs.exposed as TerminalHost;
   await contextMenu(root, 'local');
-  expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull();
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
-  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
-  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Local');
-  expect(root.querySelector('#delete-workspace')).toBeNull();
-  expect(root.querySelector('#edit-profile-shell')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'Local',
+  );
+  expect(root.querySelector('[data-automation-id=delete-workspace]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=edit-profile-shell]')).toBeNull();
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
-  fireEvent.tap(root.querySelector('#close-settings')!);
-  fireEvent.tap(root.querySelector('#workspace-local')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-local]')!);
   await rstest.waitFor(() => expect(terminal.createTerminalSession).toHaveBeenCalledTimes(2));
-  fireEvent.tap(root.querySelector('#workspace-shell')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-shell]')!);
   await contextMenu(root, 'local');
   rstest.mocked(host.saveWorkspaces).mockRejectedValueOnce(new Error('Permission denied'));
-  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#workspace-menu-error')?.textContent).toContain('Permission denied'),
+    expect(root.querySelector('[data-automation-id=workspace-menu-error]')?.textContent).toContain(
+      'Permission denied',
+    ),
   );
-  expect(root.querySelector('#workspace-local')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=workspace-local]')).not.toBeNull();
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('#workspace-menu-delete')!);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-local')).toBeNull());
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-local]')).toBeNull(),
+  );
   expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2);
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
 });
 
 function hoverWorkspace(id: string, enter: boolean) {
-  const trigger = elementTree.root!.querySelector(`#workspace-${id}`)!;
+  const trigger = elementTree.root!.querySelector(`[data-automation-id=workspace-${id}]`)!;
   const eventName = enter ? 'mouseenter' : 'mouseleave';
   fireEvent(
     trigger,
@@ -643,12 +719,16 @@ test('workspace buttons show details on hover without starting or selecting a wo
   await waitForTerminal();
   const root = elementTree.root!;
   const terminal = NativeModules.nodejs.exposed as TerminalHost;
-  expect(root.querySelector('#workspace-local')?.textContent).not.toContain('Local');
+  expect(root.querySelector('[data-automation-id=workspace-local]')?.textContent).not.toContain(
+    'Local',
+  );
   hoverWorkspace('local', true);
   await rstest.waitFor(() =>
-    expect(root.querySelector('#workspace-details-local')?.textContent).toContain('Local'),
+    expect(
+      root.querySelector('[data-automation-id=workspace-details-local]')?.textContent,
+    ).toContain('Local'),
   );
-  expect(root.querySelector('#workspace-details-local')?.textContent).toContain(
+  expect(root.querySelector('[data-automation-id=workspace-details-local]')?.textContent).toContain(
     'Working directory',
   );
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
@@ -656,12 +736,18 @@ test('workspace buttons show details on hover without starting or selecting a wo
   // Informational popovers must not install a screen-wide click interceptor.
   expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
   hoverWorkspace('local', false);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
+  );
   hoverWorkspace('local', true);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).not.toBeNull());
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).not.toBeNull(),
+  );
   await contextMenu(root, 'local');
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
-  expect(root.querySelector('#workspace-context-menu')).not.toBeNull();
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
+  );
+  expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull();
 });
 
 test('hover deduplicates measurements and rejects responses from a previous visit', async () => {
@@ -693,14 +779,18 @@ test('hover deduplicates measurements and rejects responses from a previous visi
   hoverWorkspace('local', true);
   expect(responses).toHaveLength(2);
   act(() => responses[0]!({ left: 0, top: 0, width: 40, height: 40 }));
-  expect(root.querySelector('#workspace-details-local')).toBeNull();
+  expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull();
   act(() => responses[1]!({ left: 8, top: 100, width: 40, height: 40 }));
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).not.toBeNull());
-  const details = root.querySelector('#workspace-details-local')!;
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).not.toBeNull(),
+  );
+  const details = root.querySelector('[data-automation-id=workspace-details-local]')!;
   expect(details.className).toContain('pointer-events-none');
   expect(details.getAttribute('event-through')).toBe('true');
   hoverWorkspace('local', false);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
+  );
 });
 
 test('leaving hover preserves styles during the delay and then removes the content', async () => {
@@ -710,15 +800,17 @@ test('leaving hover preserves styles during the delay and then removes the conte
   for (let count = 0; count < 3; count++) {
     hoverWorkspace('local', true);
     await rstest.waitFor(() =>
-      expect(root.querySelector('#workspace-details-local')).not.toBeNull(),
+      expect(root.querySelector('[data-automation-id=workspace-details-local]')).not.toBeNull(),
     );
-    const details = root.querySelector('#workspace-details-local')!;
+    const details = root.querySelector('[data-automation-id=workspace-details-local]')!;
     const classes = details.className;
     expect(classes).toContain('bg-[#20262d]');
     hoverWorkspace('local', false);
-    expect(root.querySelector('#workspace-details-local')).toBe(details);
+    expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBe(details);
     expect(details.className).toBe(classes);
-    await rstest.waitFor(() => expect(root.querySelector('#workspace-details-local')).toBeNull());
+    await rstest.waitFor(() =>
+      expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
+    );
     expect(details.className).toBe(classes);
   }
 });
@@ -730,15 +822,23 @@ test('each workspace owns its menu and outside taps close the current instance',
   for (const id of ['local', 'shell', 'local']) {
     await contextMenu(root, id);
     fireEvent.tap(root.querySelector('.workspace-menu-dismiss')!);
-    await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).toBeNull());
+    await rstest.waitFor(() =>
+      expect(root.querySelector('[data-automation-id=workspace-context-menu]')).toBeNull(),
+    );
     expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
   }
   await contextMenu(root, 'local');
-  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
-  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Local');
-  fireEvent.tap(root.querySelector('#close-settings')!);
-  await rstest.waitFor(() => expect(root.querySelector('#workspace-context-menu')).toBeNull());
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'Local',
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-context-menu]')).toBeNull(),
+  );
   await contextMenu(root, 'shell');
-  fireEvent.tap(root.querySelector('#workspace-menu-edit')!);
-  expect((root.querySelector('#profile-name') as HTMLInputElement).value).toBe('Shell');
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'Shell',
+  );
 });

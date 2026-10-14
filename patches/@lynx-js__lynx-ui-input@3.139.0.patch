@@ -1,0 +1,49 @@
+diff --git a/dist/Input.jsx b/dist/Input.jsx
+index 652879dcd85ece017d21323eaae39fdadb0810d3..e1a07f1333c9e3fb604759c149d197bab38c08df 100644
+--- a/dist/Input.jsx
++++ b/dist/Input.jsx
+@@ -115,7 +115,7 @@ function InputImpl(props, ref) {
+         focus,
+         setSelectionRange
+     ]);
+-    return <input ref={inputRef} id={id} readonly={readonly} ignore-focus={true} placeholder={placeholder} confirm-type={confirmType} type={type} input-filter={inputFilter} maxlength={maxLength} show-soft-input-on-focus={showSoftInputOnFocus} main-thread:bindinput={onInputContentDidChanged} bindfocus={onInputDidFocused} bindblur={onInputDidBlurred} bindconfirm={onInputDidConfirm} bindselection={onInputSelectionDidChanged} className={className} style={style}/>;
++    return <input ref={inputRef} id={id} data-automation-id={props['data-automation-id']} readonly={readonly} ignore-focus={true} placeholder={placeholder} confirm-type={confirmType} type={type} input-filter={inputFilter} maxlength={maxLength} show-soft-input-on-focus={showSoftInputOnFocus} main-thread:bindinput={onInputContentDidChanged} bindfocus={onInputDidFocused} bindblur={onInputDidBlurred} bindconfirm={onInputDidConfirm} bindselection={onInputSelectionDidChanged} className={className} style={style}/>;
+ }
+ export { Input };
+ 
+diff --git a/dist/types/index.docs.d.ts b/dist/types/index.docs.d.ts
+index ce17be0ec4e56df330ea6af2ce17822c856046f3..3fcc2a6a0b2f757273c2f803192c5ed61b6be9eb 100644
+--- a/dist/types/index.docs.d.ts
++++ b/dist/types/index.docs.d.ts
+@@ -105,6 +105,7 @@ export interface InputProps extends ComponentBasicProps {
+      * @Harmony
+      */
+     id?: string;
++    'data-automation-id'?: string;
+     /**
+      * Placeholder
+      * @zh 输入框占位符
+diff --git a/src/Input.tsx b/src/Input.tsx
+index d9b77d9f37aa7e7cf195b70c5759a0eb6c141ecf..0f3e9145e2cf7494b50151e7aeec328e578f0715 100644
+--- a/src/Input.tsx
++++ b/src/Input.tsx
+@@ -226,6 +226,7 @@ function InputImpl(props: InputProps, ref: ForwardedRef<InputRef>) {
+     <input
+       ref={inputRef}
+       id={id}
++      data-automation-id={props['data-automation-id']}
+       readonly={readonly}
+       ignore-focus={true}
+       placeholder={placeholder}
+diff --git a/src/types/index.docs.ts b/src/types/index.docs.ts
+index 52ac9e2d952463d5086008b3f8c9a3c6ecf51854..196213c51357953e9947626180a4ca72a15f4795 100644
+--- a/src/types/index.docs.ts
++++ b/src/types/index.docs.ts
+@@ -118,6 +118,7 @@ export interface InputProps extends ComponentBasicProps {
+    * @Harmony
+    */
+   id?: string
++  'data-automation-id'?: string
+   /**
+    * Placeholder
+    * @zh 输入框占位符

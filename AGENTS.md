@@ -49,6 +49,8 @@
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
+- Use `data-automation-id` for test locators. E2E uses `app.automation(id)`;
+  keep workspace, tab and session IDs as business identifiers.
 - Use Tailwind utilities, `cn` when merging class lists and cva for variants.
   Use plain className strings or expressions when no merging is needed. Keep
   conditional classes as complete literals and runtime values in CSS variables.

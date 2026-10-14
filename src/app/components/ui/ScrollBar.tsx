@@ -5,7 +5,7 @@ import { scrollbarGeometry, scrollbarOffset } from './scrollbarGeometry';
 
 // Twelve logical pixels also define the AppKit overlay exclusion strip.
 export function ScrollBar({
-  id,
+  'data-automation-id': automationId,
   offset,
   historyRows,
   visibleRows,
@@ -13,7 +13,7 @@ export function ScrollBar({
   className,
   resetKey,
 }: {
-  id: string;
+  'data-automation-id': string;
   offset: number;
   historyRows: number;
   visibleRows: number;
@@ -74,7 +74,7 @@ export function ScrollBar({
     'background only';
     lynx
       .createSelectorQuery()
-      .select(`#${id}`)
+      .select(`[data-automation-id=${automationId}]`)
       .invoke({
         method: 'boundingClientRect',
         success: (value) => {
@@ -103,7 +103,7 @@ export function ScrollBar({
   }
   return (
     <view
-      id={id}
+      data-automation-id={automationId}
       data-offset={offset}
       data-history={historyRows}
       className={cn(
@@ -130,7 +130,7 @@ export function ScrollBar({
       global-bindtouchcancel={end}
     >
       <view
-        id={`${id}-thumb`}
+        data-automation-id={`${automationId}-thumb`}
         className="absolute left-[3px] right-[3px] top-[var(--scrollbar-top)] h-[var(--scrollbar-height)] rounded-full bg-[#65717f]/60 hover:bg-[#8996a5]"
         style={`--scrollbar-top: ${geometry.top}px; --scrollbar-height: ${geometry.thumb}px`}
         catchmousedown={(event) => mouseDown(event, true)}

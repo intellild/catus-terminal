@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@lynx-js/lynx-ui-input@3.139.0':
+    hash: 9f9267f57bc738deb56393ea9d0017d4cce5164b5c67a8f6fe1607fee7db1e60
+    path: patches/@lynx-js__lynx-ui-input@3.139.0.patch
   effect@4.0.0:
     hash: 0d6ad3e3bb0a8618fc3d623c1dad489da1ee7bfe28f7e674d0a743586229f909
     path: patches/effect@4.0.0.patch
@@ -36,7 +39,7 @@ importers:
         version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
       '@lynx-js/lynx-ui-input':
         specifier: ^3.139.0
-        version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
+        version: 3.139.0(patch_hash=9f9267f57bc738deb56393ea9d0017d4cce5164b5c67a8f6fe1607fee7db1e60)(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
       '@lynx-js/lynx-ui-popover':
         specifier: ^3.139.0
         version: 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
@@ -5925,7 +5928,7 @@ snapshots:
       - react
       - react-dom
 
-  '@lynx-js/lynx-ui-input@3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)':
+  '@lynx-js/lynx-ui-input@3.139.0(patch_hash=9f9267f57bc738deb56393ea9d0017d4cce5164b5c67a8f6fe1607fee7db1e60)(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@lynx-js/lynx-ui-common': 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)
       '@lynx-js/lynx-ui-scroll-view': 3.139.0(@lynx-js/react@0.126.2(@lynx-js/types@4.3.0)(@types/react@18.3.31))(@lynx-js/types@4.3.0)(@types/react@18.3.31)(react-dom@19.3.0(react@19.2.4))(react@19.2.4)

@@ -75,22 +75,22 @@ test('mounted components update on language changes and unsubscribe on unmount',
     enableMainThread: true,
   });
   try {
-    expect(elementTree.root!.querySelector('#session-summary')?.textContent).toBe(
-      '1 workspace open · 1 tab',
-    );
+    expect(
+      elementTree.root!.querySelector('[data-automation-id=session-summary]')?.textContent,
+    ).toBe('1 workspace open · 1 tab');
     await act(async () => {
       await i18n.changeLanguage('de');
     });
-    expect(elementTree.root!.querySelector('#session-summary')?.textContent).toBe(
-      '1 workspace / 1 terminal',
-    );
+    expect(
+      elementTree.root!.querySelector('[data-automation-id=session-summary]')?.textContent,
+    ).toBe('1 workspace / 1 terminal');
     expect(elementTree.root!.textContent).toContain('Translated ready');
     await act(async () => {
       await i18n.changeLanguage('en');
     });
-    expect(elementTree.root!.querySelector('#session-summary')?.textContent).toBe(
-      '1 workspace open · 1 tab',
-    );
+    expect(
+      elementTree.root!.querySelector('[data-automation-id=session-summary]')?.textContent,
+    ).toBe('1 workspace open · 1 tab');
     unmount();
     expect(off).toHaveBeenCalledWith('languageChanged', expect.any(Function));
   } finally {

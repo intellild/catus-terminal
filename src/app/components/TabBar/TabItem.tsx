@@ -19,7 +19,7 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
     }
     lynx
       .createSelectorQuery()
-      .select(`#tab-${tab.number}`)
+      .select(`[data-automation-id=tab-${tab.number}]`)
       .invoke({
         method: 'scrollIntoView',
         params: { scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' } },
@@ -33,7 +33,7 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
   return (
     <Button
       variant="ghost"
-      id={`tab-${tab.number}`}
+      data-automation-id={`tab-${tab.number}`}
       bindtap={() => {
         'background only';
         dispatch({ type: 'focusTab', id });
@@ -64,7 +64,7 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
       <Button
         variant="ghost"
         size="icon"
-        id={`close-tab-${tab.number}`}
+        data-automation-id={`close-tab-${tab.number}`}
         className="w-[16px] h-[16px] flex justify-center items-center shrink-0"
         catchtap={() => {
           'background only';

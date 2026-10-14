@@ -29,7 +29,7 @@ export function App() {
       <AppLayout>
         <AppLayoutHeader>
           <view
-            id="window-controls-space"
+            data-automation-id="window-controls-space"
             className="w-[76px] h-full shrink-0 [-x-app-region:drag]"
           />
 
