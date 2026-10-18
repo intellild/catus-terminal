@@ -4,6 +4,7 @@ ssh = "SSH"
 sftp = "SFTP"
 retry = "Retry"
 saving = "Saving…"
+close = "Close"
 
 [tabs]
 opening = "Opening workspace…"

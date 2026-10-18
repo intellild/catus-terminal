@@ -22,8 +22,9 @@ pnpm build:web
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
 构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
 布局组件，由 `App.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
-首帧渲染窗口骨架。tab、workspace 列表、内容、状态栏和设置各有独立的
-`<background-only>` 边界及首帧 fallback。`App.tsx` 在两个线程中都使用同一层
+首帧渲染窗口骨架。tab、workspace 列表、内容和状态栏各有独立的
+`<background-only>` 边界及首帧 fallback；设置 Dialog 与新建/编辑按钮一起组合在 workspace 区域内。
+`App.tsx` 在两个线程中都使用同一层
 `state/SessionProvider.tsx`，保持首屏到后台接管时的组件树结构一致。
 Provider 精确导入 `@effect/atom-react/RegistryContext`，各区域继承应用级 registry；
 主线程只创建空 registry，业务 atom、配置加载及 Node 编码器适配只在 BTS 运行。
@@ -50,7 +51,6 @@ Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会�
       <AppLayoutFooter>{/* 状态栏 */}</AppLayoutFooter>
     </AppLayoutMain>
   </AppLayoutBody>
-  {/* 设置与配置初始化区域 */}
 </AppLayout>
 ```
 
@@ -98,19 +98,42 @@ macOS 默认还会尝试 Xcode 工具链。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
-workspace 设置表单通过项目 UI 组件使用官方 Lynx UI Input。
+workspace 设置表单通过项目 UI 组件封装 Lynx 原生 `<input>`。
 表单使用 React Hook Form，`FormField` 通过 `useController` 绑定 Lynx 受控组件。
 `src/shared/workspaces.ts` 集中定义配置与表单 Schema，表单通过
 `Schema.toStandardSchemaV1` 和 `standardSchemaResolver` 显示字段错误。
 Schema 同时将 args JSON 和 tmux 字符串转换为启动参数类型；Effect registry
 保留草稿、Shell 检测及配置保存，并在保存时用同一 Schema 再次校验。
 
-`src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装官方
-`@lynx-js/lynx-ui-input`，统一样式并将表单 `onChange` 映射到 `onInput`，
-受控值同步由官方组件处理。业务组件只依赖项目 UI 组件。
+`src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装原生
+`<input>`，通过后台线程 `bindinput` 转发表单 `onChange`，用 `setValue`
+同步外部受控值；输入值不重复写回原生控件。业务组件只依赖项目 UI 组件。
+参考 [shadcn Input Group](https://ui.shadcn.com/docs/components/input-group)，
+用 `InputGroup` 组合外框、`InputBeforeAddon`、`Input` 和 `InputAfterAddon`。
+外框由原生输入框的后台 `bindfocus` / `bindblur` 更新边框高亮；addon 可以放文字、图标或按钮。
+
+```tsx
+<InputGroup>
+  <InputBeforeAddon>https://</InputBeforeAddon>
+  <Input value={value} onChange={setValue} />
+  <InputAfterAddon>.com</InputAfterAddon>
+</InputGroup>
+```
+
 `Select` 和 `ContextMenu` 共用官方 `@lynx-js/lynx-ui-popover`。
-`PopoverProvider` 在应用内建立 portal host，让下拉内容离开滚动容器；
+`Dialog` 参考 [shadcn Dialog](https://ui.shadcn.com/docs/components/dialog)，提供
+`DialogTrigger`、`DialogContent`、`DialogHeader`、`DialogTitle`、`DialogDescription`、
+`DialogFooter` 和 `DialogClose` 组合组件，支持 `open` / `defaultOpen` / `onOpenChange`。
+`DialogContent` 自动把遮罩和内容放进共享的 `CoverView`，点击遮罩或关闭按钮关闭；
+`overlayProps.closeOnPress` 和 `showCloseButton` 可关闭对应的默认行为。
+`WorkspaceAdd` 和 `WorkspaceContextMenu` 分别与触发按钮一起组合 Dialog；
+`WorkspaceSettingsDialog` 连接当前草稿、Shell 检测与保存命令，并提供共享的弹窗内容。
+`WorkspaceSettings` 只渲染表单，不依赖 Dialog 或开关/关闭逻辑；App 不再单独挂载设置弹窗。
+Dialog 内的 Select / Popover 保持更高的浮层层级。
+目前封装显示状态、布局和点击交互，不提供 Escape / Tab 焦点陷阱。
 Popover 的 Anchor / Positioner 负责定位，点击外部区域关闭浮层。
+在 cover 层内部，Positioner 将 anchor-local 偏移转换为视口坐标并使用 fixed 定位，
+避免固定遮罩盖住仍在 Dialog 子树内的菜单；Dialog 外保持原来的相对定位。
 `lynx.config.ts` 保留 Lynx UI 的主线程模板注册，并将其 `delayFrames` 替换为
 `ui/frames.ts`：由应用现有 MTS RAF 推进 Presence，绕过当前 Lynxtron BTS RAF
 回调不推进的问题。此适配不改变终端的帧调度，不增加 RAF 循环。

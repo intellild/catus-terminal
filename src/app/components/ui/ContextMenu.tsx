@@ -7,10 +7,9 @@ import type { ViewProps } from '@lynx-js/types';
 import {
   PopoverRoot,
   PopoverAnchor,
-  PopoverPositioner,
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
-import { PopoverOverlay } from './Popover';
+import { PopoverOverlay, PopoverPositioner } from './Popover';
 import { usePopoverState } from './usePopoverState';
 import type { PopoverContentProps } from './Popover';
 
@@ -133,6 +132,7 @@ export function ContextMenuContent({
       ) : null}
       <ContextMenuAnchor point={anchor}>
         <PopoverPositioner
+          referencePoint={anchor}
           placement={align === 'center' ? side : `${side}-${align}`}
           placementOffset={sideOffset}
           autoAdjust="shift"

@@ -4,10 +4,11 @@ import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/tes
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { sftpClient } from '../api/sftp';
 import { App } from '../App';
+import { WorkspaceSettings } from '../components/Workspace/WorkspaceSettings';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionRegistry } from '../state/sessionRegistry';
 import { startSessionRuntime } from '../state/sessionRuntime';
-import { activeWorkspaceIdAtom, closeTab } from '../state/session';
+import { activeWorkspaceIdAtom, closeTab, createDraft } from '../state/session';
 import type { TerminalHost } from '../state/terminalSessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
@@ -64,9 +65,11 @@ async function changeInput(
   selector: string,
   value: string,
 ) {
-  const input = root.querySelector(selector)!;
+  const input = root.querySelector(selector)! as HTMLInputElement;
+  // Native editing updates the control before delivering the input event.
+  input.value = value;
   const event = new Event('bindEvent:input');
-  // Testing-library copies enumerable fields into the MTS event payload.
+  // Testing-library copies enumerable fields into the event payload.
   Object.defineProperties(event, {
     currentTarget: { value: { elementRefptr: input }, enumerable: true },
     detail: {
@@ -136,6 +139,34 @@ function renderApp(host = makeHost()) {
   act(() => startSessionRuntime(sessionRegistry, host));
   return render(<App />, { enableMainThread: true });
 }
+
+test('WorkspaceSettings renders a standalone form without a dialog shell', async () => {
+  const draft = createDraft(parseWorkspaceConfig(defaults).workspaces).draft!;
+  const onSave = rstest.fn();
+  await act(async () => {
+    render(
+      <WorkspaceSettings
+        draft={draft}
+        saving={false}
+        error=""
+        shells={{ options: [], loading: false, error: '' }}
+        onRetryShells={rstest.fn()}
+        onChange={rstest.fn()}
+        onSave={onSave}
+      />,
+      { enableMainThread: false },
+    );
+  });
+  const root = elementTree.root!;
+  expect(root.querySelector('[data-automation-id=workspace-editor-form]')).not.toBeNull();
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'New workspace',
+  );
+  expect(root.querySelector('[data-automation-id=workspace-dialog]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=close-settings]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+});
 
 test('main-thread first frame renders the layout and region fallbacks without loading the host', () => {
   const host = makeHost();

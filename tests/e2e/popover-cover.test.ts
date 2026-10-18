@@ -19,6 +19,27 @@ test('covered menus and Select keep their layout and dismiss correctly in a nati
     );
 
     await app.automation('add-workspace').tap();
+    await app.automation('workspace-dialog').visibleTarget();
+    interface InspectorNode {
+      nodeId: number;
+      nodeName: string;
+      attributes?: string[];
+      children?: InspectorNode[];
+    }
+    const { root } = await app.cdp<{ root: InspectorNode }>('DOM.getDocument', { depth: -1 });
+    const covered = (node: InspectorNode, id: string, insideCover = false): boolean => {
+      const inside = insideCover || node.nodeName.toLowerCase() === 'cover-view';
+      if (app.attribute(node, 'data-automation-id') === id) {
+        return inside;
+      }
+      return node.children?.some((child) => covered(child, id, inside)) ?? false;
+    };
+    expect(covered(root, 'workspace-dialog')).toBe(true);
+    expect(covered(root, 'workspace-dialog-overlay')).toBe(true);
+    await writeFile(
+      '.tmp/e2e/artifacts/covered-dialog.png',
+      await app.automation('workspace-dialog').screenshot(),
+    );
     await app.automation('profile-shell').tap();
     await app.automation('profile-shell-option-1').visibleTarget();
     type Rect = { left: number; top: number; width: number; height: number };
@@ -46,6 +67,30 @@ test('covered menus and Select keep their layout and dismiss correctly in a nati
     await app.automation('profile-shell-option-custom').tap();
     await app.automation('profile-command').visibleTarget();
     expect(await app.automation('profile-shell-content').node()).toBeUndefined();
+    // This target is behind the modal. Its coordinates should hit the backdrop,
+    // dismiss the dialog and never activate the underlying new-tab action.
+    const behind = (await app.automation('new-tab').node())!;
+    const { model } = await app.cdp<{ model: { content: number[] } }>('DOM.getBoxModel', {
+      nodeId: behind.nodeId,
+    });
+    const x = (model.content[0]! + model.content[4]!) / 2;
+    const y = (model.content[1]! + model.content[5]!) / 2;
+    const hit = await app.cdp<{ nodeId: number }>('DOM.getNodeForLocation', { x, y });
+    expect(hit.nodeId).toBe((await app.automation('workspace-dialog-overlay').node())!.nodeId);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await app.cdp('Input.emulateTouchFromMouseEvent', {
+        type,
+        x,
+        y,
+        button: 'left',
+        timestamp: Date.now() / 1000,
+        clickCount: 1,
+      });
+    }
+    await waitFor('dismissed covered dialog', async () =>
+      !(await app.automation('workspace-dialog').node()) ? true : undefined,
+    );
+    expect(await app.sessionExists(2)).toBe(false);
     expect(await app.sessionExists(1)).toBe(true);
   } finally {
     await app.close();

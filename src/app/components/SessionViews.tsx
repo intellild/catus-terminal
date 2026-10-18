@@ -2,19 +2,13 @@ import 'background-only';
 import '../runtime';
 import { useAtomSet, useAtomValue } from '@effect/atom-react';
 import { sessionActionsAtom } from '../state/sessionActions';
-import { shellOptionsAtom } from '../state/shells';
-import {
-  tabsViewAtom,
-  workspacesViewAtom,
-  statusViewAtom,
-  settingsViewAtom,
-} from '../state/sessionViews';
+import { tabsViewAtom, workspacesViewAtom, statusViewAtom } from '../state/sessionViews';
 import { TabList, TabActions } from './TabBar';
 import { TabItem } from './TabBar/TabItem';
 import { WorkspaceItem } from './Workspace/WorkspaceItem';
 import { WorkspaceList } from './Workspace/WorkspaceList';
 import { StatusBar } from './StatusBar';
-import { WorkspaceSettings } from './Workspace/WorkspaceSettings';
+import { WorkspaceAdd } from './Workspace/WorkspaceAdd';
 
 export function SessionTabs() {
   const view = useAtomValue(tabsViewAtom);
@@ -50,15 +44,8 @@ export function SessionTabActions() {
 
 export function SessionWorkspaces() {
   const view = useAtomValue(workspacesViewAtom);
-  const dispatch = useAtomSet(sessionActionsAtom);
   return (
-    <WorkspaceList
-      loading={view.loading && !view.workspaceIds.length}
-      onAdd={() => {
-        'background only';
-        dispatch({ type: 'addWorkspace' });
-      }}
-    >
+    <WorkspaceList loading={view.loading && !view.workspaceIds.length} action={<WorkspaceAdd />}>
       {view.workspaceIds.map((id) => (
         <WorkspaceItem key={id} id={id} />
       ))}
@@ -69,38 +56,6 @@ export function SessionWorkspaces() {
 export function SessionStatus() {
   const view = useAtomValue(statusViewAtom);
   return <StatusBar {...view} />;
-}
-
-export function SessionSettings() {
-  const view = useAtomValue(settingsViewAtom);
-  const shells = useAtomValue(shellOptionsAtom);
-  const dispatch = useAtomSet(sessionActionsAtom);
-  return (
-    <>
-      <WorkspaceSettings
-        editor={view.editor}
-        shells={shells}
-        configPath={view.configPath}
-        environment={view.environment}
-        onRetryShells={() => {
-          'background only';
-          dispatch({ type: 'retryShells' });
-        }}
-        onClose={() => {
-          'background only';
-          dispatch({ type: 'closeSettings' });
-        }}
-        onChange={(field, value) => {
-          'background only';
-          dispatch({ type: 'updateDraft', field, value });
-        }}
-        onSave={() => {
-          'background only';
-          dispatch({ type: 'saveDraft' });
-        }}
-      />
-    </>
-  );
 }
 
 export { SessionContent } from './Terminal/SessionContent';

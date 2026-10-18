@@ -2,7 +2,7 @@ import { Button } from '../ui/Button';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select';
-import { Input } from '../ui/Input';
+import { Input, InputGroup } from '../ui/Input';
 import { Checkbox } from '../ui/Checkbox';
 import { useEffect, useMemo } from '@lynx-js/react';
 import { useForm } from 'react-hook-form';
@@ -13,7 +13,7 @@ import { WorkspaceFormSchema } from '../../../shared/workspaces';
 import type { ShellOption } from '../../../shared/shells';
 import type { WorkspaceEnvironment } from '../../../shared/workspaces';
 import { launchPreview } from '../../../shared/launch';
-import type { EditorState, WorkspaceDraft } from '../../state/session';
+import type { WorkspaceDraft } from '../../state/session';
 import {
   Form,
   FormField,
@@ -26,34 +26,28 @@ import {
 } from '../ui/Form';
 
 interface WorkspaceSettingsProps {
-  editor: EditorState;
+  draft: WorkspaceDraft;
+  saving: boolean;
+  error: string;
   shells: { options: readonly ShellOption[]; loading: boolean; error: string };
   onRetryShells(): void;
   configPath?: string;
   environment?: WorkspaceEnvironment;
-  onClose(): void;
   onChange(field: keyof WorkspaceDraft, value: string): void;
   onSave(): void;
 }
 
-export function WorkspaceSettings(props: WorkspaceSettingsProps) {
-  const draft = props.editor.draft;
-  return props.editor.open && draft ? (
-    <WorkspaceEditor key={draft.id} {...props} draft={draft} />
-  ) : null;
-}
-
-function WorkspaceEditor({
-  editor,
+export function WorkspaceSettings({
+  saving,
+  error,
   shells,
   onRetryShells,
   configPath,
   environment,
-  onClose,
   onChange,
   onSave,
   draft,
-}: WorkspaceSettingsProps & { draft: WorkspaceDraft }) {
+}: WorkspaceSettingsProps) {
   const { t } = useTranslation();
   const resolver = useMemo(() => {
     const translateIssue = (message: string) =>
@@ -102,215 +96,193 @@ function WorkspaceEditor({
       ? launchPreview({ ...draft, tmux: draft.tmux === 'true', args: [] }, environment)
       : '';
   return (
-    <view className="absolute inset-0 flex items-center justify-center [-x-app-region:no-drag]">
-      <view className="absolute inset-0 bg-[#00000080]" bindtap={onClose} />
-      <view className="w-[520px] max-h-[90%] bg-[#20262d] border border-solid border-[#39444e] rounded-[14px] flex flex-col p-[24px]">
-        <view className="flex flex-row justify-between items-center mb-[14px]">
-          <text className="text-[18px] text-[#e2e8ed]">
-            {draft.isNew ? t('workspace.add') : t('workspace.edit')}
-          </text>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            data-automation-id="close-settings"
-            bindtap={onClose}
-          >
-            <text className="text-[18px] text-[#9ca6b2]">×</text>
-          </Button>
-        </view>
-        <scroll-view scroll-y className="shrink min-h-0">
-          <view key={draft.id} data-automation-id="workspace-editor-form">
-            <Form
-              control={form.control}
-              disabled={editor.saving}
-              onChange={(name, value) => {
-                'background only';
-                onChange(name as keyof WorkspaceDraft, value);
-              }}
-              onSubmit={() => {
-                'background only';
-                return form.handleSubmit(onSave)();
-              }}
-            >
-              <Field name="name" label={t('workspace.name')} />
-              <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
-                {(['local', 'ssh'] as const).map((type) => (
-                  <Button
-                    variant="ghost"
-                    disabled={editor.saving}
-                    data-automation-id={`workspace-type-${type}`}
-                    key={type}
-                    className={cn(
-                      'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
-                      draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]',
-                    )}
-                    bindtap={() => {
-                      if (!editor.saving) {
-                        onChange('type', type);
-                      }
-                    }}
-                  >
-                    <text className="text-[12px] text-[#dce4e9]">
-                      {t(type === 'local' ? 'common.local' : 'common.ssh')}
-                    </text>
-                  </Button>
-                ))}
-              </view>
-              {draft.type === 'ssh' ? (
-                <Field
-                  name="host"
-                  label={t('workspace.host')}
-                  description={t('workspace.hostDescription')}
-                />
-              ) : null}
-              <FormField
-                name="shell"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('workspace.shell')}</FormLabel>
-                    <FormControl>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={field.disabled}
-                      >
-                        <SelectTrigger data-automation-id="profile-shell">
-                          <SelectValue>
-                            {shellOptions.find((option) => option.value === field.value)?.label}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent
-                          data-automation-id="profile-shell-content"
-                          dismissClassName="profile-shell-dismiss"
-                        >
-                          {shellOptions.map((option, index) => (
-                            <SelectItem
-                              key={option.value}
-                              value={option.value}
-                              data-automation-id={`profile-shell-option-${option.value === 'custom' ? 'custom' : index}`}
-                            >
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormDescription>
-                      {shells.loading
-                        ? t('workspace.detectingShells')
-                        : draft.type === 'ssh'
-                          ? t('workspace.remoteShells')
-                          : t('workspace.localShells')}
-                    </FormDescription>
-                    {shells.error ? (
-                      <view>
-                        <text
-                          data-automation-id="shell-load-error"
-                          className="text-[11px] text-[#e4a4a4] break-all"
-                        >
-                          {shells.error}
-                        </text>
-                        <Button
-                          variant="link"
-                          size="sm"
-                          data-automation-id="retry-shells"
-                          disabled={shells.loading || editor.saving}
-                          bindtap={onRetryShells}
-                        >
-                          <text className="text-[12px] text-[#a8e6cf]">{t('common.retry')}</text>
-                        </Button>
-                      </view>
-                    ) : null}
-                    <FormMessage />
-                  </FormItem>
+    <scroll-view scroll-y className="shrink min-h-0">
+      <view key={draft.id} data-automation-id="workspace-editor-form">
+        <Form
+          control={form.control}
+          disabled={saving}
+          onChange={(name, value) => {
+            'background only';
+            onChange(name as keyof WorkspaceDraft, value);
+          }}
+          onSubmit={() => {
+            'background only';
+            return form.handleSubmit(onSave)();
+          }}
+        >
+          <Field name="name" label={t('workspace.name')} />
+          <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
+            {(['local', 'ssh'] as const).map((type) => (
+              <Button
+                variant="ghost"
+                disabled={saving}
+                data-automation-id={`workspace-type-${type}`}
+                key={type}
+                className={cn(
+                  'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
+                  draft.type === type ? 'bg-[#35483f]' : 'bg-[#14191f]',
                 )}
-              />
-              {draft.shell === 'custom' ? (
-                <Field
-                  name="command"
-                  label={t('workspace.customCommand')}
-                  description={t('workspace.customDescription')}
-                />
-              ) : null}
-              {draft.type === 'ssh' ? (
-                <>
-                  <Field
-                    name="remoteCommand"
-                    label={t('workspace.extraCommand')}
-                    description={t('workspace.extraDescription')}
-                  />
-                  <FormItem>
-                    <FormLabel>{t('workspace.commandPreview')}</FormLabel>
-                    <text
-                      data-automation-id="ssh-command-preview"
-                      className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
-                    >
-                      {preview || t('workspace.enterHost')}
-                    </text>
-                  </FormItem>
-                </>
-              ) : null}
-              <Field name="cwd" label={t('workspace.cwd')} />
-              <FormField
-                name="tmux"
-                render={({ field }) => (
-                  <FormItem>
-                    <Checkbox
-                      data-automation-id="profile-tmux"
-                      checked={field.value === 'true'}
-                      disabled={field.disabled}
-                      onCheckedChange={(checked) => {
-                        'background only';
-                        field.onChange(String(checked));
-                      }}
-                    >
-                      <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
-                    </Checkbox>
-                    <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {draft.tmux === 'true' ? (
-                <Field name="tmuxSessionName" label={t('workspace.tmuxSessionName')} />
-              ) : null}
-              <view className="flex flex-row gap-[14px]">
-                <view className="flex-1">
-                  <Field name="icon" label={t('workspace.icon')} />
-                </view>
-                <view className="flex-1">
-                  <Field name="color" label={t('workspace.color')} />
-                </view>
-              </view>
-              <FormDescription>{t('workspace.changes')}</FormDescription>
-              {editor.error || Object.keys(form.formState.errors).length ? (
-                <text
-                  data-automation-id="editor-error"
-                  className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
-                >
-                  {editor.error || t('validation.fields')}
+                bindtap={() => {
+                  if (!saving) {
+                    onChange('type', type);
+                  }
+                }}
+              >
+                <text className="text-[12px] text-[#dce4e9]">
+                  {t(type === 'local' ? 'common.local' : 'common.ssh')}
                 </text>
-              ) : null}
-              <view className="flex flex-row items-center gap-[14px] mt-[20px]">
-                <FormSubmit data-automation-id="save-workspace">
-                  {editor.saving
-                    ? t('common.saving')
-                    : draft.isNew
-                      ? t('workspace.add')
-                      : t('workspace.save')}
-                </FormSubmit>
-              </view>
-            </Form>
+              </Button>
+            ))}
           </view>
-          <text
-            data-automation-id="config-path"
-            className="text-[10px] text-[#7d8e9c] mt-[20px] break-all"
-          >
-            {configPath}
-          </text>
-        </scroll-view>
+          {draft.type === 'ssh' ? (
+            <Field
+              name="host"
+              label={t('workspace.host')}
+              description={t('workspace.hostDescription')}
+            />
+          ) : null}
+          <FormField
+            name="shell"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('workspace.shell')}</FormLabel>
+                <FormControl>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={field.disabled}
+                  >
+                    <SelectTrigger data-automation-id="profile-shell">
+                      <SelectValue>
+                        {shellOptions.find((option) => option.value === field.value)?.label}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent
+                      data-automation-id="profile-shell-content"
+                      dismissClassName="profile-shell-dismiss"
+                    >
+                      {shellOptions.map((option, index) => (
+                        <SelectItem
+                          key={option.value}
+                          value={option.value}
+                          data-automation-id={`profile-shell-option-${option.value === 'custom' ? 'custom' : index}`}
+                        >
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormControl>
+                <FormDescription>
+                  {shells.loading
+                    ? t('workspace.detectingShells')
+                    : draft.type === 'ssh'
+                      ? t('workspace.remoteShells')
+                      : t('workspace.localShells')}
+                </FormDescription>
+                {shells.error ? (
+                  <view>
+                    <text
+                      data-automation-id="shell-load-error"
+                      className="text-[11px] text-[#e4a4a4] break-all"
+                    >
+                      {shells.error}
+                    </text>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      data-automation-id="retry-shells"
+                      disabled={shells.loading || saving}
+                      bindtap={onRetryShells}
+                    >
+                      <text className="text-[12px] text-[#a8e6cf]">{t('common.retry')}</text>
+                    </Button>
+                  </view>
+                ) : null}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {draft.shell === 'custom' ? (
+            <Field
+              name="command"
+              label={t('workspace.customCommand')}
+              description={t('workspace.customDescription')}
+            />
+          ) : null}
+          {draft.type === 'ssh' ? (
+            <>
+              <Field
+                name="remoteCommand"
+                label={t('workspace.extraCommand')}
+                description={t('workspace.extraDescription')}
+              />
+              <FormItem>
+                <FormLabel>{t('workspace.commandPreview')}</FormLabel>
+                <text
+                  data-automation-id="ssh-command-preview"
+                  className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
+                >
+                  {preview || t('workspace.enterHost')}
+                </text>
+              </FormItem>
+            </>
+          ) : null}
+          <Field name="cwd" label={t('workspace.cwd')} />
+          <FormField
+            name="tmux"
+            render={({ field }) => (
+              <FormItem>
+                <Checkbox
+                  data-automation-id="profile-tmux"
+                  checked={field.value === 'true'}
+                  disabled={field.disabled}
+                  onCheckedChange={(checked) => {
+                    'background only';
+                    field.onChange(String(checked));
+                  }}
+                >
+                  <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
+                </Checkbox>
+                <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {draft.tmux === 'true' ? (
+            <Field name="tmuxSessionName" label={t('workspace.tmuxSessionName')} />
+          ) : null}
+          <view className="flex flex-row gap-[14px]">
+            <view className="flex-1">
+              <Field name="icon" label={t('workspace.icon')} />
+            </view>
+            <view className="flex-1">
+              <Field name="color" label={t('workspace.color')} />
+            </view>
+          </view>
+          <FormDescription>{t('workspace.changes')}</FormDescription>
+          {error || Object.keys(form.formState.errors).length ? (
+            <text
+              data-automation-id="editor-error"
+              className="text-[11px] text-[#e4a4a4] leading-[18px] mt-[12px] break-all"
+            >
+              {error || t('validation.fields')}
+            </text>
+          ) : null}
+          <view className="flex flex-row items-center gap-[14px] mt-[20px]">
+            <FormSubmit data-automation-id="save-workspace">
+              {saving ? t('common.saving') : draft.isNew ? t('workspace.add') : t('workspace.save')}
+            </FormSubmit>
+          </view>
+        </Form>
       </view>
-    </view>
+      <text
+        data-automation-id="config-path"
+        className="text-[10px] text-[#7d8e9c] mt-[20px] break-all"
+      >
+        {configPath}
+      </text>
+    </scroll-view>
   );
 }
 function Field({
@@ -329,7 +301,9 @@ function Field({
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Input data-automation-id={`profile-${name}`} {...field} />
+            <InputGroup data-automation-id={`profile-${name}-group`} disabled={field.disabled}>
+              <Input data-automation-id={`profile-${name}`} {...field} />
+            </InputGroup>
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}
           <FormMessage />

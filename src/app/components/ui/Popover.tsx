@@ -1,15 +1,16 @@
 import { usePopoverState } from './usePopoverState';
 import type { PopoverController } from './popoverState';
 import { Button } from './Button';
+import { CoverView as PopoverOverlay, CoverViewContext } from './CoverView';
 import { cn } from '../../lib/utils';
 import { createContext, useContext, useEffect, useRef } from '@lynx-js/react';
-import type { ReactNode } from '@lynx-js/react';
+import type { ComponentProps, ReactNode } from '@lynx-js/react';
 import type { CSSProperties, NodesRef, ViewProps } from '@lynx-js/types';
 import {
   PopoverRoot,
   PopoverContext as LynxPopoverContext,
   PopoverAnchor,
-  PopoverPositioner,
+  PopoverPositioner as LynxPopoverPositioner,
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
 
@@ -48,7 +49,39 @@ export function Popover({
   );
 }
 
-export { PopoverAnchor };
+export { PopoverAnchor, PopoverOverlay };
+
+export function PopoverPositioner({
+  referencePoint,
+  ...props
+}: ComponentProps<typeof LynxPopoverPositioner> & { referencePoint?: { x: number; y: number } }) {
+  const inCoverView = useContext(CoverViewContext);
+  const { sharedInfo } = useContext(LynxPopoverContext);
+  const origin = referencePoint ?? sharedInfo.reference;
+  // Fixed backdrops escape to the page root. Inside a native cover subtree,
+  // lift the positioner there too so its content can receive hits above them.
+  // Lynx UI computes anchor-local offsets, so restore the viewport origin.
+  return (
+    <LynxPopoverPositioner
+      {...props}
+      popoverPositionerProps={{
+        ...props.popoverPositionerProps,
+        ...(inCoverView && {
+          style: {
+            ...props.style,
+            ...sharedInfo.maxContentSize,
+            ...(typeof props.popoverPositionerProps?.style === 'object'
+              ? props.popoverPositionerProps.style
+              : {}),
+            position: 'fixed',
+            left: `${origin.x + sharedInfo.floatingCoords.x}px`,
+            top: `${origin.y + sharedInfo.floatingCoords.y}px`,
+          },
+        }),
+      }}
+    />
+  );
+}
 
 function usePopoverReference() {
   const { updateRects } = useContext(LynxPopoverContext);
@@ -109,23 +142,6 @@ export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
   dismissClassName?: string;
   modal?: boolean;
   interactive?: boolean;
-}
-
-export function PopoverOverlay({
-  children,
-  interactive = true,
-  className,
-  ...props
-}: ViewProps & { children?: ReactNode; interactive?: boolean }) {
-  return (
-    <cover-view
-      {...props}
-      className={cn('overflow-visible', className)}
-      events-pass-through={!interactive}
-    >
-      {children}
-    </cover-view>
-  );
 }
 
 export function PopoverContent({
