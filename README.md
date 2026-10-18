@@ -74,6 +74,17 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 <Button disabled={saving} bindtap={onSave}>{t('workspace.save')}</Button>
 ```
 
+图标统一使用 `components/ui/Icon.tsx`，数据来自 `lucide-static` 的 SVG 字符串
+（ISC 许可），通过 Lynx 原生 `<svg content>` 渲染，不依赖 DOM SVG 或图标字体。
+`name` 取自 `components/ui/icons.ts` 的按需注册表；默认 `16px`、主文字色
+`#e2e8ed`、`strokeWidth` 2，可按需覆盖。新增图标时只导入用到的 Lucide 图标，
+避免整个图标集进入 bundle。
+
+```tsx
+<Icon name="plus" size={16} color="#c1c7d0" />
+<Icon name="x" size={13} strokeWidth={2.5} />
+```
+
 界面翻译使用 i18next，资源独立放在 `locales/`，目前只提供 `en.toml`。
 TOML 按界面区域分组，变量使用 `{{name}}`，数量使用 `_one` / `_other` 复数键。
 Rspeedy 和 Rstest 在构建时将 TOML 解析成对象，解析器不会进入应用运行时。

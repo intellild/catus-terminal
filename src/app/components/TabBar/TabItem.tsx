@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect } from '@lynx-js/react';
 import { tabViewAtom } from '../../state/sessionViews';
 import { sessionActionsAtom } from '../../state/sessionActions';
 import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 
@@ -71,7 +72,7 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
           dispatch({ type: 'closeTab', id });
         }}
       >
-        <text className="text-[13px] text-[#9ca6b2]">×</text>
+        <Icon name="x" size={13} color="#9ca6b2" />
       </Button>
     </Button>
   );

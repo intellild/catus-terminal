@@ -1,4 +1,5 @@
 import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import type { ReactNode } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
 
@@ -49,7 +50,7 @@ export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?():
         className="w-[24px] h-[24px] rounded-[6px]"
         bindtap={onAdd}
       >
-        <text className="text-[16px] text-[#c1c7d0]">+</text>
+        <Icon name="plus" size={16} color="#c1c7d0" />
       </Button>
       {onAddSftp ? (
         <Button

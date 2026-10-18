@@ -58,6 +58,9 @@ importers:
       i18next:
         specifier: ^24.2.3
         version: 24.2.3(typescript@5.9.3)
+      lucide-static:
+        specifier: ^1.59.0
+        version: 1.59.0
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -3909,6 +3912,9 @@ packages:
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+
+  lucide-static@1.59.0:
+    resolution: {integrity: sha512-MuHZYaXbHgzN2QO6D3OM19bj09A+8GJiFSdXIMlbnLLEGQQ9+NRH2KaCxuivevD3Y23vM74kV17XBifgtqhfEg==}
 
   make-fetch-happen@14.0.3:
     resolution: {integrity: sha512-QMjGbFTP0blj97EeidG5hk/QhKQ3T4ICckQGLgz38QF7Vgbk6e6FTARN8KhKxyBbWn8R0HU+bnw8aSoFPD4qtQ==}
@@ -9496,6 +9502,8 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lucide-static@1.59.0: {}
 
   make-fetch-happen@14.0.3:
     dependencies:
