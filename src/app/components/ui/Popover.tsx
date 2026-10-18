@@ -1,7 +1,8 @@
-import { delayPopover } from './popoverDelay';
+import { usePopoverState } from './usePopoverState';
+import type { PopoverController } from './popoverState';
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
-import { createContext, useContext, useEffect, useRef, useState } from '@lynx-js/react';
+import { createContext, useContext, useEffect, useRef } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { CSSProperties, NodesRef, ViewProps } from '@lynx-js/types';
 import {
@@ -15,6 +16,7 @@ import {
 const PopoverContext = createContext<{
   open: boolean;
   setOpen(open: boolean): void;
+  controller: PopoverController;
 } | null>(null);
 
 export function usePopover() {
@@ -36,17 +38,10 @@ export function Popover({
   defaultOpen?: boolean;
   onOpenChange?(open: boolean): void;
 }) {
-  const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const actualOpen = open ?? internalOpen;
-  const setOpen = (next: boolean) => {
-    if (open === undefined) {
-      setInternalOpen(next);
-    }
-    onOpenChange?.(next);
-  };
+  const state = usePopoverState({ open, defaultOpen, onOpenChange });
   return (
-    <PopoverContext.Provider value={{ open: actualOpen, setOpen }}>
-      <PopoverRoot show={actualOpen} onVisibleChange={setOpen}>
+    <PopoverContext.Provider value={state}>
+      <PopoverRoot show={state.open} onVisibleChange={state.setOpen}>
         {children}
       </PopoverRoot>
     </PopoverContext.Provider>
@@ -82,107 +77,27 @@ function usePopoverReference() {
 }
 
 export function usePopoverClickTrigger({ disabled = false }: { disabled?: boolean } = {}) {
-  const { open, setOpen } = usePopover();
+  const { controller } = usePopover();
   const { ref, measure } = usePopoverReference();
-  const pending = useRef<object | null>(null);
-  useEffect(
-    () => () => {
-      pending.current = null;
-    },
-    [],
-  );
-  const close = () => {
-    pending.current = null;
-    setOpen(false);
+  useEffect(() => () => controller.cancelClick(), [controller]);
+  return {
+    ref,
+    onTap: () => controller.click(measure, disabled),
+    onLayoutChange: () => controller.layout(measure, disabled),
+    close: () => controller.setOpen(false),
   };
-  const onTap = () => {
-    if (disabled) {
-      return;
-    }
-    if (open || pending.current) {
-      close();
-      return;
-    }
-    const request = {};
-    pending.current = request;
-    measure(
-      () => pending.current === request,
-      () => {
-        pending.current = null;
-        setOpen(true);
-      },
-    );
-  };
-  const onLayoutChange = () => {
-    if (!open || disabled || pending.current) {
-      return;
-    }
-    const request = {};
-    pending.current = request;
-    measure(
-      () => pending.current === request,
-      () => {
-        pending.current = null;
-      },
-    );
-  };
-  return { ref, onTap, onLayoutChange, close };
 }
 
 export function usePopoverHoverTrigger({ delay = 100 }: { delay?: number } = {}) {
-  const { open, setOpen } = usePopover();
+  const { controller } = usePopover();
   const { ref, measure } = usePopoverReference();
-  const visit = useRef<object | null>(null);
-  const interrupt = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      visit.current = null;
-      interrupt.current?.();
-    },
-    [],
-  );
-  const cancel = () => {
-    interrupt.current?.();
-    interrupt.current = null;
+  useEffect(() => () => controller.cancelHover(), [controller]);
+  return {
+    ref,
+    onMouseEnter: () => controller.enter(measure, delay),
+    onMouseLeave: () => controller.leave(delay),
+    close: () => controller.setOpen(false),
   };
-  const schedule = (next: boolean) => {
-    cancel();
-    if (next === open) {
-      return;
-    }
-    const wait = Math.max(0, delay);
-    if (wait === 0) {
-      setOpen(next);
-      return;
-    }
-    interrupt.current = delayPopover(wait, () => {
-      interrupt.current = null;
-      setOpen(next);
-    });
-  };
-  const close = () => {
-    visit.current = null;
-    cancel();
-    setOpen(false);
-  };
-  const onMouseLeave = () => {
-    visit.current = null;
-    schedule(false);
-  };
-  const onMouseEnter = () => {
-    // One measurement per visit; delayed results cannot reopen a closed popover.
-    if (visit.current) {
-      return;
-    }
-    cancel();
-    const request = {};
-    visit.current = request;
-    measure(
-      () => visit.current === request,
-      () => schedule(true),
-    );
-  };
-  return { ref, onMouseEnter, onMouseLeave, close };
 }
 
 export interface PopoverContentProps extends Omit<ViewProps, 'style'> {

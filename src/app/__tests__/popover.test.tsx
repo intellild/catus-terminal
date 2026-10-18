@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import { act, fireEvent, render } from '@lynx-js/react/testing-library';
-import * as PopoverDelay from '../components/ui/popoverDelay';
 import {
   Popover,
   PopoverContent,
@@ -43,15 +42,17 @@ function Fixture({
   hover = false,
   delay,
   disabled,
+  open,
   onOpenChange,
 }: {
   hover?: boolean;
   delay?: number;
   disabled?: boolean;
+  open?: boolean;
   onOpenChange?(open: boolean): void;
 }) {
   return (
-    <Popover onOpenChange={onOpenChange}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor>
         <Toggle />
         {hover ? <HoverTrigger delay={delay} /> : <ClickTrigger disabled={disabled} />}
@@ -96,7 +97,6 @@ const hover = (enter: boolean) => {
 
 test('click trigger opens and closes without scheduling a delay', () => {
   const onOpenChange = rstest.fn();
-  const delay = rstest.spyOn(PopoverDelay, 'delayPopover');
   render(<Fixture onOpenChange={onOpenChange} />, { enableMainThread: true });
   const click = () =>
     fireEvent.tap(elementTree.root!.querySelector('[data-automation-id=click-trigger]')!);
@@ -106,7 +106,6 @@ test('click trigger opens and closes without scheduling a delay', () => {
   click();
   expect(contentCount()).toBe(0);
   expect(onOpenChange).toHaveBeenLastCalledWith(false);
-  expect(delay).not.toHaveBeenCalled();
 });
 
 test('disabled click trigger does not open', () => {
@@ -120,6 +119,27 @@ test('programmatic visibility changes do not use the hover delay', () => {
   toggle();
   expect(contentCount()).toBe(1);
   toggle();
+  expect(contentCount()).toBe(0);
+});
+
+test('controlled props sync immediately and cancel pending hover work', () => {
+  const previous = rstest.fn();
+  const current = rstest.fn();
+  const { rerender } = render(<Fixture hover open={false} onOpenChange={previous} />, {
+    enableMainThread: true,
+  });
+  hover(true);
+  advance(50);
+  rerender(<Fixture hover open onOpenChange={current} />);
+  expect(contentCount()).toBe(1);
+  advance(100);
+  expect(previous).not.toHaveBeenCalled();
+  expect(current).not.toHaveBeenCalled();
+  toggle();
+  expect(current).toHaveBeenLastCalledWith(false);
+  // In controlled mode only the caller can change the rendered visibility.
+  expect(contentCount()).toBe(1);
+  rerender(<Fixture hover open={false} onOpenChange={current} />);
   expect(contentCount()).toBe(0);
 });
 
@@ -167,24 +187,15 @@ test('quickly leaving cancels opening; returning cancels closing', () => {
   expect(contentCount()).toBe(1);
 });
 
-test('unmount interrupts the pending Effect without running its callback', () => {
-  const original = PopoverDelay.delayPopover;
-  const callback = rstest.fn();
-  const cancel = rstest.fn();
-  rstest.spyOn(PopoverDelay, 'delayPopover').mockImplementation((milliseconds, onVisible) => {
-    const interrupt = original(milliseconds, () => {
-      callback();
-      onVisible();
-    });
-    cancel.mockImplementation(interrupt);
-    return cancel;
+test('unmount interrupts the pending Effect without changing visibility', () => {
+  const onOpenChange = rstest.fn();
+  const { unmount } = render(<Fixture hover onOpenChange={onOpenChange} />, {
+    enableMainThread: true,
   });
-  const { unmount } = render(<Fixture hover />, { enableMainThread: true });
   hover(true);
   unmount();
-  expect(cancel).toHaveBeenCalledOnce();
   advance(200);
-  expect(callback).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
 });
 
 test('explicit hover close cancels pending opening and bypasses the close delay', () => {
@@ -200,15 +211,6 @@ test('explicit hover close cancels pending opening and bypasses the close delay'
   expect(contentCount()).toBe(1);
   close();
   expect(contentCount()).toBe(0);
-});
-
-test('the Effect interruptor prevents the delayed callback from running', () => {
-  const callback = rstest.fn();
-  const cancel = PopoverDelay.delayPopover(100, callback);
-  advance(50);
-  cancel();
-  advance(200);
-  expect(callback).not.toHaveBeenCalled();
 });
 
 test('outside taps close a popover without waiting for Presence to enable its button', () => {

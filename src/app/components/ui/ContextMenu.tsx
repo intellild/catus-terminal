@@ -1,7 +1,7 @@
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
-import { createContext, useContext, useState } from '@lynx-js/react';
+import { createContext, useContext } from '@lynx-js/react';
 import type { ComponentProps, ReactNode } from '@lynx-js/react';
 import type { ViewProps } from '@lynx-js/types';
 import {
@@ -11,6 +11,7 @@ import {
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
 import { PopoverOverlay } from './Popover';
+import { usePopoverState } from './usePopoverState';
 import type { PopoverContentProps } from './Popover';
 
 const contextMenuLabelVariants = cva('text-[13px]', {
@@ -50,28 +51,17 @@ export function ContextMenu({
   defaultOpen?: boolean;
   onOpenChange?(open: boolean): void;
 }) {
-  const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const actualOpen = open ?? internalOpen;
-  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
-  const setOpen = (next: boolean) => {
-    if (open === undefined) {
-      setInternalOpen(next);
-    }
-    onOpenChange?.(next);
-  };
+  const state = usePopoverState({ open, defaultOpen, onOpenChange });
   return (
     <MenuContext.Provider
       value={{
-        point,
-        open: actualOpen,
-        setOpen,
-        trigger: (next) => {
-          setPoint(next);
-          setOpen(true);
-        },
+        point: state.point,
+        open: state.open,
+        setOpen: state.setOpen,
+        trigger: state.controller.trigger,
       }}
     >
-      <PopoverRoot show={actualOpen} onVisibleChange={setOpen}>
+      <PopoverRoot show={state.open} onVisibleChange={state.setOpen}>
         {children}
       </PopoverRoot>
     </MenuContext.Provider>
