@@ -55,11 +55,13 @@ export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?():
       {onAddSftp ? (
         <Button
           variant="ghost"
+          size="icon-sm"
           data-automation-id="new-sftp-tab"
-          className="h-[24px] px-[8px] rounded-[6px] font-normal"
+          accessibility-label={t('tabs.newSftp')}
+          className="w-[24px] h-[24px] rounded-[6px]"
           bindtap={onAddSftp}
         >
-          <text className="text-[11px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
+          <Icon name="folder" size={16} color="#a8e6cf" />
         </Button>
       ) : null}
     </view>

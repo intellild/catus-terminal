@@ -1,4 +1,5 @@
 import { Button } from './ui/Button';
+import { Icon } from './ui/Icon';
 import { Checkbox } from './ui/Checkbox';
 import {
   Breadcrumb,
@@ -289,7 +290,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           <list-item
             key={joinPath(listing.path, entry.name)}
             item-key={joinPath(listing.path, entry.name)}
-            estimated-main-axis-size-px={34}
+            estimated-main-axis-size-px={38}
           >
             <Button
               variant="ghost"
@@ -304,30 +305,41 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
                 void open(entry);
               }}
             >
-              <text className="w-[22px] text-[12px] text-[#a8e6cf]">
-                {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
-              </text>
+              <view className="w-[22px] h-[22px] shrink-0 flex items-center justify-center">
+                {!entry.directory ? (
+                  <Button
+                    data-automation-id={`sftp-download-${index}`}
+                    data-downloadfile={entry.name}
+                    accessibility-label={t(
+                      downloading === entry.name ? 'sftp.downloading' : 'sftp.download',
+                    )}
+                    variant="ghost"
+                    size="icon-sm"
+                    className="w-[22px] h-[22px] p-0 rounded-[5px]"
+                    disabled={transferring || listing.loading}
+                    catchtap={() => {
+                      void download(entry);
+                    }}
+                  >
+                    <Icon
+                      name={downloading === entry.name ? 'loader-circle' : 'download'}
+                      size={14}
+                      color={downloading === entry.name ? '#a8e6cf' : '#8c99a7'}
+                    />
+                  </Button>
+                ) : null}
+              </view>
+              <view className="w-[22px] h-[22px] shrink-0 flex items-center justify-center">
+                <Icon
+                  name={entry.directory ? 'folder' : entry.symlink ? 'link' : 'file'}
+                  size={14}
+                  color="#a8e6cf"
+                />
+              </view>
               <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
               <text className="text-[10px] text-[#8c99a7]">
                 {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
               </text>
-              {!entry.directory ? (
-                <Button
-                  data-automation-id={`sftp-download-${index}`}
-                  data-downloadfile={entry.name}
-                  variant="link"
-                  size="sm"
-                  className="h-[20px] ml-[8px] px-[8px]"
-                  disabled={transferring || listing.loading}
-                  catchtap={() => {
-                    void download(entry);
-                  }}
-                >
-                  <text className="text-[11px]">
-                    {t(downloading === entry.name ? 'sftp.downloading' : 'sftp.download')}
-                  </text>
-                </Button>
-              ) : null}
             </Button>
           </list-item>
         ))}

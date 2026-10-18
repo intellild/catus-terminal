@@ -308,6 +308,7 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(3);
   expect(terminalHost.closeTerminalSession).toHaveBeenCalledWith(2);
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalledWith(Number(firstId));
+  expect(root.querySelector('[data-automation-id=start-terminal] svg')).not.toBeNull();
   fireEvent.tap(root.querySelector('[data-automation-id=start-terminal]')!);
   await findByText('Local 4');
   await waitForTerminal();
@@ -567,6 +568,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   const root = elementTree.root!;
   const surface = root.querySelector('[data-automation-id=terminal-surface]');
   expect(root.querySelector('[data-automation-id=new-sftp-tab]')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=new-sftp-tab] svg')).not.toBeNull();
   const list = () =>
     root.querySelector('[data-automation-id=sftp-list]')! as Parameters<
       typeof elementTree.enterListItemAtIndex
@@ -596,6 +598,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   await rstest.waitFor(() => expect(visibleText(3)).toContain('.cache'));
   expect(visibleText(3)).toContain('.env');
   const fileRow = elementTree.__GetElementByUniqueId(visibleCells[2]!)!;
+  expect(fileRow.querySelector('[data-automation-id=sftp-download-2] svg')).not.toBeNull();
   fireEvent.tap(fileRow.querySelector('[data-automation-id=sftp-download-2]')!, {
     eventType: 'catchEvent',
     bubbles: true,

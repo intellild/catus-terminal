@@ -1,4 +1,5 @@
 import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import { useTranslation } from '../../i18n';
 import type { ReactNode } from '@lynx-js/react';
 import type { WorkspaceSettings } from '../../../shared/workspaces';
@@ -93,6 +94,7 @@ export function TerminalContent({
                   className="h-auto p-[12px] rounded-[7px] mt-[15px] font-normal"
                   bindtap={onAdd}
                 >
+                  <Icon name="plus" size={14} color="#20392f" />
                   <text className="text-[12px] text-[#20392f]">{t('terminal.new')}</text>
                 </Button>
               ) : null}
