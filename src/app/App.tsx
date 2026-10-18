@@ -20,6 +20,9 @@ import {
 } from './components/SessionViews';
 import { SessionProvider } from './state/SessionProvider';
 import { useFrameDriver } from './frameDriver';
+// The editor mounts from a background-only region, but Input's MTS handlers
+// still need their imports compiled into the main-thread module graph.
+import './components/ui/Input';
 import './tailwind.css';
 
 export function App() {
