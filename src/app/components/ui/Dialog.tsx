@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { Button } from './Button';
 import type { ButtonProps } from './Button';
 import { CoverView } from './CoverView';
+import { Icon } from './Icon';
 import type { PopoverOptions } from './popoverState';
 import { usePopoverState } from './usePopoverState';
 
@@ -145,7 +146,7 @@ export function DialogContent({
             {...closeButtonProps}
             className={cn('absolute top-[18px] right-[20px]', closeButtonProps?.className)}
           >
-            {closeButtonProps?.children ?? <text className="text-[18px] text-[#9ca6b2]">×</text>}
+            {closeButtonProps?.children ?? <Icon name="x" size={18} color="#9ca6b2" />}
           </DialogClose>
         ) : null}
       </view>

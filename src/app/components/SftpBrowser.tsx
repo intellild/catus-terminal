@@ -1,4 +1,5 @@
 import { Button } from './ui/Button';
+import { Icon } from './ui/Icon';
 import { Checkbox } from './ui/Checkbox';
 import {
   Breadcrumb,
@@ -11,22 +12,18 @@ import {
 } from './ui/Breadcrumb';
 import { Fragment } from '@lynx-js/react';
 import { useTranslation } from '../i18n';
-import { cn } from '../lib/utils';
 import 'background-only';
 import { useEffect, useRef, useState } from '@lynx-js/react';
 import { useAtomValue } from '@effect/atom-react';
 import { terminalSessionsAtom } from '../state/terminalSessions';
 import { sftpClient } from '../api/sftp';
 import type { RemoteFs } from '../../shared/sftp';
+import { FileExplorer } from './FileExplorer';
+import type { FileEntry } from './FileExplorer';
 
-interface Entry {
-  name: string;
-  directory: boolean;
-  symlink: boolean;
-}
 interface Listing {
   path: string;
-  entries: Entry[];
+  entries: FileEntry[];
   loading: boolean;
   error: string;
 }
@@ -53,7 +50,6 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
     };
   }, []);
   const [showHiddenFiles, setShowHiddenFiles] = useState(false);
-  const entries = listing.entries.filter((entry) => showHiddenFiles || !entry.name.startsWith('.'));
   const parts = listing.path.split('/').filter(Boolean);
   const breadcrumbs = parts.length
     ? parts
@@ -119,7 +115,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       }
     }
   };
-  const download = async (entry: Entry) => {
+  const download = async (entry: FileEntry) => {
     'background only';
     if (transferring || listing.loading || entry.directory) {
       return;
@@ -142,7 +138,7 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
       }
     }
   };
-  const open = async (entry: Entry) => {
+  const open = async (entry: FileEntry) => {
     'background only';
     if (listing.loading || uploading) {
       return;
@@ -259,79 +255,43 @@ export function SftpBrowser({ id, host }: { id: number; host: string }) {
           <text className="text-[12px] text-[#a8e6cf]">{t('sftp.refresh')}</text>
         </Button>
       </view>
-      {listing.error ? (
-        <text
-          data-automation-id="sftp-error"
-          className="text-[12px] text-[#e4a4a4] leading-[18px] mb-[12px] break-all"
-        >
-          {listing.error}
-        </text>
-      ) : null}
-      {listing.loading ? (
-        <text data-automation-id="sftp-loading" className="text-[12px] text-[#8c99a7]">
-          {t('sftp.loading')}
-        </text>
-      ) : null}
-      <list
-        data-automation-id="sftp-list"
-        list-type="single"
-        scroll-orientation="vertical"
-        className="flex-1 min-h-0"
-      >
-        {!listing.loading && !listing.error && !entries.length ? (
-          <list-item key="empty" item-key="empty" estimated-main-axis-size-px={18}>
-            <text data-automation-id="sftp-empty" className="text-[12px] text-[#8c99a7]">
-              {t('sftp.empty')}
-            </text>
-          </list-item>
-        ) : null}
-        {entries.map((entry, index) => (
-          <list-item
-            key={joinPath(listing.path, entry.name)}
-            item-key={joinPath(listing.path, entry.name)}
-            estimated-main-axis-size-px={34}
-          >
+      <FileExplorer
+        automationId="sftp"
+        entries={listing.entries}
+        loading={listing.loading}
+        error={listing.error}
+        selected={selected}
+        showHiddenFiles={showHiddenFiles}
+        disabled={transferring || listing.loading}
+        itemKey={(entry) => joinPath(listing.path, entry.name)}
+        onOpen={(entry) => {
+          void open(entry);
+        }}
+        renderLeadingAction={(entry, index) =>
+          entry.directory ? null : (
             <Button
-              variant="ghost"
-              disabled={transferring || listing.loading}
-              data-automation-id={`sftp-entry-${index}`}
-              data-filename={entry.name}
-              className={cn(
-                'w-full h-auto justify-start gap-0 py-[8px] px-[10px] rounded-[6px] font-normal',
-                selected === entry.name ? 'bg-[#35483f]' : 'bg-[#111419]',
+              data-automation-id={`sftp-download-${index}`}
+              data-downloadfile={entry.name}
+              accessibility-label={t(
+                downloading === entry.name ? 'sftp.downloading' : 'sftp.download',
               )}
-              bindtap={() => {
-                void open(entry);
+              variant="ghost"
+              size="icon-sm"
+              className="w-[22px] h-[22px] p-0 rounded-[5px]"
+              disabled={transferring || listing.loading}
+              catchtap={() => {
+                void download(entry);
               }}
             >
-              <text className="w-[22px] text-[12px] text-[#a8e6cf]">
-                {entry.directory ? '▸' : entry.symlink ? '↗' : '·'}
-              </text>
-              <text className="flex-1 text-[12px] text-[#dce4e9]">{entry.name}</text>
-              <text className="text-[10px] text-[#8c99a7]">
-                {t(entry.directory ? 'sftp.directory' : entry.symlink ? 'sftp.link' : 'sftp.file')}
-              </text>
-              {!entry.directory ? (
-                <Button
-                  data-automation-id={`sftp-download-${index}`}
-                  data-downloadfile={entry.name}
-                  variant="link"
-                  size="sm"
-                  className="h-[20px] ml-[8px] px-[8px]"
-                  disabled={transferring || listing.loading}
-                  catchtap={() => {
-                    void download(entry);
-                  }}
-                >
-                  <text className="text-[11px]">
-                    {t(downloading === entry.name ? 'sftp.downloading' : 'sftp.download')}
-                  </text>
-                </Button>
-              ) : null}
+              <Icon
+                name={downloading === entry.name ? 'loader-circle' : 'download'}
+                size={14}
+                color={downloading === entry.name ? '#a8e6cf' : '#8c99a7'}
+              />
             </Button>
-          </list-item>
-        ))}
-      </list>
+          )
+        }
+      />
     </view>
   );
 }

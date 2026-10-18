@@ -11,7 +11,7 @@ opening = "Opening workspace…"
 empty = "No open tabs"
 title = "{{name}} {{number}}"
 sftpTitle = "SFTP · {{name}} {{number}}"
-newSftp = "+ SFTP"
+newSftp = "New SFTP tab"
 count_one = "{{count}} tab"
 count_other = "{{count}} tabs"
 
@@ -33,7 +33,7 @@ session = "SESSION {{number}}"
 noSession = "NO SESSION"
 loading = "Getting things ready."
 empty = "Open a terminal tab in this workspace."
-new = "+ New terminal"
+new = "New terminal"
 tab = "Tab {{number}}"
 summary = "{{name}} · {{tab}}"
 
@@ -75,6 +75,13 @@ host = "Enter a hostname, user@host or SSH config alias"
 fields = "Check the highlighted fields."
 arguments = 'Arguments must be a JSON array of strings, for example ["-l"].'
 
+[files]
+loading = "Loading directory…"
+empty = "Empty directory"
+directory = "Directory"
+link = "Link"
+file = "File"
+
 [sftp]
 download = "Download"
 downloading = "Downloading…"
@@ -83,11 +90,6 @@ upload = "Upload files"
 uploading = "Uploading…"
 up = "↑ Up"
 refresh = "Refresh"
-loading = "Loading directory…"
-empty = "Empty directory"
-directory = "Directory"
-link = "Link"
-file = "File"
 
 showHiddenFiles = "Show hidden files"
 currentDirectory = "{{host}}: {{path}}"

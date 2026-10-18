@@ -1,4 +1,5 @@
 import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import type { ReactNode } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
 
@@ -49,16 +50,18 @@ export function TabActions({ onAdd, onAddSftp }: { onAdd?(): void; onAddSftp?():
         className="w-[24px] h-[24px] rounded-[6px]"
         bindtap={onAdd}
       >
-        <text className="text-[16px] text-[#c1c7d0]">+</text>
+        <Icon name="plus" size={16} color="#c1c7d0" />
       </Button>
       {onAddSftp ? (
         <Button
           variant="ghost"
+          size="icon-sm"
           data-automation-id="new-sftp-tab"
-          className="h-[24px] px-[8px] rounded-[6px] font-normal"
+          accessibility-label={t('tabs.newSftp')}
+          className="w-[24px] h-[24px] rounded-[6px]"
           bindtap={onAddSftp}
         >
-          <text className="text-[11px] text-[#a8e6cf]">{t('tabs.newSftp')}</text>
+          <Icon name="folder" size={16} color="#a8e6cf" />
         </Button>
       ) : null}
     </view>
