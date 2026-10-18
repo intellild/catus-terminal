@@ -97,6 +97,9 @@ async function contextMenu(root: NonNullable<typeof elementTree.root>, id: strin
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull(),
   );
+  expect(
+    root.querySelector('cover-view > [data-automation-id=workspace-context-menu]'),
+  ).not.toBeNull();
 }
 async function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
   await contextMenu(root, id);

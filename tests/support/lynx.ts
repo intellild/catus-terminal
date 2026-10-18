@@ -452,14 +452,20 @@ export class LynxApp {
   private async click(selector: string, button: 'left' | 'right') {
     const { x, y } = await this.visibleTarget(selector);
     for (const type of ['mousePressed', 'mouseReleased']) {
-      await this.cdp('Input.emulateTouchFromMouseEvent', {
-        type,
-        x,
-        y,
-        button,
-        timestamp: Date.now() / 1000,
-        clickCount: 1,
-      });
+      // A secondary touch emulation also produces tap on desktop, immediately
+      // closing context menus. Use the native mouse path for right clicks.
+      await this.cdp(
+        button === 'right' ? 'Input.dispatchMouseEvent' : 'Input.emulateTouchFromMouseEvent',
+        {
+          type,
+          x,
+          y,
+          button,
+          ...(button === 'right' && { buttons: type === 'mousePressed' ? 2 : 0 }),
+          timestamp: Date.now() / 1000,
+          clickCount: 1,
+        },
+      );
       if (type === 'mousePressed') {
         await setTimeout(50);
       }

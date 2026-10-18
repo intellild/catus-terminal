@@ -40,7 +40,7 @@
     "binaryName": "catus-native"
   },
   "devDependencies": {
-    "@lynx-js/lynx-library-headers": "0.0.28",
+    "@lynx-js/lynx-library-headers": "0.0.30",
     "@napi-rs/cli": "^3.10.5"
   },
   "private": true,

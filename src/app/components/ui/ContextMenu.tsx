@@ -1,7 +1,7 @@
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
-import { createContext, useContext, useEffect, useState } from '@lynx-js/react';
+import { createContext, useContext, useState } from '@lynx-js/react';
 import type { ComponentProps, ReactNode } from '@lynx-js/react';
 import type { ViewProps } from '@lynx-js/types';
 import {
@@ -10,7 +10,7 @@ import {
   PopoverPositioner,
   PopoverContent as LynxPopoverContent,
 } from '@lynx-js/lynx-ui-popover';
-import { delayPopover } from './popoverDelay';
+import { PopoverOverlay } from './Popover';
 import type { PopoverContentProps } from './Popover';
 
 const contextMenuLabelVariants = cva('text-[13px]', {
@@ -27,7 +27,6 @@ const contextMenuLabelVariants = cva('text-[13px]', {
 const MenuContext = createContext<{
   point: { x: number; y: number } | null;
   open: boolean;
-  visible: boolean;
   setOpen(open: boolean): void;
   trigger(point: { x: number; y: number }): void;
 } | null>(null);
@@ -44,26 +43,15 @@ export function ContextMenu({
   children,
   open,
   defaultOpen = false,
-  delay = 100,
   onOpenChange,
 }: {
   children: ReactNode;
   open?: boolean;
   defaultOpen?: boolean;
-  delay?: number;
   onOpenChange?(open: boolean): void;
 }) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const actualOpen = open ?? internalOpen;
-  const [delayedOpen, setDelayedOpen] = useState(false);
-  const wait = Math.max(0, delay);
-  const visible = wait === 0 ? actualOpen : delayedOpen;
-  useEffect(() => {
-    if (actualOpen === delayedOpen) {
-      return;
-    }
-    return delayPopover(wait, () => setDelayedOpen(actualOpen));
-  }, [actualOpen, delayedOpen, wait]);
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const setOpen = (next: boolean) => {
     if (open === undefined) {
@@ -76,7 +64,6 @@ export function ContextMenu({
       value={{
         point,
         open: actualOpen,
-        visible,
         setOpen,
         trigger: (next) => {
           setPoint(next);
@@ -84,7 +71,7 @@ export function ContextMenu({
         },
       }}
     >
-      <PopoverRoot show={visible} onVisibleChange={setOpen}>
+      <PopoverRoot show={actualOpen} onVisibleChange={setOpen}>
         {children}
       </PopoverRoot>
     </MenuContext.Provider>
@@ -143,14 +130,16 @@ export function ContextMenuContent({
   const anchor = point ?? context.point;
   return anchor ? (
     <>
-      {modal && context.visible ? (
-        <Button
-          className={cn(
-            'fixed inset-0 w-full h-full p-0 rounded-none bg-transparent hover:bg-transparent [-x-app-region:no-drag]',
-            dismissClassName,
-          )}
-          bindtap={() => context.setOpen(false)}
-        />
+      {modal && context.open ? (
+        <PopoverOverlay className="fixed inset-0 z-40">
+          <Button
+            className={cn(
+              'w-full h-full p-0 rounded-none bg-transparent hover:bg-transparent [-x-app-region:no-drag]',
+              dismissClassName,
+            )}
+            bindtap={() => context.setOpen(false)}
+          />
+        </PopoverOverlay>
       ) : null}
       <ContextMenuAnchor point={anchor}>
         <PopoverPositioner
@@ -158,21 +147,23 @@ export function ContextMenuContent({
           placementOffset={sideOffset}
           autoAdjust="shift"
         >
-          <LynxPopoverContent
-            className={cn(
-              'w-[170px] p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px] [-x-app-region:no-drag]',
-              className,
-              !interactive && 'pointer-events-none',
-            )}
-            style={style}
-            popoverContentProps={{
-              flatten: false,
-              ...props,
-              ...(!interactive && { 'event-through': true }),
-            }}
-          >
-            {children}
-          </LynxPopoverContent>
+          <PopoverOverlay interactive={interactive}>
+            <LynxPopoverContent
+              className={cn(
+                'w-[170px] p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px] [-x-app-region:no-drag]',
+                className,
+                !interactive && 'pointer-events-none',
+              )}
+              style={style}
+              popoverContentProps={{
+                flatten: false,
+                ...props,
+                ...(!interactive && { 'event-through': true }),
+              }}
+            >
+              {children}
+            </LynxPopoverContent>
+          </PopoverOverlay>
         </PopoverPositioner>
       </ContextMenuAnchor>
     </>

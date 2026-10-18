@@ -4,7 +4,13 @@ import { cva } from 'class-variance-authority';
 import { Children, createContext, useContext, useState } from '@lynx-js/react';
 import type { ReactNode } from '@lynx-js/react';
 import type { TextProps, ViewProps } from '@lynx-js/types';
-import { Popover, PopoverAnchor, PopoverContent, usePopoverTrigger, usePopover } from './Popover';
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  usePopoverClickTrigger,
+  usePopover,
+} from './Popover';
 import type { PopoverContentProps } from './Popover';
 
 export const selectTriggerVariants = cva(
@@ -71,7 +77,7 @@ export function SelectTrigger({
 }: ViewProps & { children?: ReactNode }) {
   const { disabled, setWidth } = useSelect();
   const { open } = usePopover();
-  const trigger = usePopoverTrigger({ disabled });
+  const trigger = usePopoverClickTrigger({ disabled });
   return (
     <Button
       variant="ghost"

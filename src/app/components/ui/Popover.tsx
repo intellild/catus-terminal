@@ -14,7 +14,6 @@ import {
 
 const PopoverContext = createContext<{
   open: boolean;
-  visible: boolean;
   setOpen(open: boolean): void;
 } | null>(null);
 
@@ -30,27 +29,15 @@ export function Popover({
   children,
   open,
   defaultOpen = false,
-  delay = 100,
   onOpenChange,
 }: {
   children: ReactNode;
   open?: boolean;
   defaultOpen?: boolean;
-  delay?: number;
   onOpenChange?(open: boolean): void;
 }) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const actualOpen = open ?? internalOpen;
-  const [delayedOpen, setDelayedOpen] = useState(false);
-  const wait = Math.max(0, delay);
-  const visible = wait === 0 ? actualOpen : delayedOpen;
-  useEffect(() => {
-    if (actualOpen === delayedOpen) {
-      return;
-    }
-    // Interrupt the previous Effect on direction changes or unmount.
-    return delayPopover(wait, () => setDelayedOpen(actualOpen));
-  }, [actualOpen, delayedOpen, wait]);
   const setOpen = (next: boolean) => {
     if (open === undefined) {
       setInternalOpen(next);
@@ -58,8 +45,8 @@ export function Popover({
     onOpenChange?.(next);
   };
   return (
-    <PopoverContext.Provider value={{ open: actualOpen, visible, setOpen }}>
-      <PopoverRoot show={visible} onVisibleChange={setOpen}>
+    <PopoverContext.Provider value={{ open: actualOpen, setOpen }}>
+      <PopoverRoot show={actualOpen} onVisibleChange={setOpen}>
         {children}
       </PopoverRoot>
     </PopoverContext.Provider>
@@ -94,7 +81,7 @@ function usePopoverReference() {
   return { ref, measure };
 }
 
-export function usePopoverTrigger({ disabled = false }: { disabled?: boolean } = {}) {
+export function usePopoverClickTrigger({ disabled = false }: { disabled?: boolean } = {}) {
   const { open, setOpen } = usePopover();
   const { ref, measure } = usePopoverReference();
   const pending = useRef<object | null>(null);
@@ -142,33 +129,60 @@ export function usePopoverTrigger({ disabled = false }: { disabled?: boolean } =
   return { ref, onTap, onLayoutChange, close };
 }
 
-export function usePopoverHoverTrigger() {
-  const { setOpen } = usePopover();
+export function usePopoverHoverTrigger({ delay = 100 }: { delay?: number } = {}) {
+  const { open, setOpen } = usePopover();
   const { ref, measure } = usePopoverReference();
   const visit = useRef<object | null>(null);
+  const interrupt = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
       visit.current = null;
+      interrupt.current?.();
     },
     [],
   );
+  const cancel = () => {
+    interrupt.current?.();
+    interrupt.current = null;
+  };
+  const schedule = (next: boolean) => {
+    cancel();
+    if (next === open) {
+      return;
+    }
+    const wait = Math.max(0, delay);
+    if (wait === 0) {
+      setOpen(next);
+      return;
+    }
+    interrupt.current = delayPopover(wait, () => {
+      interrupt.current = null;
+      setOpen(next);
+    });
+  };
   const close = () => {
     visit.current = null;
+    cancel();
     setOpen(false);
+  };
+  const onMouseLeave = () => {
+    visit.current = null;
+    schedule(false);
   };
   const onMouseEnter = () => {
     // One measurement per visit; delayed results cannot reopen a closed popover.
     if (visit.current) {
       return;
     }
+    cancel();
     const request = {};
     visit.current = request;
     measure(
       () => visit.current === request,
-      () => setOpen(true),
+      () => schedule(true),
     );
   };
-  return { ref, onMouseEnter, onMouseLeave: close, close };
+  return { ref, onMouseEnter, onMouseLeave, close };
 }
 
 export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
@@ -180,6 +194,23 @@ export interface PopoverContentProps extends Omit<ViewProps, 'style'> {
   dismissClassName?: string;
   modal?: boolean;
   interactive?: boolean;
+}
+
+export function PopoverOverlay({
+  children,
+  interactive = true,
+  className,
+  ...props
+}: ViewProps & { children?: ReactNode; interactive?: boolean }) {
+  return (
+    <cover-view
+      {...props}
+      className={cn('overflow-visible', className)}
+      events-pass-through={!interactive}
+    >
+      {children}
+    </cover-view>
+  );
 }
 
 export function PopoverContent({
@@ -194,17 +225,19 @@ export function PopoverContent({
   style,
   ...props
 }: PopoverContentProps) {
-  const { visible, setOpen } = usePopover();
+  const { open, setOpen } = usePopover();
   return (
     <>
-      {modal && visible ? (
-        <Button
-          className={cn(
-            'fixed inset-0 w-full h-full p-0 rounded-none bg-transparent hover:bg-transparent [-x-app-region:no-drag]',
-            dismissClassName,
-          )}
-          bindtap={() => setOpen(false)}
-        />
+      {modal && open ? (
+        <PopoverOverlay className="fixed inset-0 z-40">
+          <Button
+            className={cn(
+              'w-full h-full p-0 rounded-none bg-transparent hover:bg-transparent [-x-app-region:no-drag]',
+              dismissClassName,
+            )}
+            bindtap={() => setOpen(false)}
+          />
+        </PopoverOverlay>
       ) : null}
       <PopoverPositioner
         placement={align === 'center' ? side : `${side}-${align}`}
@@ -215,21 +248,23 @@ export function PopoverContent({
           ...(!interactive && { 'event-through': true }),
         }}
       >
-        <LynxPopoverContent
-          className={cn(
-            'p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px] [-x-app-region:no-drag]',
-            className,
-            !interactive && 'pointer-events-none',
-          )}
-          style={style}
-          popoverContentProps={{
-            flatten: false,
-            ...props,
-            ...(!interactive && { 'event-through': true }),
-          }}
-        >
-          {children}
-        </LynxPopoverContent>
+        <PopoverOverlay interactive={interactive}>
+          <LynxPopoverContent
+            className={cn(
+              'p-[5px] bg-[#20262d] border border-solid border-[#39444e] rounded-[8px] [-x-app-region:no-drag]',
+              className,
+              !interactive && 'pointer-events-none',
+            )}
+            style={style}
+            popoverContentProps={{
+              flatten: false,
+              ...props,
+              ...(!interactive && { 'event-through': true }),
+            }}
+          >
+            {children}
+          </LynxPopoverContent>
+        </PopoverOverlay>
       </PopoverPositioner>
     </>
   );
