@@ -75,6 +75,13 @@ host = "Enter a hostname, user@host or SSH config alias"
 fields = "Check the highlighted fields."
 arguments = 'Arguments must be a JSON array of strings, for example ["-l"].'
 
+[files]
+loading = "Loading directory…"
+empty = "Empty directory"
+directory = "Directory"
+link = "Link"
+file = "File"
+
 [sftp]
 download = "Download"
 downloading = "Downloading…"
@@ -83,11 +90,6 @@ upload = "Upload files"
 uploading = "Uploading…"
 up = "↑ Up"
 refresh = "Refresh"
-loading = "Loading directory…"
-empty = "Empty directory"
-directory = "Directory"
-link = "Link"
-file = "File"
 
 showHiddenFiles = "Show hidden files"
 currentDirectory = "{{host}}: {{path}}"

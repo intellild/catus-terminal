@@ -85,6 +85,23 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 <Icon name="x" size={13} strokeWidth={2.5} />
 ```
 
+文件列表统一使用 `components/FileExplorer/`。`FileExplorer` 负责虚拟列表、
+隐藏文件过滤、加载/错误/空状态和行级 automation ID；`FileItem` 负责单行类型图标、
+文件名与类型标签。组件不感知 SFTP：行首操作通过 `renderLeadingAction` 注入，
+跨目录稳定的虚拟列表 key 通过 `itemKey` 交给调用方。
+
+```tsx
+<FileExplorer
+  automationId="sftp"
+  entries={listing.entries}
+  onOpen={open}
+  itemKey={(entry) => joinPath(listing.path, entry.name)}
+  renderLeadingAction={(entry, index) =>
+    entry.directory ? null : <DownloadButton entry={entry} index={index} />
+  }
+/>
+```
+
 界面翻译使用 i18next，资源独立放在 `locales/`，目前只提供 `en.toml`。
 TOML 按界面区域分组，变量使用 `{{name}}`，数量使用 `_one` / `_other` 复数键。
 Rspeedy 和 Rstest 在构建时将 TOML 解析成对象，解析器不会进入应用运行时。
