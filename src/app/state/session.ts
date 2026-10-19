@@ -2,6 +2,7 @@ import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import { terminalSessionsAtom } from './terminalSessions';
+import type { TabKind } from '../../shared/tabs';
 import type {
   WorkspaceSettings,
   WorkspaceConfigPayload,
@@ -11,7 +12,7 @@ import type {
 export interface TerminalTab {
   readonly id: number;
   readonly workspaceId: string;
-  readonly kind: 'terminal' | 'sftp';
+  readonly kind: TabKind;
   readonly number: number;
   // Snapshot launch options: edits affect new tabs, not existing sessions.
   readonly profile: WorkspaceSettings;
@@ -83,14 +84,22 @@ function reconcileSessions(store: SessionAccess) {
 export function newTab(
   store: SessionAccess,
   workspaceId = store.get(sessionAtom).activeWorkspaceId,
-  kind: TerminalTab['kind'] = 'terminal',
+  requestedKind?: TabKind,
 ): void {
   if (workspaceId === null) {
     return;
   }
   const workspace = store.get(workspaceAtom(workspaceId));
-  if (!workspace || (kind === 'sftp' && workspace.profile.type !== 'ssh')) {
+  if (!workspace) {
     return;
+  }
+  let kind = requestedKind ?? workspace.profile.defaultTab;
+  if (kind === 'sftp' && workspace.profile.type !== 'ssh') {
+    // Explicit SFTP is unavailable locally; the configured default falls back.
+    if (requestedKind === 'sftp') {
+      return;
+    }
+    kind = 'shell';
   }
   const state = store.get(sessionAtom);
   const id = state.nextTab;
@@ -220,7 +229,7 @@ export const sessionViewAtom = Atom.make((get) => {
   );
   const errors = get(terminalErrorsAtom);
   const terminalError = activeTab ? (errors[activeTab.id] ?? '') : '';
-  const terminalId = activeTab?.kind === 'terminal' && !terminalError ? activeTab.id : 0;
+  const terminalId = activeTab && activeTab.kind !== 'sftp' && !terminalError ? activeTab.id : 0;
   return {
     workspaces: get(workspaceProfilesAtom),
     workspace,
@@ -254,8 +263,7 @@ export function editWorkspace(workspace: WorkspaceSettings): EditorState {
       shell: workspace.shell ?? (workspace.command === '$SHELL' ? '$SHELL' : 'custom'),
       host: workspace.host ?? '',
       remoteCommand: workspace.remoteCommand ?? '',
-      tmux: workspace.tmux ? 'true' : 'false',
-      tmuxSessionName: workspace.tmuxSessionName ?? 'catus',
+      defaultTab: workspace.defaultTab,
       args: JSON.stringify(workspace.args),
       isNew: false,
     },
@@ -278,8 +286,7 @@ export function createDraft(workspaces: readonly WorkspaceSettings[]): EditorSta
       type: 'local',
       host: '',
       remoteCommand: '',
-      tmux: 'false',
-      tmuxSessionName: 'catus',
+      defaultTab: 'shell',
       command: '$SHELL',
       shell: '$SHELL',
       args: '["-l"]',

@@ -84,18 +84,17 @@ export class LynxApp {
             name: 'Test',
             icon: '>_',
             color: '#a8e6cf',
-            command: '$SHELL',
             args: [],
             cwd: '~',
             ...(options.tmux
               ? {
-                  tmux: true,
+                  defaultTab: 'tmux' as const,
                   shell: 'custom',
                   command: [process.execPath, path.resolve('tests/fixtures/fake-pty.mjs')]
                     .map((value) => "'" + value.replace(/'/g, "'\\''") + "'")
                     .join(' '),
                 }
-              : {}),
+              : { defaultTab: 'shell' as const, command: '$SHELL' }),
           },
           {
             ...(options.ssh
@@ -243,17 +242,61 @@ export class LynxApp {
     }
   }
 
-  tmuxWindows() {
+  tmuxWindows(session = 'catus-1') {
     if (!this.tmuxSocket) {
       throw new Error('This fixture has no tmux server');
     }
-    return execFileSync(
-      'tmux',
-      ['-L', this.tmuxSocket, 'list-windows', '-t', '=catus', '-F', '#{window_name}'],
-      { encoding: 'utf8' },
-    )
-      .trim()
-      .split('\n');
+    try {
+      return execFileSync(
+        'tmux',
+        ['-L', this.tmuxSocket, 'list-windows', '-t', `=${session}`, '-F', '#{window_name}'],
+        { encoding: 'utf8' },
+      )
+        .trim()
+        .split('\n');
+    } catch {
+      return [];
+    }
+  }
+
+  tmuxSessions() {
+    if (!this.tmuxSocket) {
+      throw new Error('This fixture has no tmux server');
+    }
+    try {
+      return execFileSync(
+        'tmux',
+        ['-L', this.tmuxSocket, 'list-sessions', '-F', '#{session_name}'],
+        { encoding: 'utf8' },
+      )
+        .trim()
+        .split('\n');
+    } catch {
+      return [];
+    }
+  }
+
+  tmuxActiveWindow(session = 'catus-1') {
+    try {
+      const windows = execFileSync(
+        'tmux',
+        [
+          '-L',
+          this.tmuxSocket,
+          'list-windows',
+          '-t',
+          `=${session}`,
+          '-F',
+          '#{window_index}:#{window_active}',
+        ],
+        { encoding: 'utf8' },
+      )
+        .trim()
+        .split('\n');
+      return Number(windows.find((window) => window.endsWith(':1'))!.split(':')[0]);
+    } catch {
+      return -1;
+    }
   }
 
   async close() {

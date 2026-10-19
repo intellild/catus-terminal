@@ -1,14 +1,17 @@
 import type { TerminalTab } from './session';
 import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
+import type { TabKind } from '../../shared/tabs';
 import type { RemoteFs, SftpHost } from '../../shared/sftp';
+import type { TmuxHost } from '../../shared/tmux';
 import { sftpClient } from '../api/sftp';
 import * as Atom from 'effect/reactivity/Atom';
 
-export interface TerminalHost {
+export interface TerminalHost extends TmuxHost {
   createTerminalSession(
     id: number,
     profile?: WorkspaceSettings,
     environment?: WorkspaceEnvironment,
+    kind?: TabKind,
   ): void;
   closeTerminalSession(id: number): void;
   detachTerminalSession?(id: number): void;
@@ -63,7 +66,7 @@ export const terminalSessionsAtom = Atom.make((get) => {
       return entry.connection;
     },
     reconcile(tabs: readonly TerminalTab[], environment?: WorkspaceEnvironment) {
-      const live = new Set(tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id));
+      const live = new Set(tabs.filter((tab) => tab.kind !== 'sftp').map((tab) => tab.id));
       const remoteLive = new Set(tabs.filter((tab) => tab.kind === 'sftp').map((tab) => tab.id));
       for (const id of remote.keys()) {
         if (!remoteLive.has(id)) {
@@ -101,7 +104,7 @@ export const terminalSessionsAtom = Atom.make((get) => {
         }
         try {
           const tab = tabs.find((tab) => tab.id === id)!;
-          nativeHost().createTerminalSession(id, tab.profile, environment);
+          nativeHost().createTerminalSession(id, tab.profile, environment, tab.kind);
           sessions.add(id);
         } catch (cause) {
           errors.set(id, String(cause) || 'Could not create terminal session');

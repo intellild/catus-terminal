@@ -6,9 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn options(window: &str) -> TmuxOptions {
+fn options(session: &str, window: &str) -> TmuxOptions {
     TmuxOptions {
-        session: "test".into(),
+        session: session.into(),
         window: window.into(),
         command: "/bin/sh -i".into(),
         cwd: "/tmp".into(),
@@ -30,7 +30,7 @@ fn escapes_preserve_raw_bytes_and_reject_malformed_data() {
 fn fragmented_protocol_routes_only_the_bound_pane_and_never_renders_command_results() {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut grid = TerminalGrid::new(GridSize::new(20, 4), std::sync::mpsc::channel().0);
-    let mut client = TmuxClient::new(options("tab-1"), grid.size());
+    let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.pane = Some("%2".into());
     client.started = true;
     client.protocol = true;
@@ -52,7 +52,7 @@ fn fragmented_protocol_routes_only_the_bound_pane_and_never_renders_command_resu
 #[test]
 fn snapshot_restores_cursor_and_app_cursor_mode_before_replaying_incremental_output() {
     let mut grid = TerminalGrid::new(GridSize::new(10, 3), std::sync::mpsc::channel().0);
-    let mut client = TmuxClient::new(options("tab-1"), grid.size());
+    let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.screen = vec![b"hello".to_vec(), vec![], vec![]];
     client.state = b"10|3|5|0|0|1|0|1|0|1|0|0|0|0|0|0|2|0|1,7,25,2004".to_vec();
     client.restore(&mut grid).unwrap();
@@ -60,6 +60,69 @@ fn snapshot_restores_cursor_and_app_cursor_mode_before_replaying_incremental_out
     assert_eq!(grid.snapshot().text(), "helloworld\n\n");
     assert_eq!(grid.key("ArrowUp", false, false).unwrap(), b"\x1bOA");
     assert!(grid.paste("text").starts_with(b"\x1b[200~"));
+}
+
+fn protocol_command(rx: &std::sync::mpsc::Receiver<Vec<u8>>) -> String {
+    String::from_utf8(rx.try_recv().unwrap()).unwrap()
+}
+
+#[test]
+fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut grid = TerminalGrid::new(GridSize::new(20, 4), std::sync::mpsc::channel().0);
+    let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
+    client.protocol = true;
+    let initial =
+        b"%begin 1 2 1\n@1|0|1|tab-1\n%end 1 2 1\n%begin 2 3 1\n@1|0|1|tab-1\n@2|1|0|logs\n%end 2 3 1\n";
+    client.advance(initial, &mut grid, &tx).unwrap();
+    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    let bind = protocol_command(&rx);
+    assert!(bind.contains("display-message -p -t \"@1\" '#{pane_id}'"));
+    client
+        .advance(b"%begin 3 4 1\n%0\n%end 3 4 1\n", &mut grid, &tx)
+        .unwrap();
+    let options = protocol_command(&rx) + &protocol_command(&rx) + &protocol_command(&rx);
+    assert!(options.contains("set-window-option -t @1 automatic-rename off"));
+    assert!(options.contains("resize-window -t @1 -x 20 -y 4"));
+    // tmux answers every control command; clear the simulated pending replies.
+    client.replies.clear();
+    let info = client.session_info().unwrap();
+    assert_eq!(info.windows.len(), 2);
+    assert_eq!(info.active_window_id.as_deref(), Some("@1"));
+
+    assert!(client.select_window("@2", &tx).unwrap());
+    assert_eq!(protocol_command(&rx), "select-window -t \"@2\"\n");
+    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    client
+        .advance(
+            b"%begin 4 5 1\n%end 4 5 1\n%begin 4 6 1\n@1|0|0|tab-1\n@2|1|1|logs\n%end 4 6 1\n",
+            &mut grid,
+            &tx,
+        )
+        .unwrap();
+    assert!(protocol_command(&rx).contains("display-message -p -t \"@2\" '#{pane_id}'"));
+    client
+        .advance(b"%begin 5 6 1\n%1\n%end 5 6 1\n", &mut grid, &tx)
+        .unwrap();
+    assert!(protocol_command(&rx).contains("set-window-option -t @2"));
+    protocol_command(&rx);
+    protocol_command(&rx);
+    client.replies.clear();
+    let info = client.session_info().unwrap();
+    assert_eq!(info.active_window_id.as_deref(), Some("@2"));
+
+    // An external tmux client or a prefix key changes the session window.
+    client
+        .advance(b"%session-window-changed $1 @1\n", &mut grid, &tx)
+        .unwrap();
+    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    client.replies.clear();
+
+    assert!(client.close_window("@1", &tx).unwrap());
+    assert_eq!(protocol_command(&rx), "kill-window -t \"@1\"\n");
+    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    client.windows.retain(|window| window.id == "@2");
+    assert!(!client.close_window("@2", &tx).unwrap());
 }
 
 struct Server {
@@ -92,7 +155,7 @@ impl Server {
         );
         String::from_utf8(output.stdout).unwrap()
     }
-    fn attach(&self, window: &str) -> TerminalSession {
+    fn attach(&self, session: &str, window: &str) -> TerminalSession {
         let args = [
             "-L",
             &self.socket,
@@ -102,7 +165,7 @@ impl Server {
             "new-session",
             "-A",
             "-s",
-            "test",
+            session,
             "-n",
             window,
             "-x",
@@ -116,7 +179,10 @@ impl Server {
             &args.map(String::from),
             Some("/tmp"),
             GridSize::new(20, 4),
-            std::sync::Arc::new(TmuxPtyDelegate::new(options(window), GridSize::new(20, 4))),
+            std::sync::Arc::new(TmuxPtyDelegate::new(
+                options(session, window),
+                GridSize::new(20, 4),
+            )),
         )
         .unwrap()
     }
@@ -145,58 +211,79 @@ fn ready(terminal: &TerminalSession) -> bool {
 }
 
 #[test]
-fn real_tmux_round_trip_resize_detach_snapshot_and_tab_isolation() {
+fn real_tmux_session_lists_creates_selects_and_closes_windows() {
     let Some(server) = Server::new() else {
         eprintln!("tmux is not installed; skipping integration test");
         return;
     };
-    let first = server.attach("tab-1");
-    wait(&first, || ready(&first));
-    first
+    let terminal = server.attach("test-1", "tab-1");
+    wait(&terminal, || ready(&terminal));
+    terminal
         .write(b"printf '\\033[32mFIRST\\033[0m\\n'\r".to_vec())
         .unwrap();
-    wait(&first, || {
-        first
+    wait(&terminal, || {
+        terminal
             .snapshot()
             .cells
             .iter()
             .any(|c| c.characters == ['F'] && c.foreground == [122, 194, 126])
     });
-    let second = server.attach("tab-2");
-    wait(&second, || ready(&second));
-    second.resize(GridSize::new(40, 6)).unwrap();
-    wait(&second, || {
-        ready(&second)
+    let initial = terminal.tmux_info().unwrap();
+    assert_eq!(initial.windows.len(), 1);
+    let first_window = initial.windows[0].id.clone();
+    assert!(initial.windows[0].active);
+
+    terminal.resize(GridSize::new(40, 6)).unwrap();
+    wait(&terminal, || {
+        ready(&terminal)
             && server
                 .run(&[
                     "display-message",
                     "-p",
                     "-t",
-                    "test:tab-2",
+                    "test-1:tab-1",
                     "#{pane_width} #{pane_height}",
                 ])
                 .trim()
                 == "40 6"
     });
+
+    assert!(terminal.create_tmux_window().unwrap());
+    wait(&terminal, || {
+        ready(&terminal) && terminal.tmux_info().unwrap().windows.len() == 2
+    });
+    let second = terminal.tmux_info().unwrap();
+    let second_window = second
+        .windows
+        .iter()
+        .find(|window| window.id != first_window)
+        .unwrap()
+        .id
+        .clone();
     assert_eq!(
-        server
-            .run(&[
-                "display-message",
-                "-p",
-                "-t",
-                "test:tab-1",
-                "#{pane_width} #{pane_height}"
-            ])
-            .trim(),
-        "20 4"
+        second.active_window_id.as_deref(),
+        Some(second_window.as_str())
     );
-    second.write(b"printf 'SECOND\\n'\r".to_vec()).unwrap();
-    wait(&second, || second.snapshot().text().contains("SECOND"));
-    assert!(!second.snapshot().text().contains("FIRST"));
-    first.detach();
-    let reattached = server.attach("tab-1");
+    terminal.write(b"printf 'SECOND\\n'\r".to_vec()).unwrap();
+    wait(&terminal, || {
+        let text = terminal.snapshot().text();
+        text.contains("SECOND") && !text.contains("FIRST")
+    });
+
+    assert!(terminal.select_tmux_window(&first_window).unwrap());
+    wait(&terminal, || {
+        ready(&terminal)
+            && terminal.tmux_info().unwrap().active_window_id.as_deref()
+                == Some(first_window.as_str())
+            && terminal.snapshot().text().contains("FIRST")
+    });
+
+    terminal.detach();
+    let reattached = server.attach("test-1", "tab-1");
     wait(&reattached, || {
-        ready(&reattached) && reattached.snapshot().text().contains("FIRST")
+        ready(&reattached)
+            && reattached.snapshot().text().contains("FIRST")
+            && reattached.tmux_info().unwrap().windows.len() == 2
     });
     assert!(
         reattached
@@ -205,12 +292,9 @@ fn real_tmux_round_trip_resize_detach_snapshot_and_tab_isolation() {
             .iter()
             .any(|c| c.characters == ['F'] && c.foreground == [122, 194, 126])
     );
-    second.close();
+    assert!(reattached.close_tmux_window(&second_window).unwrap());
     wait(&reattached, || {
-        server
-            .run(&["list-windows", "-t", "test", "-F", "#{window_name}"])
-            .trim()
-            == "tab-1"
+        ready(&reattached) && reattached.tmux_info().unwrap().windows.len() == 1
     });
     reattached.close();
 }

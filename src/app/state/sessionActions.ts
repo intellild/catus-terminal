@@ -18,6 +18,7 @@ import {
   sessionAtom,
   workspaceProfilesAtom,
 } from './session';
+import type { TabKind } from '../../shared/tabs';
 import type { WorkspaceDraft } from './session';
 import { nativeWorkspaceHost, workspaceHostAtom } from './workspaceHost';
 import { shellsAtom } from './shells';
@@ -75,15 +76,9 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
 
 export type SessionAction =
   | {
-      type:
-        | 'reload'
-        | 'addTab'
-        | 'addSftpTab'
-        | 'addWorkspace'
-        | 'closeSettings'
-        | 'saveDraft'
-        | 'retryShells';
+      type: 'reload' | 'addTab' | 'addWorkspace' | 'closeSettings' | 'saveDraft' | 'retryShells';
     }
+  | { type: 'addTab'; kind: TabKind }
   | { type: 'openWorkspace' | 'deleteWorkspace'; id: string }
   | { type: 'focusTab' | 'closeTab'; id: number }
   | { type: 'editWorkspace'; id?: string }
@@ -100,10 +95,11 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       get.set(loadWorkspacesAtom, undefined);
       return;
     case 'addTab':
-      newTab(store);
-      return;
-    case 'addSftpTab':
-      newTab(store, state.activeWorkspaceId, 'sftp');
+      if ('kind' in action) {
+        newTab(store, state.activeWorkspaceId ?? undefined, action.kind);
+      } else {
+        newTab(store);
+      }
       return;
     case 'openWorkspace':
       selectWorkspace(store, action.id);
@@ -154,6 +150,9 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
                 args: value === 'custom' ? '[]' : '["-l"]',
                 ...(value !== 'custom' ? { command: value } : {}),
               }
+            : {}),
+          ...(field === 'type' && value === 'local' && editor.draft.defaultTab === 'sftp'
+            ? { defaultTab: 'shell' }
             : {}),
         },
       });

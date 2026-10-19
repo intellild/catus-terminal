@@ -3,6 +3,7 @@ mod delegate;
 mod plain;
 mod tmux;
 use super::grid::{GridSize, TerminalGrid};
+use super::tmux::TmuxSessionInfo;
 use anyhow::{Context, Result};
 pub(crate) use delegate::PtyDelegate;
 pub(crate) use plain::PlainPtyDelegate;
@@ -144,6 +145,24 @@ impl Pty {
             self.delegate.resize(size, master.as_deref(), tx)?;
         }
         Ok(())
+    }
+    pub(super) fn tmux_info(&self) -> Option<TmuxSessionInfo> {
+        self.delegate.tmux_info()
+    }
+    pub(super) fn select_tmux_window(&self, window_id: &str) -> Result<bool> {
+        let input = self.input.lock().unwrap();
+        let tx = input.as_ref().context("Terminal is closed")?;
+        self.delegate.select_tmux_window(window_id, tx)
+    }
+    pub(super) fn create_tmux_window(&self) -> Result<bool> {
+        let input = self.input.lock().unwrap();
+        let tx = input.as_ref().context("Terminal is closed")?;
+        self.delegate.create_tmux_window(tx)
+    }
+    pub(super) fn close_tmux_window(&self, window_id: &str) -> Result<bool> {
+        let input = self.input.lock().unwrap();
+        let tx = input.as_ref().context("Terminal is closed")?;
+        self.delegate.close_tmux_window(window_id, tx)
     }
     #[cfg(test)]
     pub(super) fn ready(&self) -> bool {

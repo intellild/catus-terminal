@@ -11,6 +11,7 @@ export function TerminalContent({
   loading = false,
   error = '',
   children,
+  titleTabs,
   onRetry,
   onAdd,
 }: {
@@ -20,6 +21,7 @@ export function TerminalContent({
   tabCount?: number;
   loading?: boolean;
   error?: string;
+  titleTabs?: ReactNode;
   onRetry?(): void;
   onAdd?(): void;
 }) {
@@ -57,17 +59,21 @@ export function TerminalContent({
               }
             >
               <view className="flex flex-row items-center gap-[8px] flex-1 min-w-0">
-                <text className="text-[14px] text-[#778b86]">~</text>
-                <text
-                  data-automation-id="session-directory"
-                  className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {activeTab
-                    ? activeTab.profile.type === 'ssh'
-                      ? t('terminal.sshHost', { host: activeTab.profile.host })
-                      : activeTab.profile.command
-                    : t('terminal.chooseWorkspace')}
-                </text>
+                {titleTabs ?? (
+                  <>
+                    <text className="text-[14px] text-[#778b86]">~</text>
+                    <text
+                      data-automation-id="session-directory"
+                      className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      {activeTab
+                        ? activeTab.profile.type === 'ssh'
+                          ? t('terminal.sshHost', { host: activeTab.profile.host })
+                          : activeTab.profile.command
+                        : t('terminal.chooseWorkspace')}
+                    </text>
+                  </>
+                )}
               </view>
               <text
                 data-automation-id="session-label"
@@ -115,9 +121,11 @@ export function TerminalContent({
               {t(
                 activeTab?.kind === 'sftp'
                   ? 'common.sftp'
-                  : workspace?.type === 'ssh'
-                    ? 'common.ssh'
-                    : 'common.local',
+                  : activeTab?.kind === 'tmux'
+                    ? 'common.tmux'
+                    : workspace?.type === 'ssh'
+                      ? 'common.ssh'
+                      : 'common.local',
               )}
             </text>
           </view>

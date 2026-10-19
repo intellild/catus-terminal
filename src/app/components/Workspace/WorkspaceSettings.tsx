@@ -1,9 +1,10 @@
 import { Button } from '../ui/Button';
+import { ButtonGroup } from '../ui/ButtonGroup';
+import { Icon } from '../ui/Icon';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select';
 import { Input, InputGroup } from '../ui/Input';
-import { Checkbox } from '../ui/Checkbox';
 import { useEffect, useMemo } from '@lynx-js/react';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -93,7 +94,7 @@ export function WorkspaceSettings({
   ];
   const preview =
     draft.type === 'ssh' && draft.host.trim() && environment
-      ? launchPreview({ ...draft, tmux: draft.tmux === 'true', args: [] }, environment)
+      ? launchPreview({ ...draft, args: [] }, environment, draft.defaultTab)
       : '';
   return (
     <scroll-view scroll-y className="shrink min-h-0">
@@ -230,28 +231,64 @@ export function WorkspaceSettings({
           ) : null}
           <Field name="cwd" label={t('workspace.cwd')} />
           <FormField
-            name="tmux"
+            name="defaultTab"
             render={({ field }) => (
               <FormItem>
-                <Checkbox
-                  data-automation-id="profile-tmux"
-                  checked={field.value === 'true'}
-                  disabled={field.disabled}
-                  onCheckedChange={(checked) => {
-                    'background only';
-                    field.onChange(String(checked));
-                  }}
-                >
-                  <text className="text-[12px] text-[#c3cdd6]">{t('workspace.tmux')}</text>
-                </Checkbox>
-                <FormDescription>{t('workspace.tmuxDescription')}</FormDescription>
+                <FormLabel>{t('workspace.defaultTab')}</FormLabel>
+                <FormControl>
+                  <ButtonGroup className="w-full gap-[2px]">
+                    {(['shell', 'tmux', 'sftp'] as const).map((kind) => {
+                      const disabled = field.disabled || (kind === 'sftp' && draft.type !== 'ssh');
+                      return (
+                        <Button
+                          key={kind}
+                          variant="ghost"
+                          disabled={disabled}
+                          data-automation-id={`profile-default-tab-${kind}`}
+                          accessibility-label={t(`tabs.kind.${kind}`)}
+                          className={cn(
+                            'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
+                            field.value === kind ? 'bg-[#35483f]' : 'bg-[#14191f]',
+                          )}
+                          bindtap={() => {
+                            if (!disabled && field.value !== kind) {
+                              field.onChange(kind);
+                            }
+                          }}
+                        >
+                          <Icon
+                            name={
+                              kind === 'shell'
+                                ? 'square-terminal'
+                                : kind === 'tmux'
+                                  ? 'panels-top-left'
+                                  : 'folder'
+                            }
+                            size={14}
+                            color={field.value === kind ? '#a8e6cf' : '#8c99a7'}
+                          />
+                          <text
+                            className={cn(
+                              'text-[12px]',
+                              field.value === kind ? 'text-[#e1e8e5]' : 'text-[#8c99a7]',
+                            )}
+                          >
+                            {t(`tabs.kind.${kind}`)}
+                          </text>
+                        </Button>
+                      );
+                    })}
+                  </ButtonGroup>
+                </FormControl>
+                <FormDescription>
+                  {draft.type === 'ssh'
+                    ? t('workspace.defaultTabDescription')
+                    : t('workspace.defaultTabDescriptionLocal')}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
-          {draft.tmux === 'true' ? (
-            <Field name="tmuxSessionName" label={t('workspace.tmuxSessionName')} />
-          ) : null}
           <view className="flex flex-row gap-[14px]">
             <view className="flex-1">
               <Field name="icon" label={t('workspace.icon')} />

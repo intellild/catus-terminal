@@ -1,6 +1,7 @@
 import 'background-only';
 import * as Atom from 'effect/reactivity/Atom';
 import type { TerminalTab } from './session';
+import type { TabKind } from '../../shared/tabs';
 import type { WorkspaceSettings } from '../../shared/workspaces';
 import {
   editorAtom,
@@ -22,12 +23,19 @@ export const tabsViewAtom = Atom.make((get) => {
   return {
     tabIds: workspace?.tabIds ?? [],
     ssh: workspace?.profile.type === 'ssh',
+    defaultTab: workspace?.profile.defaultTab ?? ('shell' satisfies TabKind),
     loading: get(loadAtom).loading,
   };
 }).pipe(
-  Atom.withEquality<{ tabIds: readonly number[]; ssh: boolean; loading: boolean }>(
+  Atom.withEquality<{
+    tabIds: readonly number[];
+    ssh: boolean;
+    defaultTab: TabKind;
+    loading: boolean;
+  }>(
     (a, b) =>
       a.ssh === b.ssh &&
+      a.defaultTab === b.defaultTab &&
       a.loading === b.loading &&
       a.tabIds.length === b.tabIds.length &&
       a.tabIds.every((id, index) => id === b.tabIds[index]),

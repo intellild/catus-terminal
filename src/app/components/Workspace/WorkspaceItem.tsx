@@ -113,6 +113,9 @@ function WorkspaceItemContent({
           <text className="text-[11px] text-[#a0a8b5] break-all">
             {t('workspace.shell')} · {shell}
           </text>
+          <text className="text-[11px] text-[#a0a8b5] break-all">
+            {t('workspace.defaultTab')} · {t(`tabs.kind.${workspace.defaultTab}`)}
+          </text>
           {workspace.remoteCommand && (
             <text className="text-[11px] text-[#a0a8b5] break-all">
               {t('workspace.extraCommand')} · {workspace.remoteCommand}
