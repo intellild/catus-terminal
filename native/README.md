@@ -17,7 +17,7 @@ native/
   src/sftp_api.rs              N-API Promise / Uint8Array 文件 API
   src/terminal_core/           portable-pty 会话、Alacritty parser 和 owned grid
   src/terminal_core/session.rs 网格、键盘、鼠标、粘贴和选区
-  src/terminal_core/pty.rs     Pty 句柄、I/O 线程、错误和进程回收
+  src/terminal_core/pty.rs     Pty 句柄、阻塞 I/O 线程、async 桥接和进程回收
   src/terminal_core/pty/       PtyDelegate trait 与普通/tmux 协议适配
   src/workspace.rs             Workspace 会话归属、创建、查找、关闭和 detach
   src/workspace/               WorkspaceDelegate trait 与普通/tmux 后端
@@ -146,6 +146,14 @@ Rust 的 `on_properties_changed` 校验数字 ID，并取得共享 `TerminalHand
 
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/session.rs` 管理网格及输入编码，
 通过 `Pty` 发送已编码的字节。`terminal_core/pty.rs` 管理阻塞 PTY 读写线程和进程回收。
+portable-pty 的 reader/writer 各占一个独立线程，只负责阻塞读写；reader 通过有界
+tokio channel（16 个 chunk）把字节交给专用 tokio runtime 上的 async parser，writer
+从无界 channel 接收命令，避免 UI 输入等待 PTY。parser 获取
+`tokio::sync::Mutex<TerminalGrid>` 后 `.await` `PtyDelegate`；delegate 方法本身也是
+async，`TmuxPtyDelegate` 的 `TmuxClient` 使用 tokio Mutex。PTY 的
+master/child/input/error 和 grid 都使用 tokio 锁，UI/N-API/测试的同步边界用
+`block_on`/`blocking_lock` 进入 async API。关闭时先发送 delegate 命令，再发送带
+grace 的 Close；writer 在 grace 内保持 fd 打开，让 shell 消费已排队的命令后退出。
 `workspace.rs` 管理生命周期，`terminal_session.rs` 提供 N-API 和 native handle，
 `terminal_view.rs` 编排共享渲染流程，
 `platform/macos/terminal.rs` 提供 macOS cxx 适配。
@@ -226,7 +234,7 @@ JS timestamp 与 native clock 起点不同，因此不将 JS timestamp 当成 na
 每个回调都检查本次 VSync 的 monotonic deadline；view/session/grid/atlas 锁忙则直接丢帧。
 提交前过期丢弃 encoder 并撤销未上传的 atlas handles；提交后过期先等待 GPU 完成，
 再丢弃呈现，保持网格 dirty。不会把还在写入的借用 buffer 还给 Lynx，也不会重放旧帧。
-PTY 读线程只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
+async parser 只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
 Rust 测试在 `src/tests/frame_callbacks.rs`，覆盖同步执行、同线程、过期帧、注销和生命周期。
@@ -259,7 +267,7 @@ OSR 使用 Lynx 合成；网格数据始终留在 native。
 ## tmux control mode
 
 `TerminalSessionCommand.tmux` 提供 session、初始 window 名、Shell 命令和工作目录。
-`terminal_core/tmux.rs` 在 PTY 读线程解析 `-CC` 的 DCS 握手、命令结果和异步输出，
+`terminal_core/tmux.rs` 在 async parser 任务中解析 `-CC` 的 DCS 握手、命令结果和异步输出，
 仅将当前 pane 的解码字节交给 Alacritty；终端查询由 tmux 自己响应。
 输入通过 `send-keys -H` 传递原始字节，覆盖键盘、鼠标报告和粘贴。
 连接时列出 session 的窗口并绑定 active window；没有窗口时保留启动命令创建的窗口。

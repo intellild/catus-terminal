@@ -1,7 +1,7 @@
 use super::*;
-use std::sync::mpsc;
+use crate::terminal_core::pty::{message_data, test_channel, test_sender};
 fn grid(columns: usize, rows: usize) -> TerminalGrid {
-    TerminalGrid::new(GridSize::new(columns, rows), mpsc::channel().0)
+    TerminalGrid::new(GridSize::new(columns, rows), test_sender())
 }
 #[test]
 fn split_utf8_ansi_colors_wide_and_combining_cells() {
@@ -35,13 +35,13 @@ fn carriage_return_erase_alt_screen_and_resize() {
 }
 #[test]
 fn terminal_replies_and_application_cursor_keys() {
-    let (tx, rx) = mpsc::channel();
+    let (tx, mut rx) = test_channel();
     let mut grid = TerminalGrid::new(GridSize::new(80, 24), tx);
     grid.advance(b"\x1b[6n");
-    assert_eq!(rx.try_recv().unwrap(), b"\x1b[1;1R");
+    assert_eq!(message_data(rx.try_recv().unwrap()), b"\x1b[1;1R");
     grid.resize(GridSize::new(100, 30));
     grid.advance(b"\x1b[18t");
-    assert_eq!(rx.try_recv().unwrap(), b"\x1b[8;30;100t");
+    assert_eq!(message_data(rx.try_recv().unwrap()), b"\x1b[8;30;100t");
     grid.advance(b"\x1b[?1h");
     assert_eq!(grid.key("ArrowUp", false, false).unwrap(), b"\x1bOA");
     assert_eq!(grid.key("c", true, false).unwrap(), [3]);

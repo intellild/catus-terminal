@@ -1,8 +1,9 @@
 //! tmux control protocol; only decoded pane bytes enter the terminal VT parser.
 use super::grid::{GridSize, TerminalGrid};
+use super::pty::{WriterMessage, WriterSender};
 use anyhow::{Context, Result, bail, ensure};
 use napi_derive::napi;
-use std::{collections::VecDeque, sync::mpsc::Sender};
+use std::collections::VecDeque;
 
 #[napi(object)]
 #[derive(Clone)]
@@ -102,8 +103,8 @@ impl TmuxClient {
         }
     }
 
-    fn command(&mut self, command: String, reply: Reply, tx: &Sender<Vec<u8>>) -> Result<()> {
-        tx.send(format!("{command}\n").into_bytes())
+    fn command(&mut self, command: String, reply: Reply, tx: &WriterSender) -> Result<()> {
+        tx.send(WriterMessage::Data(format!("{command}\n").into_bytes()))
             .context("Send tmux command")?;
         self.replies.push_back(reply);
         Ok(())
@@ -130,7 +131,7 @@ impl TmuxClient {
         })
     }
 
-    pub fn select_window(&mut self, window_id: &str, tx: &Sender<Vec<u8>>) -> Result<bool> {
+    pub(crate) fn select_window(&mut self, window_id: &str, tx: &WriterSender) -> Result<bool> {
         ensure!(!self.closed, "tmux connection is closed");
         if !self.windows.iter().any(|window| window.id == window_id) {
             return Ok(false);
@@ -149,7 +150,7 @@ impl TmuxClient {
         Ok(true)
     }
 
-    pub fn create_window(&mut self, tx: &Sender<Vec<u8>>) -> Result<bool> {
+    pub(crate) fn create_window(&mut self, tx: &WriterSender) -> Result<bool> {
         ensure!(!self.closed, "tmux connection is closed");
         let command = if self.options.command.is_empty() {
             String::new()
@@ -169,7 +170,7 @@ impl TmuxClient {
         Ok(true)
     }
 
-    pub fn close_window(&mut self, window_id: &str, tx: &Sender<Vec<u8>>) -> Result<bool> {
+    pub(crate) fn close_window(&mut self, window_id: &str, tx: &WriterSender) -> Result<bool> {
         ensure!(!self.closed, "tmux connection is closed");
         // Keep one window alive so the session and this terminal stay usable.
         if self.windows.len() <= 1 || !self.windows.iter().any(|window| window.id == window_id) {
@@ -189,11 +190,12 @@ impl TmuxClient {
         Ok(true)
     }
 
-    pub fn input(&mut self, bytes: Vec<u8>, tx: &Sender<Vec<u8>>) -> Result<()> {
+    pub(crate) fn input(&mut self, bytes: Vec<u8>, tx: &WriterSender) -> Result<()> {
         ensure!(!self.closed, "tmux connection is closed");
         if !self.protocol {
             // SSH authentication prompts are still ordinary PTY traffic.
-            tx.send(bytes).context("Write tmux connection input")?;
+            tx.send(WriterMessage::Data(bytes))
+                .context("Write tmux connection input")?;
         } else if self.pane.is_none() || !self.live || self.syncing {
             self.input.push(bytes);
         } else {
@@ -202,7 +204,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    fn send_keys(&mut self, bytes: &[u8], tx: &Sender<Vec<u8>>) -> Result<()> {
+    fn send_keys(&mut self, bytes: &[u8], tx: &WriterSender) -> Result<()> {
         let pane = self.pane.as_ref().context("Missing tmux pane")?.clone();
         // Literal hex bytes preserve Unicode, NUL, paste markers and escape keys,
         // without interpreting user text as control commands or shell syntax.
@@ -217,7 +219,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    pub fn resize(&mut self, size: GridSize, tx: &Sender<Vec<u8>>) -> Result<()> {
+    pub(crate) fn resize(&mut self, size: GridSize, tx: &WriterSender) -> Result<()> {
         self.size = size;
         if let Some(window) = &self.window {
             // Each tab owns a window. Explicit window sizing avoids one tab's
@@ -234,7 +236,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    pub fn close(&mut self, preserve: bool, tx: &Sender<Vec<u8>>) {
+    pub(crate) fn close(&mut self, preserve: bool, tx: &WriterSender) {
         if self.closed {
             return;
         }
@@ -243,16 +245,18 @@ impl TmuxClient {
             // Each terminal owns its tmux session; closing the tab also closes
             // all of the windows displayed in its title bar.
             let target = format!("={}", self.options.session);
-            let _ = tx.send(format!("kill-session -t {}\n", quote(&target)).into_bytes());
+            let _ = tx.send(WriterMessage::Data(
+                format!("kill-session -t {}\n", quote(&target)).into_bytes(),
+            ));
         }
-        let _ = tx.send(b"detach-client\n".to_vec());
+        let _ = tx.send(WriterMessage::Data(b"detach-client\n".to_vec()));
     }
 
-    pub fn advance(
+    pub(crate) fn advance(
         &mut self,
         bytes: &[u8],
         grid: &mut TerminalGrid,
-        tx: &Sender<Vec<u8>>,
+        tx: &WriterSender,
     ) -> Result<()> {
         self.buffer.extend_from_slice(bytes);
         if !self.protocol {
@@ -297,7 +301,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    fn line(&mut self, line: Vec<u8>, grid: &mut TerminalGrid, tx: &Sender<Vec<u8>>) -> Result<()> {
+    fn line(&mut self, line: Vec<u8>, grid: &mut TerminalGrid, tx: &WriterSender) -> Result<()> {
         if let Some(block) = &mut self.block {
             let end = line.strip_prefix(b"%end ");
             let error = line.strip_prefix(b"%error ");
@@ -396,12 +400,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    fn complete(
-        &mut self,
-        block: Block,
-        grid: &mut TerminalGrid,
-        tx: &Sender<Vec<u8>>,
-    ) -> Result<()> {
+    fn complete(&mut self, block: Block, grid: &mut TerminalGrid, tx: &WriterSender) -> Result<()> {
         match block.reply {
             Reply::Attach => self.command(self.list_windows_command(), Reply::Windows, tx)?,
             Reply::Windows => {
@@ -511,7 +510,7 @@ impl TmuxClient {
         Ok(())
     }
 
-    fn bind(&mut self, line: &[u8], tx: &Sender<Vec<u8>>) -> Result<()> {
+    fn bind(&mut self, line: &[u8], tx: &WriterSender) -> Result<()> {
         let text = std::str::from_utf8(line).context("Decode tmux pane ID")?;
         let pane = text.trim();
         ensure!(valid_id(pane, '%'), "Invalid tmux pane ID");
@@ -540,7 +539,7 @@ impl TmuxClient {
         self.resize(self.size, tx)
     }
 
-    fn synchronize(&mut self, tx: &Sender<Vec<u8>>) -> Result<()> {
+    fn synchronize(&mut self, tx: &WriterSender) -> Result<()> {
         self.syncing = true;
         self.live = false;
         let pane = self.pane.as_ref().context("Missing tmux pane")?.clone();

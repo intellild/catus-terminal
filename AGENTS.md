@@ -76,7 +76,8 @@
   Switch content through `terminal-id`; derive viewport dimensions from native
   layout callbacks. Do not add custom width/height or active props, or remount
   the view through React keys.
-- PTY threads only update grids. A single RAF adapter dispatches native callbacks
+- Portable-pty read/write threads bridge to an async parser through channels;
+  only the parser updates grids. A single RAF adapter dispatches native callbacks
   on the UI thread; do not add frame queues, broadcasts or frame IDs. Do not hold
   callback registry locks while invoking callbacks.
 - Drop expired or contended frames. Wait for submitted GPU work before returning

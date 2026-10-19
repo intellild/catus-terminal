@@ -1,5 +1,8 @@
 use super::*;
-use crate::{terminal_core::pty::TmuxPtyDelegate, terminal_core::session::TerminalSession};
+use crate::terminal_core::{
+    pty::{TmuxPtyDelegate, WriterMessage, message_data, test_channel, test_sender},
+    session::TerminalSession,
+};
 use std::{
     process::Command,
     thread,
@@ -28,8 +31,8 @@ fn escapes_preserve_raw_bytes_and_reject_malformed_data() {
 
 #[test]
 fn fragmented_protocol_routes_only_the_bound_pane_and_never_renders_command_results() {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let mut grid = TerminalGrid::new(GridSize::new(20, 4), std::sync::mpsc::channel().0);
+    let (tx, mut rx) = test_channel();
+    let mut grid = TerminalGrid::new(GridSize::new(20, 4), test_sender());
     let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.pane = Some("%2".into());
     client.started = true;
@@ -45,13 +48,13 @@ fn fragmented_protocol_routes_only_the_bound_pane_and_never_renders_command_resu
     client
         .input("\0\r\x1b中文".as_bytes().to_vec(), &tx)
         .unwrap();
-    let command = String::from_utf8(rx.try_recv().unwrap()).unwrap();
+    let command = String::from_utf8(message_data(rx.try_recv().unwrap())).unwrap();
     assert_eq!(command, "send-keys -t %2 -H 00 0d 1b e4 b8 ad e6 96 87\n");
 }
 
 #[test]
 fn snapshot_restores_cursor_and_app_cursor_mode_before_replaying_incremental_output() {
-    let mut grid = TerminalGrid::new(GridSize::new(10, 3), std::sync::mpsc::channel().0);
+    let mut grid = TerminalGrid::new(GridSize::new(10, 3), test_sender());
     let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.screen = vec![b"hello".to_vec(), vec![], vec![]];
     client.state = b"10|3|5|0|0|1|0|1|0|1|0|0|0|0|0|0|2|0|1,7,25,2004".to_vec();
@@ -62,26 +65,27 @@ fn snapshot_restores_cursor_and_app_cursor_mode_before_replaying_incremental_out
     assert!(grid.paste("text").starts_with(b"\x1b[200~"));
 }
 
-fn protocol_command(rx: &std::sync::mpsc::Receiver<Vec<u8>>) -> String {
-    String::from_utf8(rx.try_recv().unwrap()).unwrap()
+fn protocol_command(rx: &mut tokio::sync::mpsc::UnboundedReceiver<WriterMessage>) -> String {
+    String::from_utf8(message_data(rx.try_recv().unwrap())).unwrap()
 }
 
 #[test]
 fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let mut grid = TerminalGrid::new(GridSize::new(20, 4), std::sync::mpsc::channel().0);
+    let (tx, mut rx) = test_channel();
+    let mut grid = TerminalGrid::new(GridSize::new(20, 4), test_sender());
     let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.protocol = true;
     let initial =
         b"%begin 1 2 1\n@1|0|1|tab-1\n%end 1 2 1\n%begin 2 3 1\n@1|0|1|tab-1\n@2|1|0|logs\n%end 2 3 1\n";
     client.advance(initial, &mut grid, &tx).unwrap();
-    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
-    let bind = protocol_command(&rx);
+    assert!(protocol_command(&mut rx).contains("list-windows -t \"test\""));
+    let bind = protocol_command(&mut rx);
     assert!(bind.contains("display-message -p -t \"@1\" '#{pane_id}'"));
     client
         .advance(b"%begin 3 4 1\n%0\n%end 3 4 1\n", &mut grid, &tx)
         .unwrap();
-    let options = protocol_command(&rx) + &protocol_command(&rx) + &protocol_command(&rx);
+    let options =
+        protocol_command(&mut rx) + &protocol_command(&mut rx) + &protocol_command(&mut rx);
     assert!(options.contains("set-window-option -t @1 automatic-rename off"));
     assert!(options.contains("resize-window -t @1 -x 20 -y 4"));
     // tmux answers every control command; clear the simulated pending replies.
@@ -91,8 +95,8 @@ fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
     assert_eq!(info.active_window_id.as_deref(), Some("@1"));
 
     assert!(client.select_window("@2", &tx).unwrap());
-    assert_eq!(protocol_command(&rx), "select-window -t \"@2\"\n");
-    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    assert_eq!(protocol_command(&mut rx), "select-window -t \"@2\"\n");
+    assert!(protocol_command(&mut rx).contains("list-windows -t \"test\""));
     client
         .advance(
             b"%begin 4 5 1\n%end 4 5 1\n%begin 4 6 1\n@1|0|0|tab-1\n@2|1|1|logs\n%end 4 6 1\n",
@@ -100,13 +104,13 @@ fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
             &tx,
         )
         .unwrap();
-    assert!(protocol_command(&rx).contains("display-message -p -t \"@2\" '#{pane_id}'"));
+    assert!(protocol_command(&mut rx).contains("display-message -p -t \"@2\" '#{pane_id}'"));
     client
         .advance(b"%begin 5 6 1\n%1\n%end 5 6 1\n", &mut grid, &tx)
         .unwrap();
-    assert!(protocol_command(&rx).contains("set-window-option -t @2"));
-    protocol_command(&rx);
-    protocol_command(&rx);
+    assert!(protocol_command(&mut rx).contains("set-window-option -t @2"));
+    protocol_command(&mut rx);
+    protocol_command(&mut rx);
     client.replies.clear();
     let info = client.session_info().unwrap();
     assert_eq!(info.active_window_id.as_deref(), Some("@2"));
@@ -115,12 +119,12 @@ fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
     client
         .advance(b"%session-window-changed $1 @1\n", &mut grid, &tx)
         .unwrap();
-    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    assert!(protocol_command(&mut rx).contains("list-windows -t \"test\""));
     client.replies.clear();
 
     assert!(client.close_window("@1", &tx).unwrap());
-    assert_eq!(protocol_command(&rx), "kill-window -t \"@1\"\n");
-    assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
+    assert_eq!(protocol_command(&mut rx), "kill-window -t \"@1\"\n");
+    assert!(protocol_command(&mut rx).contains("list-windows -t \"test\""));
     client.windows.retain(|window| window.id == "@2");
     assert!(!client.close_window("@2", &tx).unwrap());
 }

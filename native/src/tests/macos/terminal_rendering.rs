@@ -1,4 +1,5 @@
 use super::*;
+use crate::terminal_core::pty::test_sender;
 use crate::terminal_session::acquire_terminal;
 use crate::terminal_session::{
     TerminalSessionCommand, close_terminal_session, create_terminal_session,
@@ -307,10 +308,7 @@ fn supplied_grid_renders_to_surface_without_a_terminal_session() {
         height: 128,
         pixel_ratio: 1.,
     };
-    let mut grid = TerminalGrid::new(
-        renderer.grid_size(&viewport).unwrap(),
-        std::sync::mpsc::channel().0,
-    );
+    let mut grid = TerminalGrid::new(renderer.grid_size(&viewport).unwrap(), test_sender());
     grid.advance(b"\x1b[?25l\x1b[41m  \x1b[0mHello");
     let snapshot = grid.snapshot();
     let target = Target::new(viewport);
@@ -343,10 +341,7 @@ fn direct_metal_and_lynx_osr_use_opposite_target_y_origins() {
         height: 128,
         pixel_ratio: 1.,
     };
-    let mut grid = TerminalGrid::new(
-        renderer.grid_size(&viewport).unwrap(),
-        std::sync::mpsc::channel().0,
-    );
+    let mut grid = TerminalGrid::new(renderer.grid_size(&viewport).unwrap(), test_sender());
     grid.advance(b"\x1b[?25l\x1b[41m  \x1b[0m");
     let snapshot = grid.snapshot();
     let direct = Target::new(viewport);

@@ -1,6 +1,6 @@
 use super::test_support::TEST_LOCK;
 use super::*;
-use crate::terminal_core::grid::TerminalGrid;
+use crate::terminal_core::{grid::TerminalGrid, pty::test_sender};
 
 // These tests deliberately clear the process cache; isolate them from each other.
 fn viewport(ratio: f32) -> Viewport {
@@ -31,7 +31,7 @@ fn target(renderer: &TerminalRenderer) -> wgpu::Texture {
 }
 fn grid(renderer: &TerminalRenderer, viewport: &Viewport, text: &str) -> GridSnapshot {
     let size = renderer.grid_size(viewport).unwrap();
-    let mut grid = TerminalGrid::new(size, std::sync::mpsc::channel().0);
+    let mut grid = TerminalGrid::new(size, test_sender());
     grid.advance(text.as_bytes());
     grid.snapshot()
 }

@@ -288,8 +288,8 @@ SSH 的 `remoteCommand` 可在选定 Shell 前运行额外命令。旧配置的 
 ## 最小终端（macOS）
 
 计算与渲染分别位于 `native/src/terminal_core/` 和 `native/src/renderer.rs`。
-前者无需 Lynx、字体或 GPU：读线程接收 PTY 字节流，持续使用 Alacritty 的
-VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
+前者无需 Lynx、字体或 GPU：portable-pty 读线程把字节经 channel 交给 async parser，
+持续使用 Alacritty 的 VT parser 更新 `Term`；需要绘制时生成包含字符、颜色、属性、宽字符和光标的
 owned `GridSnapshot`。`TerminalRenderer` 接收网格和平台提供的 wgpu texture，
 通过 crossfont/atlas、背景矩形及 instance buffer 绘制。macOS 的 IOSurface / Metal
 导入、字体策略和 UI 桥接集中在 `native/src/platform/macos/`。
@@ -305,7 +305,7 @@ NativeTerminalView.tsx / native-terminal
 native_terminal_view.rs / on_layout_changed
   逻辑尺寸 × backing scale → 字体 advance、line height / leading → 行列 / PTY resize
        ↓
-terminal_core/pty.rs（独立读线程）
+terminal_core/pty.rs（读线程 + async parser）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
 frameDriver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs

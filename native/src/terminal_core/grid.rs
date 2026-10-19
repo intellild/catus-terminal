@@ -1,11 +1,12 @@
 //! Terminal computation only: streaming VT parser -> an owned, GPU-independent grid.
+use super::pty::{WriterMessage, WriterSender};
 use alacritty_terminal::{
     event::{Event, EventListener, WindowSize},
     grid::Dimensions,
     term::{Config, Term, TermMode, cell::Flags, color::Colors, point_to_viewport},
     vte::ansi::{Color, CursorShape, NamedColor, Processor, Rgb},
 };
-use std::sync::{Arc, Mutex, mpsc::Sender};
+use std::sync::{Arc, Mutex};
 
 pub const BACKGROUND: [u8; 3] = [17, 20, 25];
 pub const FOREGROUND: [u8; 3] = [216, 222, 229];
@@ -128,7 +129,7 @@ impl GridSnapshot {
 }
 
 struct Listener {
-    replies: Sender<Vec<u8>>,
+    replies: WriterSender,
     size: Arc<Mutex<GridSize>>,
 }
 impl EventListener for Listener {
@@ -150,7 +151,7 @@ impl EventListener for Listener {
             }
             _ => return,
         };
-        let _ = self.replies.send(reply.into_bytes());
+        let _ = self.replies.send(WriterMessage::Data(reply.into_bytes()));
     }
 }
 
@@ -162,7 +163,7 @@ pub struct TerminalGrid {
     reported_size: Arc<Mutex<GridSize>>,
 }
 impl TerminalGrid {
-    pub fn new(size: GridSize, replies: Sender<Vec<u8>>) -> Self {
+    pub(crate) fn new(size: GridSize, replies: WriterSender) -> Self {
         let reported_size = Arc::new(Mutex::new(size));
         Self {
             term: Term::new(

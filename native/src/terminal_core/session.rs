@@ -1,14 +1,13 @@
 //! Terminal computation and interaction, independent of transport protocol and rendering.
 use super::{
     grid::{GridSize, GridSnapshot, TerminalGrid},
-    pty::{PlainPtyDelegate, Pty, PtyDelegate},
+    pty::{PlainPtyDelegate, Pty, PtyDelegate, block_on},
     tmux::TmuxSessionInfo,
 };
 use anyhow::{Result, anyhow};
 use portable_pty::CommandBuilder;
-#[cfg(test)]
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct TerminalSession {
     grid: Arc<Mutex<TerminalGrid>>,
@@ -66,24 +65,24 @@ impl TerminalSession {
         if self.exited() {
             return Err(anyhow!("Shell has exited"));
         }
-        self.grid.lock().unwrap().clear_interaction();
+        self.grid.blocking_lock().clear_interaction();
         self.send_input(bytes)
     }
     fn send_input(&self, bytes: Vec<u8>) -> Result<()> {
-        self.pty.write(bytes)
+        block_on(self.pty.write(bytes))
     }
     #[cfg(feature = "native-view")]
     pub(crate) fn try_scroll_state(&self) -> Result<Option<super::grid::ScrollState>> {
         self.try_grid(|grid| grid.scroll_state())
     }
     pub fn scroll_to(&self, offset: usize) {
-        self.grid.lock().unwrap().scroll_to(offset);
+        self.grid.blocking_lock().scroll_to(offset);
     }
     pub fn scroll_multiplier(&self, modifiers: super::grid::MouseModifiers) -> f64 {
-        self.grid.lock().unwrap().scroll_multiplier(modifiers)
+        self.grid.blocking_lock().scroll_multiplier(modifiers)
     }
     pub fn selected_text(&self) -> Option<String> {
-        self.grid.lock().unwrap().selected_text()
+        self.grid.blocking_lock().selected_text()
     }
     #[allow(clippy::too_many_arguments)]
     pub fn pointer(
@@ -98,8 +97,7 @@ impl TerminalSession {
     ) -> Result<()> {
         let bytes = self
             .grid
-            .lock()
-            .unwrap()
+            .blocking_lock()
             .pointer(action, row, column, right_half, clicks, button, modifiers);
         if let Some(bytes) = bytes {
             self.write_mouse(bytes)?;
@@ -115,8 +113,7 @@ impl TerminalSession {
     ) -> Result<()> {
         let bytes = self
             .grid
-            .lock()
-            .unwrap()
+            .blocking_lock()
             .scroll(lines, row, column, modifiers);
         if let Some(bytes) = bytes {
             self.write_mouse(bytes)?;
@@ -128,45 +125,45 @@ impl TerminalSession {
     }
 
     pub fn paste(&self, text: &str) -> Result<()> {
-        let bytes = self.grid.lock().unwrap().paste(text);
+        let bytes = self.grid.blocking_lock().paste(text);
         self.write(bytes)
     }
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
-        let bytes = self.grid.lock().unwrap().key(key, control, alt);
+        let bytes = self.grid.blocking_lock().key(key, control, alt);
         if let Some(bytes) = bytes {
             self.write(bytes)?;
         }
         Ok(())
     }
     pub fn resize(&self, size: GridSize) -> Result<()> {
-        let mut grid = self.grid.lock().unwrap();
+        let mut grid = self.grid.blocking_lock();
         if grid.size() != size {
-            self.pty.resize(size)?;
+            block_on(self.pty.resize(size))?;
             grid.resize(size);
         }
         Ok(())
     }
     pub fn tmux_info(&self) -> Option<TmuxSessionInfo> {
-        self.pty.tmux_info()
+        block_on(self.pty.tmux_info())
     }
     pub fn select_tmux_window(&self, window_id: &str) -> Result<bool> {
-        self.pty.select_tmux_window(window_id)
+        block_on(self.pty.select_tmux_window(window_id))
     }
     pub fn create_tmux_window(&self) -> Result<bool> {
-        self.pty.create_tmux_window()
+        block_on(self.pty.create_tmux_window())
     }
     pub fn close_tmux_window(&self, window_id: &str) -> Result<bool> {
-        self.pty.close_tmux_window(window_id)
+        block_on(self.pty.close_tmux_window(window_id))
     }
     #[cfg(test)]
     pub(crate) fn ready(&self) -> bool {
         self.pty.ready()
     }
     pub fn size(&self) -> GridSize {
-        self.grid.lock().unwrap().size()
+        self.grid.blocking_lock().size()
     }
     pub fn snapshot(&self) -> GridSnapshot {
-        self.grid.lock().unwrap().snapshot()
+        self.grid.blocking_lock().snapshot()
     }
     #[cfg(feature = "native-view")]
     pub(crate) fn try_snapshot(&self) -> Result<Option<GridSnapshot>> {
@@ -180,14 +177,11 @@ impl TerminalSession {
     fn try_grid<T>(&self, read: impl FnOnce(&TerminalGrid) -> T) -> Result<Option<T>> {
         match self.grid.try_lock() {
             Ok(grid) => Ok(Some(read(&grid))),
-            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                Err(anyhow!("Terminal grid lock poisoned"))
-            }
+            Err(_) => Ok(None),
         }
     }
     pub fn revision(&self) -> u64 {
-        self.grid.lock().unwrap().revision()
+        self.grid.blocking_lock().revision()
     }
     pub fn exited(&self) -> bool {
         self.pty.exited()
@@ -196,10 +190,10 @@ impl TerminalSession {
         self.pty.error()
     }
     pub fn close(&self) {
-        self.pty.close();
+        block_on(self.pty.close());
     }
     pub fn detach(&self) {
-        self.pty.detach();
+        block_on(self.pty.detach());
     }
 }
 
