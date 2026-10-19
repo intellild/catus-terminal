@@ -300,6 +300,7 @@ NSView 的 CAMetalLayer 提供 drawable，Rust 用共享 wgpu device 导入纹�
 NSView frame 根据父 view 的 isFlipped 转换；自身 isFlipped 只决定内部坐标。
 attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期。
 `use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
+创建时窗口尚未就绪的自动选择会在后续 attach/layout 重新判断，窗口出现后切换到嵌入模式。
 OSR 才启用 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
 `IOSurfaceRef`。Rust 用缓存的 layout 获取 buffer，将平台句柄直接借用为
 `&IOSurfaceRef` 调用 `render_osr`，不经 C++ 或整数地址桥接。会话层检查锁忙和 idle revision，

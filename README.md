@@ -334,6 +334,10 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 `frame_callbacks.rs` 中的全局 `LazyLock` 保存弱引用的窗口注册对象，在 UI
 遍历仍有效的回调；关闭窗口或 view 不会被全局对象保活。
 不保存帧队列；延迟、过期和资源忙的帧丢弃，PTY 只更新网格。
+跨线程调用或宿主分发失败会被捕获，RAF 链保持并继续重试。自动帧只在窗口可见且
+未被遮挡时呈现；启动或显示器唤醒阶段窗口尚未合成时网格保持 dirty，窗口可见后的
+下一帧重绘。GPU 和 session renderer 初始化失败不会缓存到进程生命周期，
+而是按帧重试（1 秒退避）。
 后续替换帧信号来源时可直接调用 `dispatch_frame_callbacks(deadline)`，
 无需修改 terminal session、IOSurface 导入或 atlas 渲染。
 项目自建的 CADisplayLink、timer 和单次 native RAF 探针已移除。

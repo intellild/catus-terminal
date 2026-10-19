@@ -5,9 +5,12 @@ use crate::{
     text::{GlyphRenderer, SharedGlyphs},
 };
 use anyhow::{Context, Result, anyhow};
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-static GPU: LazyLock<Result<GpuContext>> = LazyLock::new(GpuContext::new);
+// A failed device/pipeline initialization must not be cached for the process:
+// a transient Metal failure on the first frame would otherwise keep the
+// terminal blank until the app restarts. Retry on the next renderer request.
+static GPU: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
 
 struct GpuContext {
     device: wgpu::Device,
@@ -55,18 +58,24 @@ struct RenderedGrid {
 }
 
 pub struct TerminalRenderer {
-    gpu: &'static GpuContext,
+    gpu: Arc<GpuContext>,
     glyphs: GlyphRenderer,
     rendered_grid: Option<RenderedGrid>,
 }
 
+fn shared_gpu() -> Result<Arc<GpuContext>> {
+    let mut gpu = GPU.lock().unwrap_or_else(|error| error.into_inner());
+    if let Some(existing) = gpu.as_ref() {
+        return Ok(existing.clone());
+    }
+    // Hold the lock while initializing so concurrent requests share one device.
+    let created = Arc::new(GpuContext::new()?);
+    *gpu = Some(created.clone());
+    Ok(created)
+}
+
 pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>> {
-    let gpu = GPU.as_ref().map_err(|error| {
-        // The cached initialization error lives for the entire process.
-        // Borrow its source so every caller keeps the complete cause chain.
-        let source: &'static (dyn std::error::Error + Send + Sync) = error.as_ref();
-        anyhow::Error::new(source)
-    })?;
+    let gpu = shared_gpu()?;
     Ok(Box::new(TerminalRenderer {
         gpu,
         glyphs: GlyphRenderer::default(),
@@ -191,7 +200,7 @@ impl TerminalRenderer {
         grid: &GridSnapshot,
         deadline: Option<i64>,
     ) -> Result<bool> {
-        let gpu = self.gpu;
+        let gpu = &self.gpu;
         let mut shared = if deadline.is_some() {
             match gpu.glyphs.try_lock() {
                 Ok(shared) => shared,
