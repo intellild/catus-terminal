@@ -2,6 +2,7 @@
 use super::{
     grid::{GridSize, GridSnapshot, TerminalGrid},
     pty::{PlainPtyDelegate, Pty, PtyDelegate},
+    tmux::TmuxSessionInfo,
 };
 use anyhow::{Result, anyhow};
 use portable_pty::CommandBuilder;
@@ -144,6 +145,18 @@ impl TerminalSession {
             grid.resize(size);
         }
         Ok(())
+    }
+    pub fn tmux_info(&self) -> Option<TmuxSessionInfo> {
+        self.pty.tmux_info()
+    }
+    pub fn select_tmux_window(&self, window_id: &str) -> Result<bool> {
+        self.pty.select_tmux_window(window_id)
+    }
+    pub fn create_tmux_window(&self) -> Result<bool> {
+        self.pty.create_tmux_window()
+    }
+    pub fn close_tmux_window(&self, window_id: &str) -> Result<bool> {
+        self.pty.close_tmux_window(window_id)
     }
     #[cfg(test)]
     pub(crate) fn ready(&self) -> bool {

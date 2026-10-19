@@ -11,7 +11,10 @@ use crate::{
     terminal_view::NativeScrollState,
 };
 use anyhow::{Context, Result, ensure};
-use std::cell::RefCell;
+use std::{
+    cell::RefCell,
+    time::{Duration, Instant},
+};
 
 pub(crate) struct TerminalHost {
     pub(crate) view: usize,
@@ -26,6 +29,7 @@ struct State {
     attached: bool,
     needs_focus: bool,
     focus_pending: bool,
+    renderer_retry: Option<Instant>,
     error: String,
 }
 impl Default for State {
@@ -42,6 +46,7 @@ impl Default for State {
             attached: false,
             needs_focus: true,
             focus_pending: false,
+            renderer_retry: None,
             error: String::new(),
         }
     }
@@ -86,7 +91,7 @@ impl NativeTerminalView {
         self.platform.focus();
         Ok(())
     }
-    fn render(&self, state: &mut State, deadline: i64) -> Result<()> {
+    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<()> {
         if expired(deadline) || state.id == 0 {
             return Ok(());
         }
@@ -98,9 +103,25 @@ impl NativeTerminalView {
             .terminal
             .as_ref()
             .context("Terminal is not attached")?;
+        // A renderer is created on the first valid layout. If that allocation
+        // failed transiently, retry here instead of leaving the view blank for
+        // the rest of the process.
+        if !terminal.has_renderer() {
+            // Retry a transient initialization failure, but do not attempt a
+            // failing GPU/font setup on every frame.
+            let now = Instant::now();
+            if state
+                .renderer_retry
+                .is_some_and(|retry| now.duration_since(retry) < Duration::from_secs(1))
+            {
+                return Ok(());
+            }
+            state.renderer_retry = Some(now);
+            terminal.resize_viewport(&state.viewport)?;
+        }
         if !self
             .platform
-            .render(&self.handle, &state.viewport, deadline)?
+            .render(&self.handle, &state.viewport, deadline, force)?
         {
             return Ok(());
         }
@@ -128,7 +149,7 @@ impl NativeTerminalView {
         let Ok(mut state) = self.state.try_borrow_mut() else {
             return Ok(());
         };
-        if let Err(error) = self.render(&mut state, deadline) {
+        if let Err(error) = self.render(&mut state, deadline, false) {
             state.error = format!("{error:#}");
         }
         // A busy grid simply retries next RAF. Emit only scalar changes.
@@ -252,6 +273,7 @@ impl NativeView for NativeTerminalView {
             return Ok(());
         }
         state.last_scroll = None;
+        state.renderer_retry = None;
         if id == 0 {
             self.platform.clear_terminal();
             state.terminal = None;
@@ -298,7 +320,7 @@ impl NativeView for NativeTerminalView {
         }
         let mut state = self.state.borrow_mut();
         if method == Method::RenderFrame {
-            let result = self.render(&mut state, i64::MAX);
+            let result = self.render(&mut state, i64::MAX, true);
             if let Err(error) = &result {
                 state.error = format!("{error:#}");
             }

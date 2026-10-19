@@ -50,16 +50,30 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
           className="w-[5px] h-[5px] rounded-full shrink-0 bg-[var(--workspace-color)]"
           style={`--workspace-color: ${tab.profile.color}`}
         />
+        {tab.kind !== 'shell' ? (
+          <Icon
+            name={tab.kind === 'tmux' ? 'panels-top-left' : 'folder'}
+            size={12}
+            color={tab.kind === 'tmux' ? '#c9b8ff' : '#a8e6cf'}
+          />
+        ) : null}
         <text
           className={cn(
             'text-[12px] whitespace-nowrap overflow-hidden text-ellipsis',
             active ? 'text-[#e1e8e5]' : 'text-[#959eaa]',
           )}
         >
-          {t(tab.kind === 'sftp' ? 'tabs.sftpTitle' : 'tabs.title', {
-            name: tab.profile.name,
-            number: tab.number,
-          })}
+          {t(
+            tab.kind === 'sftp'
+              ? 'tabs.sftpTitle'
+              : tab.kind === 'tmux'
+                ? 'tabs.tmuxTitle'
+                : 'tabs.title',
+            {
+              name: tab.profile.name,
+              number: tab.number,
+            },
+          )}
         </text>
       </view>
       <Button

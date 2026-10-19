@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema';
-import * as SchemaGetter from 'effect/SchemaGetter';
+import { tabKinds } from './tabs';
+import type { TabKind } from './tabs';
 
 const NonBlank = Schema.String.check(
   Schema.makeFilter((value) => !!value.trim(), { message: 'validation.required' }),
@@ -13,6 +14,11 @@ const HostCheck = Schema.makeFilter<{ type?: string; host?: string }>((workspace
     ? undefined
     : { path: ['host'], issue: 'validation.host' },
 );
+const DefaultTabCheck = Schema.makeFilter<{ type?: string; defaultTab?: TabKind }>((workspace) =>
+  workspace.defaultTab !== 'sftp' || workspace.type === 'ssh'
+    ? undefined
+    : { path: ['defaultTab'], issue: 'validation.sftpDefault' },
+);
 const fields = {
   id: NonBlank.check(Schema.isPattern(/^[a-zA-Z0-9_-]+$/, { message: 'validation.workspaceId' })),
   name: NonBlank,
@@ -23,10 +29,7 @@ const fields = {
   type: Schema.optional(Schema.Literals(['local', 'ssh'])),
   host: Schema.optional(Schema.String),
   remoteCommand: Schema.optional(Schema.String),
-  tmux: Schema.optional(Schema.Boolean),
-  tmuxSessionName: Schema.optional(
-    NonBlank.check(Schema.isPattern(/^[^.:\r\n\0]+$/, { message: 'validation.tmuxSessionName' })),
-  ),
+  defaultTab: Schema.Literals(tabKinds),
   // $SHELL uses the account default; custom uses the command field.
   shell: Schema.optional(
     Schema.String.check(
@@ -37,7 +40,9 @@ const fields = {
   args: Schema.Array(Schema.String),
   cwd: NonBlank,
 };
-export const WorkspaceSettingsSchema = Schema.Struct(fields).check(HostCheck);
+export const WorkspaceSettingsSchema = Schema.Struct(fields)
+  .check(HostCheck)
+  .check(DefaultTabCheck);
 
 // The form keeps string values for Lynx controls; decoding produces launch settings.
 export const WorkspaceFormSchema = Schema.Struct({
@@ -50,16 +55,11 @@ export const WorkspaceFormSchema = Schema.Struct({
   host: Schema.Trim,
   remoteCommand: Schema.String,
   shell: Schema.required(fields.shell),
-  tmuxSessionName: Schema.Trim.pipe(Schema.decodeTo(Schema.required(fields.tmuxSessionName))),
-  tmux: Schema.Literals(['true', 'false']).pipe(
-    Schema.decodeTo(Schema.Boolean, {
-      decode: SchemaGetter.transform((value) => value === 'true'),
-      encode: SchemaGetter.transform((value) => (value ? ('true' as const) : ('false' as const))),
-    }),
-  ),
   args: Schema.fromJsonString(fields.args).annotate({ message: 'validation.arguments' }),
   isNew: Schema.Boolean,
-}).check(HostCheck);
+})
+  .check(HostCheck)
+  .check(DefaultTabCheck);
 export type WorkspaceFormValues = typeof WorkspaceFormSchema.Encoded;
 
 export const WorkspaceConfigSchema = Schema.Struct({
@@ -84,8 +84,29 @@ export const WorkspaceConfigSchema = Schema.Struct({
 export type WorkspaceSettings = typeof WorkspaceSettingsSchema.Type;
 export type WorkspaceConfig = typeof WorkspaceConfigSchema.Type;
 
+// Version 1 used a per-workspace "Use tmux" flag. Tab kinds now select tmux
+// per tab; migrate the old flag and drop the retired fields before decoding.
+function migrateWorkspace(value: unknown): unknown {
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const workspace = value as Record<string, unknown>;
+  const { tmux, tmuxSessionName: _tmuxSessionName, ...rest } = workspace;
+  return {
+    ...rest,
+    defaultTab: workspace.defaultTab ?? (tmux === true ? 'tmux' : 'shell'),
+  };
+}
+
 export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
-  return Schema.decodeUnknownSync(WorkspaceConfigSchema)(value);
+  if (!value || typeof value !== 'object') {
+    return Schema.decodeUnknownSync(WorkspaceConfigSchema)(value);
+  }
+  const config = value as Record<string, unknown>;
+  const workspaces = Array.isArray(config.workspaces)
+    ? config.workspaces.map(migrateWorkspace)
+    : config.workspaces;
+  return Schema.decodeUnknownSync(WorkspaceConfigSchema)({ ...config, workspaces });
 }
 
 export interface WorkspaceEnvironment {

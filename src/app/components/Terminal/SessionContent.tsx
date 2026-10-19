@@ -5,6 +5,7 @@ import { sessionActionsAtom } from '../../state/sessionActions';
 import { SftpBrowser } from '../SftpBrowser';
 import { TerminalView } from './TerminalView';
 import { TerminalContent } from './TerminalContent';
+import { TmuxTabBar } from './TmuxTabBar';
 
 export function SessionContent() {
   const view = useAtomValue(contentViewAtom);
@@ -16,6 +17,11 @@ export function SessionContent() {
       tabCount={view.tabCount}
       loading={view.loading}
       error={view.error}
+      titleTabs={
+        !view.error && !view.terminalError && view.activeTab?.kind === 'tmux' ? (
+          <TmuxTabBar key={view.activeTab.id} sessionId={view.activeTab.id} />
+        ) : undefined
+      }
       onRetry={() => {
         'background only';
         dispatch({ type: 'reload' });

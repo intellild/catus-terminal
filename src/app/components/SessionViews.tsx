@@ -26,18 +26,12 @@ export function SessionTabActions() {
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
     <TabActions
-      onAdd={() => {
+      defaultKind={view.defaultTab}
+      ssh={view.ssh}
+      onAdd={(kind) => {
         'background only';
-        dispatch({ type: 'addTab' });
+        dispatch({ type: 'addTab', kind });
       }}
-      onAddSftp={
-        view.ssh
-          ? () => {
-              'background only';
-              dispatch({ type: 'addSftpTab' });
-            }
-          : undefined
-      }
     />
   );
 }

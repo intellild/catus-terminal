@@ -4,7 +4,7 @@ use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
 use crate::terminal_session::TerminalHandle;
 use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
-use objc2_app_kit::{NSEvent, NSEventType, NSTextInputContext, NSView};
+use objc2_app_kit::{NSEvent, NSEventType, NSTextInputContext, NSView, NSWindowOcclusionState};
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use objc2_quartz_core::{CALayer, CAMetalLayer};
 use std::{
@@ -20,6 +20,7 @@ pub struct MacTerminalView {
     terminal: Rc<RefCell<Option<TerminalHandle>>>,
     context: RefCell<Option<Retained<NSTextInputContext>>>,
     osr: Cell<bool>,
+    explicit_osr: Cell<bool>,
     attached: Cell<bool>,
     overlay_mask: Cell<Option<(f64, f64, f64)>>,
 }
@@ -84,6 +85,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
         terminal,
         context: RefCell::new(None),
         osr: Cell::new(parent.is_none_or(|parent| parent.window().is_none())),
+        explicit_osr: Cell::new(false),
         attached: Cell::new(false),
         overlay_mask: Cell::new(None),
     }))
@@ -102,6 +104,11 @@ impl MacTerminalView {
     }
     pub fn set_osr(&self, requested: bool) {
         self.assert_ui();
+        // An explicit `use-osr` prop owns the mode; do not switch it later.
+        self.explicit_osr.set(true);
+        self.apply_osr(requested);
+    }
+    fn apply_osr(&self, requested: bool) {
         let osr = requested || self.parent().is_none_or(|parent| parent.window().is_none());
         if self.osr.replace(osr) != osr {
             self.blur();
@@ -110,6 +117,20 @@ impl MacTerminalView {
                 terminal.invalidate_frame();
             }
             self.attach_view();
+        }
+    }
+    /// The host window may not exist yet when Lynx creates the view during a
+    /// cold launch. The automatic OSR choice must not stay frozen in that state:
+    /// once the window appears, switch to the embedded CAMetalLayer and attach.
+    fn refresh_osr(&self) {
+        if self.explicit_osr.get() || !self.osr.get() {
+            return;
+        }
+        if self
+            .parent()
+            .is_some_and(|parent| parent.window().is_some())
+        {
+            self.apply_osr(false);
         }
     }
     pub fn bind_terminal(&self, terminal: &TerminalHandle) {
@@ -131,6 +152,7 @@ impl MacTerminalView {
     }
     pub fn attach(&self) {
         self.assert_ui();
+        self.refresh_osr();
         self.attached.set(true);
         self.attach_view();
     }
@@ -151,6 +173,7 @@ impl MacTerminalView {
     }
     pub fn layout(&self, left: f32, top: f32, width: f32, height: f32, ratio: f32) {
         self.assert_ui();
+        self.refresh_osr();
         if ![left, top, width, height, ratio]
             .into_iter()
             .all(f32::is_finite)
@@ -274,8 +297,27 @@ impl MacTerminalView {
             }
         }
     }
-    pub fn render_native(&self, deadline: i64) -> Result<bool> {
+    /// Automatic frames may arrive before the window has been composited (cold
+    /// launch, occluded window, display wake). Presenting then marks the grid as
+    /// rendered while nothing is on screen, so wait until the window is actually
+    /// visible; the grid stays dirty and the next RAF retries. Explicit
+    /// `renderFrame` calls bypass the gate.
+    fn is_presentable(&self) -> bool {
+        let Some(window) = self.parent().and_then(|parent| parent.window()) else {
+            return false;
+        };
+        window.isVisible()
+            && !window.isMiniaturized()
+            && window
+                .occlusionState()
+                .contains(NSWindowOcclusionState::Visible)
+    }
+
+    pub fn render_native(&self, deadline: i64, force: bool) -> Result<bool> {
         self.assert_ui();
+        if !force && !self.is_presentable() {
+            return Ok(false);
+        }
         let binding = self.terminal.borrow();
         let terminal = binding.as_ref().context("Terminal is not bound")?;
         self.update_overlay(terminal);

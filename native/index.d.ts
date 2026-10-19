@@ -18,12 +18,16 @@ export declare class SftpConnection {
 
 export declare function closeTerminalSession(id: number): void;
 
+export declare function closeTmuxWindow(id: number, windowId: string): boolean;
+
 export declare function connectSftp(options: SftpOptions): Promise<SftpConnection>;
 
 export declare function createTerminalSession(
   id: number,
   command?: TerminalSessionCommand | undefined | null,
 ): void;
+
+export declare function createTmuxWindow(id: number): boolean;
 
 export declare function detachTerminalSession(id: number): void;
 
@@ -35,6 +39,10 @@ export declare function detachTerminalSession(id: number): void;
 export declare function dispatchAnimationFrame(): void;
 
 export declare function getTerminalSessionInfo(id: number): TerminalSessionInfo;
+
+export declare function getTmuxSessionInfo(id: number): TmuxSessionInfo | null;
+
+export declare function selectTmuxWindow(id: number, windowId: string): boolean;
 
 export interface SftpEntry {
   name: string;
@@ -75,6 +83,18 @@ export interface TmuxOptions {
   window: string;
   command: string;
   cwd: string;
+}
+
+export interface TmuxSessionInfo {
+  windows: Array<TmuxWindowInfo>;
+  activeWindowId?: string;
+}
+
+export interface TmuxWindowInfo {
+  id: string;
+  index: number;
+  name: string;
+  active: boolean;
 }
 
 export declare function writeTerminalSession(id: number, text: string): void;

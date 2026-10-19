@@ -49,7 +49,7 @@ fn draw(
         .unwrap();
 }
 fn pixels(renderer: &TerminalRenderer, target: &wgpu::Texture) -> Vec<u8> {
-    let gpu = renderer.gpu;
+    let gpu = &renderer.gpu;
     let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 512 * 128 * 4,
@@ -123,7 +123,7 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     let mut first = create_terminal_renderer().unwrap();
     first.gpu.glyphs().unwrap().clear();
     let mut second = create_terminal_renderer().unwrap();
-    assert!(std::ptr::eq(first.gpu, second.gpu));
+    assert!(std::sync::Arc::ptr_eq(&first.gpu, &second.gpu));
     let small = viewport(1.);
     let large = viewport(2.);
     let grid = grid(&first, &small, "\x1b[?25lSAME 中 😀");
@@ -140,11 +140,11 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     assert!(!first.needs_grid(grid.revision, &small).unwrap());
     draw(&mut first, &a, &small, &grid);
     assert_eq!(uploads(&first), both_sizes);
-    let gpu = first.gpu as *const GpuContext;
+    let gpu = std::sync::Arc::as_ptr(&first.gpu);
     drop(first);
     drop(second);
     let mut recreated = create_terminal_renderer().unwrap();
-    assert_eq!(recreated.gpu as *const GpuContext, gpu);
+    assert_eq!(std::sync::Arc::as_ptr(&recreated.gpu), gpu);
     draw(&mut recreated, &a, &small, &grid);
     assert_eq!(uploads(&recreated), both_sizes);
 }
@@ -208,7 +208,8 @@ fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
     );
     assert!(renderer.needs_grid(grid.revision, &viewport).unwrap());
     assert_eq!(uploads(&renderer), initial_uploads);
-    let shared = renderer.gpu.glyphs().unwrap();
+    let gpu = renderer.gpu.clone();
+    let shared = gpu.glyphs().unwrap();
     assert!(
         renderer
             .try_needs_grid(grid.revision, &viewport)

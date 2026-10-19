@@ -56,6 +56,14 @@ impl TerminalHandle {
         Ok(())
     }
 
+    pub(crate) fn has_renderer(&self) -> bool {
+        self.session
+            .rendering
+            .lock()
+            .map(|rendering| rendering.is_some())
+            .unwrap_or(false)
+    }
+
     #[cfg(test)]
     pub(crate) fn viewport(&self) -> Result<Viewport> {
         self.session

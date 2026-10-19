@@ -41,9 +41,10 @@ impl MacTerminalView {
         handle: &Handle,
         viewport: &Viewport,
         deadline: i64,
+        force: bool,
     ) -> Result<bool> {
         if !self.uses_osr() {
-            return self.render_native(deadline);
+            return self.render_native(deadline, force);
         }
         let surface = handle.acquire_surface(viewport.width, viewport.height)?;
         // SAFETY: On macOS the SDK surface handle is IOSurfaceRef. GPU work

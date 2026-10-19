@@ -2,8 +2,9 @@
 
 使用 Lynx UI 实现的桌面终端界面，参考 Opera 的 workspace 与 tab 布局。
 左侧 dock 放置可配置的终端类型，每个 workspace 保留自己的 terminal tabs；
-内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染，
-当前每个 tab 固定启动账户默认 shell（`-l -i`），工作目录为用户主目录。
+内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染。
+每个 workspace 可选择默认 tab 类型（普通 shell、tmux 或 SFTP），顶部加号按钮组
+也可直接创建另外两种 tab；tmux tab 会在 terminal 自己的标题栏中显示 session 窗口。
 
 Web 开发预览使用官方 [Lynx for Web / Rspeedy web 环境](https://lynxjs.org/3.6/rspeedy/start/integrate-with-existing-apps)：
 
@@ -74,6 +75,22 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 <Button disabled={saving} bindtap={onSave}>{t('workspace.save')}</Button>
 ```
 
+参考 [shadcn Button Group](https://ui.shadcn.com/docs/components/button-group)，
+`ButtonGroup` 用于组合一组执行动作的按钮，支持 `horizontal` / `vertical`
+方向和 `ButtonGroupSeparator`、`ButtonGroupText`。顶部 tab 栏的 `+` 区域使用
+`ButtonGroup`：加号创建 workspace 的默认 tab，旁边的图标按钮分别创建其余 tab 类型。
+
+```tsx
+<ButtonGroup>
+  <Button size="icon-sm" bindtap={() => onAdd(defaultKind)}>
+    <Icon name="plus" />
+  </Button>
+  <Button size="icon-sm" bindtap={() => onAdd('tmux')}>
+    <Icon name="panels-top-left" />
+  </Button>
+</ButtonGroup>
+```
+
 图标统一使用 `components/ui/Icon.tsx`，数据来自 `lucide-static` 的 SVG 字符串
 （ISC 许可），通过 Lynx 原生 `<svg content>` 渲染，不依赖 DOM SVG 或图标字体。
 `name` 取自 `components/ui/icons.ts` 的按需注册表；默认 `16px`、主文字色
@@ -130,8 +147,9 @@ workspace 设置表单通过项目 UI 组件封装 Lynx 原生 `<input>`。
 表单使用 React Hook Form，`FormField` 通过 `useController` 绑定 Lynx 受控组件。
 `src/shared/workspaces.ts` 集中定义配置与表单 Schema，表单通过
 `Schema.toStandardSchemaV1` 和 `standardSchemaResolver` 显示字段错误。
-Schema 同时将 args JSON 和 tmux 字符串转换为启动参数类型；Effect registry
-保留草稿、Shell 检测及配置保存，并在保存时用同一 Schema 再次校验。
+Schema 同时将 args JSON 和表单字段转换为启动参数类型，并按 `defaultTab` 校验
+SFTP 只能用于 SSH workspace；Effect registry 保留草稿、Shell 检测及配置保存，
+并在保存时用同一 Schema 再次校验。
 
 `src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装原生
 `<input>`，通过后台线程 `bindinput` 转发表单 `onChange`，用 `setValue`
@@ -185,7 +203,7 @@ Input、Select 和菜单项的状态样式通过 `class-variance-authority`（cv
 
 macOS 窗口使用 `frame: false` / `titleBarStyle: 'hidden'`，系统标题栏由顶部
 tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动窗口，tab 与 `+`
-使用 `-x-app-region: no-drag` 保持交互；只在留白区域声明 `drag`。tab 多时横向
+按钮组使用 `-x-app-region: no-drag` 保持交互；只在留白区域声明 `drag`。tab 多时横向
 滚动，新建或切换的 tab 自动滚入可见区域。参见[官方自定义窗口文档](https://lynxjs.org/next/lynxtron/learn/Custom-Window-Styles)。
 
 ```text
@@ -212,24 +230,29 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
 
 - 启动应用时自动打开配置中的第一个 workspace，并创建第一个 tab。
 - 首次点击未启动的 workspace 创建 tab；再次点击恢复它上次选中的 tab。
-- 顶部 `+` 为当前 workspace 创建独立 tab；关闭最后一个 tab 后圆点消失。
+- 顶部 `+` 按钮组为当前 workspace 创建 tab：加号创建默认 tab，其余图标按钮分别
+  创建 shell、tmux 或 SFTP tab；SFTP 只在 SSH workspace 显示。关闭最后一个 tab 后圆点消失。
 - 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
 - 左下角 `+` 直接新建 workspace；workspace 上的右键菜单提供编辑和删除，
   新建与编辑复用同一个表单。删除会释放该 workspace 的会话，至少保留一个 workspace。
 - 配置分为本地和 SSH，远程显示 Host；两者都可以选择检测到的 Shell 或输入自定义命令。
 - Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
   远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
+- Workspace 设置使用 **Default tab**（JSON 字段 `defaultTab`）选择加号创建的 tab 类型：
+  `shell`、`tmux` 或 `sftp`，默认 `shell`。SFTP 只能用于 SSH workspace。
+  tmux 不再是 workspace 开关，而是每个 tab 独立的启动类型。
 - 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
-- Workspace 设置中的 **Use tmux** 复选框启用 tmux control mode（JSON 字段 `tmux: true`，默认关闭）。
-  本地使用本机 tmux，SSH workspace 使用远端 tmux，目标机器需安装 tmux 3.2 或更新版本。
-  **Session name**（JSON 字段 `tmuxSessionName`）默认使用 `catus`，
-  可以指定已有 session 的名称；启动时优先 attach，session 不存在时再创建。
-  每个 terminal tab 对应独立窗口；
-  使用独立的 `-L catus` socket，Shell、自定义命令和工作目录仍由 workspace 配置决定。
-  关闭 tab 删除对应窗口，退出应用只断开控制连接，tmux 中的进程继续运行。
-  重开相同 tab ID 时会重新连接已有窗口，并读取屏幕、历史和光标状态；应用仍不自动导入所有保留窗口。
-  例如 shell workspace 可以在应用外通过 `tmux -L catus attach -t catus` 连接。
-  修改配置仍只影响新建 tab；SFTP 不受 tmux 选项影响。
+- tmux tab 使用 tmux control mode，本地使用本机 tmux，SSH workspace 使用远端 tmux，
+  目标机器需安装 tmux 3.2 或更新版本。每个 terminal tab 拥有独立 session
+  `catus-<tabId>` 和独立的 `-L catus` socket；Shell、自定义命令和工作目录仍由
+  workspace 配置决定。
+- terminal 自己的标题栏把 tmux session 的窗口显示为 tab：点击切换窗口，`+` 新建窗口，
+  窗口多于一个时可关闭对应窗口。窗口名称和激活状态由 native session 提供，
+  `%window-add`、`%window-renamed`、`%window-close` 等 control-mode 通知保持同步。
+  关闭 terminal tab 会结束该 tmux session；退出应用只断开控制连接，进程继续运行。
+  重开相同 tab ID 时会重新连接已有 session，并读取当前窗口的屏幕、历史和光标状态。
+  例如可以在应用外通过 `tmux -L catus attach -t catus-1` 连接首个 tmux tab。
+  旧配置的 `tmux` / `tmuxSessionName` 字段会在读取时迁移为 `defaultTab: "tmux"` 并被移除。
 
 默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。
 首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过
@@ -248,7 +271,8 @@ TabBar / WorkspaceList / TerminalContent / StatusBar / WorkspaceSettings
       "color": "#a8e6cf",
       "command": "$SHELL",
       "args": ["-l"],
-      "cwd": "~"
+      "cwd": "~",
+      "defaultTab": "shell"
     }
   ]
 }
@@ -272,7 +296,8 @@ owned `GridSnapshot`。`TerminalRenderer` 接收网格和平台提供的 wgpu te
 
 ```text
 state/session.ts / terminalSessions.ts / preload.ts（BTS）
-  新增 tab → JS 分配 number ID → createTerminalSession(id) → 账户默认 shell / portable-pty
+  新增 tab → JS 分配 number ID → createTerminalSession(id, profile, env, kind)
+       → 普通 shell / tmux control mode / SFTP
        ↓
 NativeTerminalView.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
@@ -309,6 +334,10 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 `frame_callbacks.rs` 中的全局 `LazyLock` 保存弱引用的窗口注册对象，在 UI
 遍历仍有效的回调；关闭窗口或 view 不会被全局对象保活。
 不保存帧队列；延迟、过期和资源忙的帧丢弃，PTY 只更新网格。
+跨线程调用或宿主分发失败会被捕获，RAF 链保持并继续重试。自动帧只在窗口可见且
+未被遮挡时呈现；启动或显示器唤醒阶段窗口尚未合成时网格保持 dirty，窗口可见后的
+下一帧重绘。GPU 和 session renderer 初始化失败不会缓存到进程生命周期，
+而是按帧重试（1 秒退避）。
 后续替换帧信号来源时可直接调用 `dispatch_frame_callbacks(deadline)`，
 无需修改 terminal session、IOSurface 导入或 atlas 渲染。
 项目自建的 CADisplayLink、timer 和单次 native RAF 探针已移除。
@@ -319,6 +348,13 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 TerminalView 和 NativeTerminalView 在内容区仅挂载一次，切换 tab 更新 terminal-id，保留 session 和 renderer。
 tab ID 就是 session ID；全局 `sessionRegistry` 中的 `sessionAtom` 写入时统一同步 Rust session：
 创建 tab 时创建 session，关闭 tab 或删除 workspace 时调用 `closeTerminalSession(id)`。
+tmux tab 的标题栏由 `components/Terminal/TmuxTabBar.tsx` 组合：它轮询
+`getTmuxSessionInfo(id)`，把 Rust `TmuxClient` 缓存的窗口列表渲染成 tab，并通过
+`selectTmuxWindow` / `createTmuxWindow` / `closeTmuxWindow` 操作控制连接。
+`TmuxClient` 在 attach 后列出 session 窗口、绑定当前窗口的 active pane；切换窗口时
+清空旧 pane 的待处理输入并重新同步屏幕。窗口增删、重命名和 session 切换通知会刷新
+缓存，因此 tab 名称和激活状态不需要额外的 native 回调通道。原生测试覆盖窗口列表解析、
+切换后重新绑定 pane，以及真实 tmux 的创建、选择和关闭窗口流程。
 React 组件只读取 atom 派生的 ID 和错误，卸载或重新挂载不会创建或关闭 session；registry 销毁时释放剩余 session。没有选中 tab 时传 ID 0 解绑并隐藏 view，Rust 帧监听停止；
 loading 和配置错误不会卸载 native element。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
@@ -422,8 +458,9 @@ tests/support/screenshots.ts
 Rust `native/src/tests/macos/terminal_rendering.rs` 也使用同一 fake PTY，经过真实
 `TerminalHandle::render_surface` 导入真实 IOSurface 并回读，验证 PTY 更新、空闲跳帧、
 无效 framebuffer、尺寸/像素布局不匹配、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
-调用 `createTerminalSession(id)` 启动账户默认 shell；第二个可选参数 `{ program, args }` 供测试启动
-fake PTY，桌面 preload 仅在设置 `CATUS_E2E_PTY` 时注入它。
+调用 `createTerminalSession(id, command?)` 启动账户默认 shell；`command` 的 program/args/cwd
+和可选 `tmux` 描述启动参数。桌面 preload 根据 tab `kind` 选择普通 shell 或 tmux launch，
+E2E 通过 `CATUS_E2E_PTY` 注入 fake PTY。
 JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返回 void，重复 ID 和保留值 0 被拒绝。
 关闭 tab 的 E2E 测试直接查询 Rust 注册表，确认对应 ID 已删除且其他 session 仍可查询。
 
@@ -570,6 +607,8 @@ src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/�
 src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
+src/app/components/Terminal/TmuxTabBar.tsx  tmux 窗口快照轮询与标题栏 tab 操作
+src/shared/tmux.ts                     tmux 窗口/session 的 host 类型
 src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                创建 LynxWindow
 rsbuild.config.ts                      pluginLynxtron 启用 AutoLink

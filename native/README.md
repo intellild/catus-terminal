@@ -124,6 +124,11 @@ SDK C ABI / 泛型桥接的独立宿主测试位于 `src/tests/lynx_native_view*
 `createTerminalSession(id)` 接收 JS 分配的正整数 `u32` ID，创建默认 shell，成功返回 void。
 Rust 不分配 ID，互斥保护注册表创建，拒绝重复 ID 和保留值 0；创建失败不占用 ID。
 第二个可选参数 `{ workspaceId?, program, args, cwd?, tmux? }` 指定所属 workspace 和启动参数。
+`tmux` 存在时 tmux tab 使用 session 模式：`resolveTmuxLaunch` 为每个 terminal tab 生成
+`catus-<tabId>` session，Rust 列出并管理该 session 的窗口。JS 通过
+`getTmuxSessionInfo(id)`、`selectTmuxWindow(id, windowId)`、`createTmuxWindow(id)` 和
+`closeTmuxWindow(id, windowId)` 驱动 terminal 标题栏中的 tmux tab；返回的
+`TmuxSessionInfo.windows` 包含窗口 ID、index、名称和 active 状态。
 省略 `workspaceId` 时归入默认 workspace，兼容直接调用 N-API 的测试和主机。
 E2E preload 用 `CATUS_E2E_PTY`
 和 `CATUS_E2E_NODE` 指向 JS fixture 与 Node，不读取用户的 shell 初始化脚本。
@@ -253,29 +258,34 @@ OSR 使用 Lynx 合成；网格数据始终留在 native。
 
 ## tmux control mode
 
-`TerminalSessionCommand.tmux` 提供 session/window 名、Shell 命令和工作目录。
+`TerminalSessionCommand.tmux` 提供 session、初始 window 名、Shell 命令和工作目录。
 `terminal_core/tmux.rs` 在 PTY 读线程解析 `-CC` 的 DCS 握手、命令结果和异步输出，
-仅将匹配 pane 的解码字节交给 Alacritty；终端查询由 tmux 自己响应。
+仅将当前 pane 的解码字节交给 Alacritty；终端查询由 tmux 自己响应。
 输入通过 `send-keys -H` 传递原始字节，覆盖键盘、鼠标报告和粘贴。
-连接时读取已有窗口或创建独立窗口，关闭自动重命名，按该 tab 的 native layout resize。
+连接时列出 session 的窗口并绑定 active window；没有窗口时保留启动命令创建的窗口。
+关闭自动重命名，按该 terminal 的 native layout resize 当前窗口。
 使用 `capture-pane` 恢复屏幕和历史、备用屏幕、光标及输入模式，再接续增量输出。
 tmux 3.7+ 的 `pane_private_modes` 还能恢复 bracketed-paste 等 private modes。
 resize 使用 `resize-window`，只修改对应窗口，并重新捕获服务端 reflow 后的内容。
-`closeTerminalSession` 删除窗口；`detachTerminalSession` 和 Drop 仅断开控制连接。
+窗口增删、重命名及 `%session-window-changed` 通知会刷新窗口列表；外部 tmux 客户端或
+prefix 键切换窗口时，native client 重新绑定 active pane 并同步屏幕。
+`selectTmuxWindow` / `createTmuxWindow` / `closeTmuxWindow` 操作窗口；最后一个窗口不允许
+从 UI 关闭。`closeTerminalSession` 结束该 terminal 的 tmux session，
+`detachTerminalSession` 和 Drop 仅断开控制连接。
 协议单测和独立 socket 上的真实 tmux 回归位于 `src/tests/tmux.rs`，
-真实 Lynx 渲染及输入验收位于 `../tests/e2e/tmux.test.ts`。
+真实 Lynx 渲染、窗口 tab 和输入验收位于 `../tests/e2e/tmux.test.ts`。
 
 ```text
-Workspace tmux checkbox → preload resolveTmuxLaunch()
+workspace default tab / tmux tab button → preload resolveTmuxLaunch()
        ↓
 terminal_core/pty.rs
-  本地 tmux / SSH -tt → tmux -CC
+  本地 tmux / SSH -tt → tmux -CC（每 terminal 独立 session）
        ↓
 terminal_core/pty/tmux.rs
-  TmuxPtyDelegate 转发输入 / 输出 / resize / close
+  TmuxPtyDelegate 转发输入 / 输出 / resize / close，并提供窗口快照与窗口操作
        ↓
 terminal_core/tmux.rs
-  命令结果 / 屏幕捕获 / pane 输出 / 输入和 resize
+  窗口列表 / 命令结果 / 屏幕捕获 / pane 输出 / 输入和 resize
        ↓
 terminal_core/grid.rs
   Alacritty 网格 → 现有 native renderer
@@ -290,6 +300,7 @@ NSView 的 CAMetalLayer 提供 drawable，Rust 用共享 wgpu device 导入纹�
 NSView frame 根据父 view 的 isFlipped 转换；自身 isFlipped 只决定内部坐标。
 attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期。
 `use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
+创建时窗口尚未就绪的自动选择会在后续 attach/layout 重新判断，窗口出现后切换到嵌入模式。
 OSR 才启用 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
 `IOSurfaceRef`。Rust 用缓存的 layout 获取 buffer，将平台句柄直接借用为
 `&IOSurfaceRef` 调用 `render_osr`，不经 C++ 或整数地址桥接。会话层检查锁忙和 idle revision，

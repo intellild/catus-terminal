@@ -64,6 +64,7 @@ test('startup, shell detection and workspace actions run without React or UI sub
     1,
     payload.config.workspaces[0],
     payload.environment,
+    'shell',
   );
   dispatch({ type: 'openWorkspace', id: 'local' });
   dispatch({ type: 'addTab' });

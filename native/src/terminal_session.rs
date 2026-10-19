@@ -1,5 +1,8 @@
 //! Session ownership and numeric handles; the computation module stays GPU-independent.
-use crate::{terminal_core::session::TerminalSession, workspace::Workspaces};
+use crate::{
+    terminal_core::session::TerminalSession, terminal_core::tmux::TmuxSessionInfo,
+    workspace::Workspaces,
+};
 use anyhow::Result;
 use napi_derive::napi;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -80,6 +83,33 @@ pub fn get_terminal_session_info(id: u32) -> napi::Result<TerminalSessionInfo> {
         exited: session.core.exited(),
         text: session.core.snapshot().text(),
     })
+}
+
+#[napi]
+pub fn get_tmux_session_info(id: u32) -> napi::Result<Option<TmuxSessionInfo>> {
+    let session = session(id).map_err(crate::napi_error)?;
+    Ok(session.core.tmux_info())
+}
+
+#[napi]
+pub fn select_tmux_window(id: u32, window_id: String) -> napi::Result<bool> {
+    session(id)
+        .and_then(|session| session.core.select_tmux_window(&window_id))
+        .map_err(crate::napi_error)
+}
+
+#[napi]
+pub fn create_tmux_window(id: u32) -> napi::Result<bool> {
+    session(id)
+        .and_then(|session| session.core.create_tmux_window())
+        .map_err(crate::napi_error)
+}
+
+#[napi]
+pub fn close_tmux_window(id: u32, window_id: String) -> napi::Result<bool> {
+    session(id)
+        .and_then(|session| session.core.close_tmux_window(&window_id))
+        .map_err(crate::napi_error)
 }
 
 #[cfg(feature = "native-view")]

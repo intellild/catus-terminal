@@ -11,7 +11,8 @@
         "-l"
       ],
       "cwd": "~",
-      "type": "local"
+      "type": "local",
+      "defaultTab": "shell"
     },
     {
       "id": "local",
@@ -21,7 +22,8 @@
       "command": "/bin/sh",
       "args": [],
       "cwd": "~",
-      "type": "local"
+      "type": "local",
+      "defaultTab": "shell"
     }
   ]
 }

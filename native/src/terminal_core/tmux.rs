@@ -13,9 +13,27 @@ pub struct TmuxOptions {
     pub cwd: String,
 }
 
+#[napi(object)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TmuxWindowInfo {
+    pub id: String,
+    pub index: u32,
+    pub name: String,
+    pub active: bool,
+}
+
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct TmuxSessionInfo {
+    pub windows: Vec<TmuxWindowInfo>,
+    pub active_window_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Reply {
     Attach,
+    Windows,
+    WindowsOnly,
     Panes,
     Create,
     Resize,
@@ -39,6 +57,8 @@ pub struct TmuxClient {
     replies: VecDeque<Reply>,
     pane: Option<String>,
     window: Option<String>,
+    windows: Vec<TmuxWindowInfo>,
+    pending_window: Option<String>,
     started: bool,
     protocol: bool,
     closed: bool,
@@ -66,6 +86,8 @@ impl TmuxClient {
             replies: VecDeque::from([Reply::Attach]),
             pane: None,
             window: None,
+            windows: vec![],
+            pending_window: None,
             started: false,
             protocol: false,
             closed: false,
@@ -85,6 +107,86 @@ impl TmuxClient {
             .context("Send tmux command")?;
         self.replies.push_back(reply);
         Ok(())
+    }
+
+    fn list_windows_command(&self) -> String {
+        format!(
+            "list-windows -t {} -F '#{{window_id}}|#{{window_index}}|#{{window_active}}|#{{window_name}}'",
+            quote(&self.options.session)
+        )
+    }
+
+    pub fn session_info(&self) -> Option<TmuxSessionInfo> {
+        if !self.started || self.windows.is_empty() {
+            return None;
+        }
+        Some(TmuxSessionInfo {
+            windows: self.windows.clone(),
+            active_window_id: self
+                .windows
+                .iter()
+                .find(|window| window.active)
+                .map(|window| window.id.clone()),
+        })
+    }
+
+    pub fn select_window(&mut self, window_id: &str, tx: &Sender<Vec<u8>>) -> Result<bool> {
+        ensure!(!self.closed, "tmux connection is closed");
+        if !self.windows.iter().any(|window| window.id == window_id) {
+            return Ok(false);
+        }
+        // Queue input while the pane is rebound instead of sending it to the
+        // window that is about to disappear.
+        self.pane = None;
+        self.live = false;
+        self.pending_window = Some(window_id.to_owned());
+        self.command(
+            format!("select-window -t {}", quote(window_id)),
+            Reply::Ignore,
+            tx,
+        )?;
+        self.command(self.list_windows_command(), Reply::Windows, tx)?;
+        Ok(true)
+    }
+
+    pub fn create_window(&mut self, tx: &Sender<Vec<u8>>) -> Result<bool> {
+        ensure!(!self.closed, "tmux connection is closed");
+        let command = if self.options.command.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", quote(&self.options.command))
+        };
+        self.command(
+            format!(
+                "new-window -t {} -c {} -P -F '#{{pane_id}} #{{window_id}}'{}",
+                quote(&self.options.session),
+                quote(&self.options.cwd),
+                command
+            ),
+            Reply::Create,
+            tx,
+        )?;
+        Ok(true)
+    }
+
+    pub fn close_window(&mut self, window_id: &str, tx: &Sender<Vec<u8>>) -> Result<bool> {
+        ensure!(!self.closed, "tmux connection is closed");
+        // Keep one window alive so the session and this terminal stay usable.
+        if self.windows.len() <= 1 || !self.windows.iter().any(|window| window.id == window_id) {
+            return Ok(false);
+        }
+        if self.window.as_deref() == Some(window_id) {
+            self.pane = None;
+            self.window = None;
+            self.live = false;
+        }
+        self.command(
+            format!("kill-window -t {}", quote(window_id)),
+            Reply::Ignore,
+            tx,
+        )?;
+        self.command(self.list_windows_command(), Reply::Windows, tx)?;
+        Ok(true)
     }
 
     pub fn input(&mut self, bytes: Vec<u8>, tx: &Sender<Vec<u8>>) -> Result<()> {
@@ -138,12 +240,10 @@ impl TmuxClient {
         }
         self.closed = true;
         if !preserve {
-            // Exact session/window names also work when closed during startup.
-            let target = self
-                .window
-                .clone()
-                .unwrap_or_else(|| format!("={}:={}", self.options.session, self.options.window));
-            let _ = tx.send(format!("kill-window -t {}\n", quote(&target)).into_bytes());
+            // Each terminal owns its tmux session; closing the tab also closes
+            // all of the windows displayed in its title bar.
+            let target = format!("={}", self.options.session);
+            let _ = tx.send(format!("kill-session -t {}\n", quote(&target)).into_bytes());
         }
         let _ = tx.send(b"detach-client\n".to_vec());
     }
@@ -244,6 +344,46 @@ impl TmuxClient {
                     self.output.extend(bytes);
                 }
             }
+        } else if let Some(output) = line.strip_prefix(b"%window-close ") {
+            let window_id = String::from_utf8_lossy(output).trim().to_owned();
+            let current = self.window.as_deref() == Some(window_id.as_str());
+            if current {
+                self.pane = None;
+                self.window = None;
+                self.live = false;
+            }
+            self.command(
+                self.list_windows_command(),
+                if current {
+                    Reply::Windows
+                } else {
+                    Reply::WindowsOnly
+                },
+                tx,
+            )?;
+        } else if let Some(output) = line.strip_prefix(b"%session-window-changed ") {
+            let window_id = String::from_utf8_lossy(output)
+                .split_whitespace()
+                .last()
+                .unwrap_or_default()
+                .to_owned();
+            // Follow tmux key bindings and external clients that select another
+            // window, but leave the command queue alone while selecting or
+            // synchronizing from this terminal.
+            if self.pending_window.is_none()
+                && !self.syncing
+                && valid_id(&window_id, '@')
+                && self.window.as_deref() != Some(window_id.as_str())
+            {
+                self.pane = None;
+                self.window = Some(window_id);
+                self.live = false;
+                self.command(self.list_windows_command(), Reply::Windows, tx)?;
+            } else {
+                self.command(self.list_windows_command(), Reply::WindowsOnly, tx)?;
+            }
+        } else if line.starts_with(b"%window-add ") || line.starts_with(b"%window-renamed ") {
+            self.command(self.list_windows_command(), Reply::WindowsOnly, tx)?;
         } else if line.starts_with(b"%exit") {
             if !self.closed && !self.live {
                 bail!("tmux connection exited before the pane was ready");
@@ -263,39 +403,70 @@ impl TmuxClient {
         tx: &Sender<Vec<u8>>,
     ) -> Result<()> {
         match block.reply {
-            Reply::Attach => self.command(
-                format!(
-                    "list-panes -s -t {} -F '#{{window_name}} #{{pane_id}} #{{window_id}}'",
-                    quote(&self.options.session)
-                ),
-                Reply::Panes,
-                tx,
-            )?,
-            Reply::Panes => {
-                let prefix = format!("{} ", self.options.window);
-                if let Some(line) = block
-                    .lines
+            Reply::Attach => self.command(self.list_windows_command(), Reply::Windows, tx)?,
+            Reply::Windows => {
+                self.windows = parse_windows(&block.lines)?;
+                let target = self
+                    .pending_window
+                    .take()
+                    .filter(|id| self.windows.iter().any(|window| &window.id == id))
+                    .or_else(|| {
+                        self.windows
+                            .iter()
+                            .find(|window| window.active)
+                            .map(|window| window.id.clone())
+                    })
+                    .or_else(|| {
+                        self.windows
+                            .iter()
+                            .find(|window| window.name == self.options.window)
+                            .map(|window| window.id.clone())
+                    })
+                    .or_else(|| self.windows.first().map(|window| window.id.clone()))
+                    .context("tmux session has no windows")?;
+                if !self
+                    .windows
                     .iter()
-                    .find_map(|line| line.strip_prefix(prefix.as_bytes()))
+                    .any(|window| window.id == target && window.active)
                 {
-                    self.bind(line, tx)?;
-                } else {
-                    let command = if self.options.command.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" {}", quote(&self.options.command))
-                    };
-                    self.command(format!("new-window -d -t {} -n {} -c {} -P -F '#{{pane_id}} #{{window_id}}'{command}",
-                        quote(&self.options.session), quote(&self.options.window), quote(&self.options.cwd)), Reply::Create, tx)?;
+                    self.command(
+                        format!("select-window -t {}", quote(&target)),
+                        Reply::Ignore,
+                        tx,
+                    )?;
                 }
+                self.window = Some(target.clone());
+                self.pane = None;
+                self.live = false;
+                self.command(
+                    format!("display-message -p -t {} '#{{pane_id}}'", quote(&target)),
+                    Reply::Panes,
+                    tx,
+                )?;
             }
-            Reply::Create => self.bind(
-                block
+            Reply::WindowsOnly => self.windows = parse_windows(&block.lines)?,
+            Reply::Panes => {
+                let pane = block
                     .lines
                     .first()
-                    .context("tmux did not return a pane ID")?,
-                tx,
-            )?,
+                    .context("tmux did not return a pane ID")?;
+                self.bind(pane, tx)?;
+            }
+            Reply::Create => {
+                let ids = std::str::from_utf8(
+                    block
+                        .lines
+                        .first()
+                        .context("tmux did not return a new window")?,
+                )
+                .context("Decode new tmux window")?;
+                let mut fields = ids.split_whitespace();
+                let _pane = fields.next().context("Missing new tmux pane ID")?;
+                let window = fields.next().context("Missing new tmux window ID")?;
+                ensure!(valid_id(window, '@'), "Invalid new tmux window ID");
+                self.pending_window = Some(window.to_owned());
+                self.command(self.list_windows_command(), Reply::Windows, tx)?;
+            }
             Reply::Resize => {
                 if self.syncing {
                     self.sync_again = true;
@@ -341,16 +512,21 @@ impl TmuxClient {
     }
 
     fn bind(&mut self, line: &[u8], tx: &Sender<Vec<u8>>) -> Result<()> {
-        let text = std::str::from_utf8(line).context("Decode tmux pane IDs")?;
-        let mut ids = text.split_whitespace();
-        let pane = ids.next().context("Missing tmux pane ID")?;
-        let window = ids.next().context("Missing tmux window ID")?;
-        ensure!(
-            valid_id(pane, '%') && valid_id(window, '@'),
-            "Invalid tmux pane/window IDs"
-        );
+        let text = std::str::from_utf8(line).context("Decode tmux pane ID")?;
+        let pane = text.trim();
+        ensure!(valid_id(pane, '%'), "Invalid tmux pane ID");
+        let window = self
+            .window
+            .as_ref()
+            .context("Missing tmux window ID")?
+            .clone();
         self.pane = Some(pane.into());
-        self.window = Some(window.into());
+        // Window content replaces the previous grid; never replay output that
+        // belonged to the old pane into the new one.
+        self.live = false;
+        self.syncing = false;
+        self.sync_again = false;
+        self.output.clear();
         self.command(
             format!("set-window-option -t {window} automatic-rename off"),
             Reply::Ignore,
@@ -466,6 +642,31 @@ impl TmuxClient {
         grid.advance(format!("\x1b[{};{}H", row + 1, number(2)? + 1).as_bytes());
         Ok(())
     }
+}
+
+fn parse_windows(lines: &[Vec<u8>]) -> Result<Vec<TmuxWindowInfo>> {
+    lines
+        .iter()
+        .map(|line| {
+            let text = std::str::from_utf8(line).context("Decode tmux window list")?;
+            let mut fields = text.splitn(4, '|');
+            let id = fields.next().context("Missing tmux window ID")?;
+            let index = fields
+                .next()
+                .context("Missing tmux window index")?
+                .parse()
+                .context("Invalid tmux window index")?;
+            let active = fields.next().context("Missing tmux window state")? == "1";
+            let name = fields.next().context("Missing tmux window name")?;
+            ensure!(valid_id(id, '@'), "Invalid tmux window ID");
+            Ok(TmuxWindowInfo {
+                id: id.into(),
+                index,
+                name: name.into(),
+                active,
+            })
+        })
+        .collect()
 }
 
 fn paint(grid: &mut TerminalGrid, lines: &[Vec<u8>]) -> Result<()> {

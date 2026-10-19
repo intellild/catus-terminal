@@ -11,8 +11,6 @@ test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     const socket = `catus-launch-test-${randomUUID()}`;
     const profile = {
       ...parseWorkspaceConfig(defaults).workspaces[0]!,
-      tmux: true,
-      tmuxSessionName: "dev team's session",
       shell: 'custom',
       command: '/bin/sh -i',
       args: [],
@@ -40,10 +38,10 @@ test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     };
     try {
       start();
-      const target = `=${profile.tmuxSessionName}`;
+      const target = '=catus-1';
       const pane = run('list-panes', '-t', target, '-F', '#{pane_id}');
       // A similarly named session must not be attached by prefix matching.
-      run('new-session', '-d', '-s', `${profile.tmuxSessionName}-other`, '/bin/sh -i');
+      run('new-session', '-d', '-s', 'catus-1-other', '/bin/sh -i');
       start();
       expect(run('list-panes', '-t', target, '-F', '#{pane_id}')).toBe(pane);
       expect(run('list-windows', '-t', target, '-F', '#{window_name}')).toBe('tab-1');

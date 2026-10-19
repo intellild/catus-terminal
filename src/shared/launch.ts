@@ -1,3 +1,4 @@
+import type { TabKind } from './tabs';
 import type { WorkspaceSettings, WorkspaceEnvironment } from './workspaces';
 
 export function quoteShell(value: string): string {
@@ -46,8 +47,9 @@ export function resolveLaunch(workspace: WorkspaceSettings, environment: Workspa
 export function launchPreview(
   workspace: WorkspaceSettings,
   environment: WorkspaceEnvironment,
+  kind: TabKind = workspace.defaultTab,
 ): string {
-  if (workspace.tmux) {
+  if (kind === 'tmux') {
     const launch = resolveTmuxLaunch(workspace, environment, 1);
     return [launch.program, ...launch.args].map(quoteShell).join(' ');
   }
@@ -55,8 +57,8 @@ export function launchPreview(
   return [launch.command, ...launch.args].map(quoteShell).join(' ');
 }
 
-// Stable names allow the same tabs to reconnect after an app restart. A dedicated
-// socket keeps Catus sessions separate from the user's ordinary tmux server.
+// Every terminal tab owns a tmux session so its in-terminal tab bar can list
+// and switch that session's windows without affecting other terminals.
 export function resolveTmuxLaunch(
   workspace: WorkspaceSettings,
   environment: WorkspaceEnvironment,
@@ -64,7 +66,7 @@ export function resolveTmuxLaunch(
   socket = 'catus',
 ) {
   const launch = resolveLaunch(workspace, environment);
-  const session = workspace.tmuxSessionName?.trim() || 'catus';
+  const session = `catus-${tabId}`;
   const window = `tab-${tabId}`;
   const remote = workspace.type === 'ssh';
   const shell =

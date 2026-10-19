@@ -324,25 +324,17 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull(),
   );
-  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).not.toContain(
-    'ui-checked',
+  expect(root.querySelector('[data-automation-id=profile-default-tab-shell]')?.className).toContain(
+    'bg-[#35483f]',
   );
-  fireEvent.tap(root.querySelector('[data-automation-id=profile-tmux]')!);
-  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).toContain(
-    'ui-checked',
+  expect(root.querySelector('[data-automation-id=profile-default-tab-sftp]')?.className).toContain(
+    'opacity-50',
   );
-  expect(
-    (root.querySelector('[data-automation-id=profile-tmuxSessionName]') as HTMLInputElement).value,
-  ).toBe('catus');
-  await changeInput(root, '[data-automation-id=profile-tmuxSessionName]', 'dev:invalid');
-  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
-  await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=workspace-editor-form]')?.textContent).toContain(
-      'Enter a session name without dots, colons or control characters',
-    ),
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-default-tab-tmux]')!);
+  expect(root.querySelector('[data-automation-id=profile-default-tab-tmux]')?.className).toContain(
+    'bg-[#35483f]',
   );
-  expect(host.saveWorkspaces).not.toHaveBeenCalled();
-  await changeInput(root, '[data-automation-id=profile-tmuxSessionName]', 'dev-session');
+  expect(root.querySelector('[data-automation-id=profile-tmux]')).toBeNull();
   fireEvent.tap(root.querySelector('[data-automation-id=profile-shell]')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=profile-shell-option-custom]')).not.toBeNull(),
@@ -364,6 +356,9 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   expect(root.querySelector('[data-automation-id=ssh-command-preview]')?.textContent).toContain(
     'tmux',
   );
+  expect(
+    root.querySelector('[data-automation-id=profile-default-tab-sftp]')?.className,
+  ).not.toContain('opacity-50');
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-local]')!);
   expect(
     (root.querySelector('[data-automation-id=profile-command]') as HTMLInputElement).value,
@@ -379,14 +374,15 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
     command: 'printf hello',
     shell: 'custom',
     args: [],
-    tmux: true,
-    tmuxSessionName: 'dev-session',
+    defaultTab: 'tmux',
   });
+  expect(profile).not.toHaveProperty('tmux');
+  expect(profile).not.toHaveProperty('tmuxSessionName');
   // Already running terminals keep their old profile.
   expect(root.querySelector('[data-automation-id=session-directory]')?.textContent).toBe('$SHELL');
   await openEditor(root);
-  expect(root.querySelector('[data-automation-id=profile-tmux]')?.className).toContain(
-    'ui-checked',
+  expect(root.querySelector('[data-automation-id=profile-default-tab-tmux]')?.className).toContain(
+    'bg-[#35483f]',
   );
   fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=new-tab]')!);
@@ -397,8 +393,8 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   );
   const calls = rstest.mocked((NativeModules.nodejs.exposed as TerminalHost).createTerminalSession)
     .mock.calls;
-  expect(calls[0]![1]?.tmux).toBeUndefined();
-  expect(calls[1]![1]?.tmux).toBe(true);
+  expect(calls[0]![3]).toBe('shell');
+  expect(calls[1]![3]).toBe('tmux');
 });
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {
@@ -457,7 +453,7 @@ test('Hook Form shows Schema field errors, revalidates corrections and resets on
     name: 'Updated shell',
     cwd: '~/work',
     color: '#aabbcc',
-    tmux: false,
+    defaultTab: 'shell',
     args: ['-l'],
   });
   await openEditor(root);
