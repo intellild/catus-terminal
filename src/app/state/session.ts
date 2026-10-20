@@ -1,8 +1,9 @@
 import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
-import { defaultTmuxPrefix } from '../../shared/launch';
+import { defaultTmuxPrefix, mostRecentTmuxSession } from '../../shared/launch';
 import { terminalSessionsAtom } from './terminalSessions';
+import { tmuxDestination, tmuxSessionsAtom } from './tmuxSessions';
 import type { TabKind } from '../../shared/tabs';
 import type {
   WorkspaceSettings,
@@ -105,6 +106,14 @@ export function newTab(
     }
     kind = 'shell';
   }
+  // The registry already knows the machine's sessions; attach the most recently
+  // active one explicitly. Without a list the launcher keeps tmux's default target.
+  const target =
+    kind === 'tmux' && tmuxSession === undefined
+      ? mostRecentTmuxSession(
+          store.get(tmuxSessionsAtom(tmuxDestination(workspace.profile))).sessions,
+        )?.name
+      : tmuxSession;
   const state = store.get(sessionAtom);
   const id = state.nextTab;
   if (id > 0xffffffff) {
@@ -117,7 +126,7 @@ export function newTab(
       number: id,
       profile: workspace.profile,
       kind,
-      tmuxSession: kind === 'tmux' ? tmuxSession : undefined,
+      tmuxSession: kind === 'tmux' ? target : undefined,
     });
     store.set(workspaceAtom(workspaceId), {
       ...workspace,
