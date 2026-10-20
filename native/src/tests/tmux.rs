@@ -72,14 +72,18 @@ fn window_list_binds_the_active_window_and_switching_rebinds_the_pane() {
     let mut grid = TerminalGrid::new(GridSize::new(20, 4), std::sync::mpsc::channel().0);
     let mut client = TmuxClient::new(options("test", "tab-1"), grid.size());
     client.protocol = true;
-    let initial =
-        b"%begin 1 2 1\n@1|0|1|tab-1\n%end 1 2 1\n%begin 2 3 1\n@1|0|1|tab-1\n@2|1|0|logs\n%end 2 3 1\n";
+    // Attach resolves the session tmux picked before anything targets a session.
+    let initial = b"%begin 1 2 0\n%end 1 2 0\n%begin 2 3 1\ntest\n%end 2 3 1\n%begin 3 4 1\n@1|0|1|tab-1\n@2|1|0|logs\n%end 3 4 1\n";
     client.advance(initial, &mut grid, &tx).unwrap();
+    assert_eq!(
+        protocol_command(&rx),
+        "display-message -p '#{session_name}'\n"
+    );
     assert!(protocol_command(&rx).contains("list-windows -t \"test\""));
     let bind = protocol_command(&rx);
     assert!(bind.contains("display-message -p -t \"@1\" '#{pane_id}'"));
     client
-        .advance(b"%begin 3 4 1\n%0\n%end 3 4 1\n", &mut grid, &tx)
+        .advance(b"%begin 4 5 1\n%0\n%end 4 5 1\n", &mut grid, &tx)
         .unwrap();
     let options = protocol_command(&rx) + &protocol_command(&rx) + &protocol_command(&rx);
     assert!(options.contains("set-window-option -t @1 automatic-rename off"));

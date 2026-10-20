@@ -32,6 +32,7 @@ pub struct TmuxSessionInfo {
 #[derive(Debug, Clone, Copy)]
 enum Reply {
     Attach,
+    Session,
     Windows,
     WindowsOnly,
     Panes,
@@ -234,17 +235,14 @@ impl TmuxClient {
         Ok(())
     }
 
-    pub fn close(&mut self, preserve: bool, tx: &Sender<Vec<u8>>) {
+    pub fn close(&mut self, tx: &Sender<Vec<u8>>) {
         if self.closed {
             return;
         }
         self.closed = true;
-        if !preserve {
-            // Each terminal owns its tmux session; closing the tab also closes
-            // all of the windows displayed in its title bar.
-            let target = format!("={}", self.options.session);
-            let _ = tx.send(format!("kill-session -t {}\n", quote(&target)).into_bytes());
-        }
+        // Sessions outlive terminals: tabs share sessions after attaching, so
+        // closing a tab detaches instead of killing everyone's work. The session
+        // menu closes sessions explicitly.
         let _ = tx.send(b"detach-client\n".to_vec());
     }
 
@@ -403,7 +401,30 @@ impl TmuxClient {
         tx: &Sender<Vec<u8>>,
     ) -> Result<()> {
         match block.reply {
-            Reply::Attach => self.command(self.list_windows_command(), Reply::Windows, tx)?,
+            // Attaching without a target becomes the most recently used session;
+            // subsequent commands must use the name tmux resolved, not the guess.
+            Reply::Attach => self.command(
+                "display-message -p '#{session_name}'".into(),
+                Reply::Session,
+                tx,
+            )?,
+            Reply::Session => {
+                let name = std::str::from_utf8(
+                    block
+                        .lines
+                        .first()
+                        .context("tmux did not return a session name")?,
+                )
+                .context("Decode tmux session name")?
+                .trim()
+                .to_owned();
+                ensure!(
+                    !name.is_empty() && !name.contains(':'),
+                    "Invalid tmux session name"
+                );
+                self.options.session = name;
+                self.command(self.list_windows_command(), Reply::Windows, tx)?;
+            }
             Reply::Windows => {
                 self.windows = parse_windows(&block.lines)?;
                 let target = self

@@ -6,6 +6,8 @@ sftp = "SFTP"
 retry = "Retry"
 saving = "Saving…"
 close = "Close"
+cancel = "Cancel"
+delete = "Delete"
 
 [tabs]
 opening = "Opening workspace…"
@@ -70,12 +72,21 @@ extraDescription = "Runs before the selected shell. Leave blank to start the she
 commandPreview = "Command preview"
 enterHost = "Enter an SSH host"
 cwd = "Working directory"
+tmuxPrefix = "tmux session prefix"
+tmuxPrefixDescription = "Prefix for new tmux sessions. Existing sessions are attached, never renamed."
 defaultTab = "Default tab"
 defaultTabDescription = "The plus button opens this tab kind. Other kinds stay available next to it."
 defaultTabDescriptionLocal = "The plus button opens this tab kind. SFTP tabs need an SSH workspace."
 icon = "Icon text"
 color = "Color · hex"
 changes = "Changes apply to new tabs. SFTP uses the host's SSH configuration."
+
+[tmux]
+noSessions = "No tmux sessions"
+newSession = "New tmux session"
+closeSession = "Close tmux session {{name}}"
+windows_one = "{{count}} window"
+windows_other = "{{count}} windows"
 
 [validation]
 required = "Required"
@@ -86,6 +97,21 @@ color = "Use a six-digit hex color"
 host = "Enter a hostname, user@host or SSH config alias"
 fields = "Check the highlighted fields."
 arguments = 'Arguments must be a JSON array of strings, for example ["-l"].'
+tmuxPrefix = "Use letters, numbers, _ or - for the tmux session prefix"
+
+[settings]
+title = "Settings"
+addHost = "Add host"
+noHosts = "Create a host to get started."
+deleteHost = "Delete host {{name}}"
+deleteHostTitle = "Delete {{name}}?"
+deleteHostDescription = "Open tabs for this host close and its profile is removed."
+language = "Language"
+languageDescription = "Interface language. More languages will follow."
+
+[settings.section]
+hosts = "Hosts"
+display = "Display"
 
 [files]
 loading = "Loading directory…"

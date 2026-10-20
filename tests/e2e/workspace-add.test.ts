@@ -11,6 +11,7 @@ test('dock plus opens the workspace editor and its Select after repeated mounts'
     await app.start({ windowless: false });
     logOffset = (await readFile(logPath, 'utf8')).length;
     for (let attempt = 0; attempt < 2; attempt++) {
+      await app.automation('open-settings').tap();
       await app.automation('add-workspace').tap();
       await app.automation('profile-shell').visibleTarget();
       expect(await app.automation('profile-name').invoke<string>('getValue')).toBe('New workspace');
@@ -40,6 +41,8 @@ test('dock plus opens the workspace editor and its Select after repeated mounts'
         scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
       });
       await app.automation('save-workspace').tap();
+      // Saving keeps the settings dialog open on the updated host.
+      await app.automation('close-settings').tap();
       const id = `workspace-${attempt + 1}`;
       await waitFor('saved workspace', () => app.automation(`workspace-${id}`).node());
       await app.automation(`workspace-${id}`).rightClick();

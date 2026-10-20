@@ -124,8 +124,10 @@ SDK C ABI / 泛型桥接的独立宿主测试位于 `src/tests/lynx_native_view*
 `createTerminalSession(id)` 接收 JS 分配的正整数 `u32` ID，创建默认 shell，成功返回 void。
 Rust 不分配 ID，互斥保护注册表创建，拒绝重复 ID 和保留值 0；创建失败不占用 ID。
 第二个可选参数 `{ workspaceId?, program, args, cwd?, tmux? }` 指定所属 workspace 和启动参数。
-`tmux` 存在时 tmux tab 使用 session 模式：`resolveTmuxLaunch` 为每个 terminal tab 生成
-`catus-<tabId>` session，Rust 列出并管理该 session 的窗口。JS 通过
+`tmux` 存在时 tmux tab 使用 session 模式：`resolveTmuxLaunch` 在目标机器上没有 session
+时新建 `<prefix>0`，否则 attach 最近使用的 session（或菜单指定的目标）。Rust 在 control
+mode attach 后先用 `display-message -p '#{session_name}'` 确认实际 session，再列出并管理
+该 session 的窗口；`TmuxOptions.session` 是启动时的预期名称，attach 后以 tmux 的回复为准。JS 通过
 `getTmuxSessionInfo(id)`、`selectTmuxWindow(id, windowId)`、`createTmuxWindow(id)` 和
 `closeTmuxWindow(id, windowId)` 驱动 terminal 标题栏中的 tmux tab；返回的
 `TmuxSessionInfo.windows` 包含窗口 ID、index、名称和 active 状态。
@@ -166,7 +168,8 @@ Rust `Workspace` 统一管理会话创建、查找、关闭、detach 和成员�
 `TerminalSession` 管理网格和输入编码，持有一个 `Pty`；`Pty` 统一管理 PTY 句柄、
 I/O 线程、错误、退出状态和子进程回收，通过 `PtyDelegate` 调用后端特有操作。
 `terminal_core/pty/plain.rs` 处理普通 PTY 字节和窗口尺寸；`terminal_core/pty/tmux.rs`
-处理 control mode 协议、窗口 resize、关闭窗口或保留会话的 detach。
+处理 control mode 协议、窗口 resize 和关闭窗口。关闭 terminal tab 只发送
+`detach-client`，session 由 session 菜单显式结束。
 `PtyDelegate::close` 返回进程回收前的宽限时间，让 tmux 关闭命令先经过 writer 送到服务端。
 `Pty` 的 Drop 默认 detach；显式 close 后的再次 close、detach 或 Drop 不重复发送关闭命令。
 每个 session 保留创建时的 `PtyDelegate`，因此修改配置只影响新建 tab；原来的普通或 tmux

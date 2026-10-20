@@ -7,13 +7,15 @@ import { comparePng, expectScreenshot } from '../support/screenshots';
 let app: LynxApp;
 beforeEach(async () => {
   app = new LynxApp();
-  await app.start({ ssh: true });
+  // Settings dialogs and context menus need native mouse events and a real window.
+  await app.start({ ssh: true, windowless: false });
 });
 afterEach(async () => {
   await app.close();
 });
 
 test('workspace Schema validation blocks a blank SSH host and allows a local workspace', async () => {
+  await app.automation('open-settings').tap();
   await app.automation('add-workspace').tap();
   await waitFor('workspace Hook Form', () => app.automation('profile-name').node());
   await app.automation('workspace-type-ssh').tap();
@@ -54,23 +56,25 @@ test('Button hover changes pixels without activating and restores them on leave'
     }
     throw error;
   }
-  const normal = await app.automation('add-workspace').screenshot();
-  await app.automation('add-workspace').hover();
+  const normal = await app.automation('open-settings').screenshot();
+  await app.automation('open-settings').hover();
   const hovered = await waitFor('Button hover pixels', async () => {
-    const image = await app.automation('add-workspace').screenshot();
+    const image = await app.automation('open-settings').screenshot();
     return comparePng(normal, image).changed > 100 ? image : undefined;
   });
   expect(await app.automation('profile-shell').node()).toBeUndefined();
-  await expectScreenshot('button-add-workspace', normal);
-  await expectScreenshot('button-add-workspace-hover', hovered);
+  await expectScreenshot('button-open-settings', normal);
+  await expectScreenshot('button-open-settings-hover', hovered);
   await app.automation('application-status').hover();
   await waitFor('Button mouseleave restores pixels', async () =>
-    comparePng(normal, await app.automation('add-workspace').screenshot()).changed === 0
+    comparePng(normal, await app.automation('open-settings').screenshot()).changed === 0
       ? true
       : undefined,
   );
-  await app.automation('add-workspace').tap();
-  await waitFor('Button still opens the form', () => app.automation('profile-shell').node());
+  await app.automation('open-settings').tap();
+  await waitFor('settings open with the active host form', () =>
+    app.automation('profile-shell').node(),
+  );
 });
 
 test('English TOML translations render with correct plurals in Lynx', async () => {

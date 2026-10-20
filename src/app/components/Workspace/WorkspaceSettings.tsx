@@ -230,6 +230,11 @@ export function WorkspaceSettings({
             </>
           ) : null}
           <Field name="cwd" label={t('workspace.cwd')} />
+          <Field
+            name="tmuxPrefix"
+            label={t('workspace.tmuxPrefix')}
+            description={t('workspace.tmuxPrefixDescription')}
+          />
           <FormField
             name="defaultTab"
             render={({ field }) => (

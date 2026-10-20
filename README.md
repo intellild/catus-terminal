@@ -3,8 +3,10 @@
 使用 Lynx UI 实现的桌面终端界面，参考 Opera 的 workspace 与 tab 布局。
 左侧 dock 放置可配置的终端类型，每个 workspace 保留自己的 terminal tabs；
 内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染。
-每个 workspace 可选择默认 tab 类型（普通 shell、tmux 或 SFTP），顶部加号按钮组
+每个 host（workspace）可选择默认 tab 类型（普通 shell、tmux 或 SFTP），顶部加号按钮组
 也可直接创建另外两种 tab；tmux tab 会在 terminal 自己的标题栏中显示 session 窗口。
+tmux 按钮上的角标显示目标机器的 session 数量，右键可选择 attach 或关闭 session；
+左下角设置按钮提供 host（含 tmux 前缀）与显示（i18n）设置。
 
 Web 开发预览使用官方 [Lynx for Web / Rspeedy web 环境](https://lynxjs.org/3.6/rspeedy/start/integrate-with-existing-apps)：
 
@@ -233,8 +235,11 @@ TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
 - 顶部 `+` 按钮组为当前 workspace 创建 tab：加号创建默认 tab，其余图标按钮分别
   创建 shell、tmux 或 SFTP tab；SFTP 只在 SSH workspace 显示。关闭最后一个 tab 后圆点消失。
 - 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
-- 左下角 `+` 直接新建 workspace；workspace 上的右键菜单提供编辑和删除，
-  新建与编辑复用同一个表单。删除会释放该 workspace 的会话，至少保留一个 workspace。
+- 左下角齿轮打开设置：一级菜单分为主机和显示。主机页用纵向列表管理 workspace，
+  悬停行显示删除按钮，删除前用 popover 二次确认；右侧内容区复用现有表单并编辑 tmux 前缀。
+  配置至少保留一个 workspace，删除会释放该 workspace 的会话。
+- workspace 上的右键菜单提供编辑和删除，编辑会打开同一设置面板。显示页放置 i18n
+  （界面语言）选项，目前只有 English。
 - 配置分为本地和 SSH，远程显示 Host；两者都可以选择检测到的 Shell 或输入自定义命令。
 - Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
   远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
@@ -243,15 +248,21 @@ TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
   tmux 不再是 workspace 开关，而是每个 tab 独立的启动类型。
 - 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
 - tmux tab 使用 tmux control mode，本地使用本机 tmux，SSH workspace 使用远端 tmux，
-  目标机器需安装 tmux 3.2 或更新版本。每个 terminal tab 拥有独立 session
-  `catus-<tabId>` 和独立的 `-L catus` socket；Shell、自定义命令和工作目录仍由
-  workspace 配置决定。
-- terminal 自己的标题栏把 tmux session 的窗口显示为 tab：点击切换窗口，`+` 新建窗口，
-  窗口多于一个时可关闭对应窗口。窗口名称和激活状态由 native session 提供，
-  `%window-add`、`%window-renamed`、`%window-close` 等 control-mode 通知保持同步。
-  关闭 terminal tab 会结束该 tmux session；退出应用只断开控制连接，进程继续运行。
-  重开相同 tab ID 时会重新连接已有 session，并读取当前窗口的屏幕、历史和光标状态。
-  例如可以在应用外通过 `tmux -L catus attach -t catus-1` 连接首个 tmux tab。
+  目标机器需安装 tmux 3.2 或更新版本。catus 使用独立的 `-L catus` socket，不干扰
+  用户自己的 tmux；每个 host 可配置 session 前缀（JSON `tmuxPrefix`，默认 `catus-`），
+  Shell、自定义命令和工作目录仍由 workspace 配置决定。
+- 打开 tmux tab 时优先 attach 目标机器最近使用的 session；只有机器上没有任何 session
+  时才新建 `<prefix>0`。`-CC attach-session` 之后 native 通过
+  `display-message -p '#{session_name}'` 确认实际 session 名称，再列出并绑定窗口，
+  因此没有本地 session 缓存时也能 attach tmux 的默认目标。
+- 加号按钮上的角标显示当前 host 的 session 数量；registry 每 10 秒轮询，
+  workspace/tab 变化和菜单打开时立即刷新。右键打开 session 菜单：点击行 attach 对应
+  session，行悬停显示关闭按钮，菜单底部新建下一个空闲的 `<prefix>N`。
+- 关闭 terminal tab 只 detach，tmux session 继续运行；结束 session 使用菜单中的关闭按钮。
+  窗口显示在 terminal 标题栏：点击切换窗口，`+` 新建窗口，窗口多于一个时可关闭。
+  窗口名称和激活状态由 native session 提供，`%window-add`、`%window-renamed`、
+  `%window-close` 等 control-mode 通知保持同步。退出应用同样只断开控制连接。
+  例如可以在应用外通过 `tmux -L catus attach -t catus-0` 连接对应 session。
   旧配置的 `tmux` / `tmuxSessionName` 字段会在读取时迁移为 `defaultTab: "tmux"` 并被移除。
 
 默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。
@@ -467,7 +478,7 @@ Rust `native/src/tests/macos/terminal_rendering.rs` 也使用同一 fake PTY，�
 无效 framebuffer、尺寸/像素布局不匹配、重新绑定、不同 session 内容隔离、DPI resize 和关闭后的句柄行为。
 调用 `createTerminalSession(id, command?)` 启动账户默认 shell；`command` 的 program/args/cwd
 和可选 `tmux` 描述启动参数。桌面 preload 根据 tab `kind` 选择普通 shell 或 tmux launch，
-E2E 通过 `CATUS_E2E_PTY` 注入 fake PTY。
+并传入菜单选择的 tmux session 目标；E2E 通过 `CATUS_E2E_PTY` 注入 fake PTY。
 JS 分配 `1..0xffffffff` 的数字 tab ID，Rust 不分配 ID；创建成功返回 void，重复 ID 和保留值 0 被拒绝。
 关闭 tab 的 E2E 测试直接查询 Rust 注册表，确认对应 ID 已删除且其他 session 仍可查询。
 
@@ -614,7 +625,10 @@ src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/�
 src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
-src/app/state/tmux.ts                   tmux 窗口快照 family、registry 轮询和窗口命令
+src/app/state/tmux.ts                   tmux 窗口快照、session 列表视图和 registry 轮询
+src/app/state/tmuxSessions.ts           目标机器 session 列表、刷新、kill 和 attach 数据
+src/app/components/Settings/            设置面板（主机列表/编辑器、删除确认、显示/i18n）
+src/main/desktop/tmux.ts                list-sessions / kill-session（本地与 SSH）
 src/app/components/ui/Panel.tsx         shadcn 风格 Panel/Header/Title/Actions/Content/Footer
 src/app/components/Terminal/TerminalPanel.tsx  terminal 面板，持有 TerminalView
 src/app/components/Terminal/TmuxPanel.tsx      稳定 terminal 外壳，tmux 时嵌入 terminal + 窗口 tabs

@@ -6,6 +6,8 @@ import type { ReactNode } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
 import { tabKinds } from '../../../shared/tabs';
 import type { TabKind } from '../../../shared/tabs';
+import { TmuxTabButton } from './TmuxSessionMenu';
+import type { TmuxSessionsProps } from './TmuxSessionMenu';
 
 export function TabBar({ children }: { children?: ReactNode }) {
   return (
@@ -53,44 +55,54 @@ export function TabActions({
   defaultKind = 'shell',
   ssh = false,
   onAdd,
+  tmux,
 }: {
   defaultKind?: TabKind;
   ssh?: boolean;
   onAdd?(kind: TabKind): void;
+  tmux?: TmuxSessionsProps;
 }) {
   const { t } = useTranslation();
   const others = tabKinds.filter((kind) => kind !== defaultKind && (kind !== 'sftp' || ssh));
   return (
     <ButtonGroup className="h-full items-end pb-[4px] ml-[4px] gap-[1px]">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        data-automation-id="new-tab"
-        accessibility-label={t('tabs.newDefault', { kind: t(`tabs.kind.${defaultKind}`) })}
-        className="w-[24px] h-[24px] rounded-[6px]"
-        bindtap={() => {
-          'background only';
-          onAdd?.(defaultKind);
-        }}
-      >
-        <Icon name="plus" size={16} color="#c1c7d0" />
-      </Button>
-      {others.map((kind) => (
-        <Button
-          key={kind}
-          variant="ghost"
-          size="icon-sm"
-          data-automation-id={`new-${kind}-tab`}
-          accessibility-label={t('tabs.newKind', { kind: t(`tabs.kind.${kind}`) })}
-          className="w-[24px] h-[24px] rounded-[6px]"
-          bindtap={() => {
-            'background only';
-            onAdd?.(kind);
-          }}
-        >
-          <Icon name={kindIcons[kind].icon} size={15} color={kindIcons[kind].color} />
-        </Button>
-      ))}
+      {[defaultKind, ...others].map((kind, index) => {
+        const id = index === 0 ? 'new-tab' : `new-${kind}-tab`;
+        const label = t(index === 0 ? 'tabs.newDefault' : 'tabs.newKind', {
+          kind: t(`tabs.kind.${kind}`),
+        });
+        return kind === 'tmux' ? (
+          <TmuxTabButton
+            key={id}
+            id={id}
+            label={label}
+            tmux={tmux}
+            onAdd={() => {
+              'background only';
+              onAdd?.(kind);
+            }}
+          />
+        ) : (
+          <Button
+            key={id}
+            variant="ghost"
+            size="icon-sm"
+            data-automation-id={id}
+            accessibility-label={label}
+            className="w-[24px] h-[24px] rounded-[6px]"
+            bindtap={() => {
+              'background only';
+              onAdd?.(kind);
+            }}
+          >
+            {index === 0 ? (
+              <Icon name="plus" size={16} color="#c1c7d0" />
+            ) : (
+              <Icon name={kindIcons[kind].icon} size={15} color={kindIcons[kind].color} />
+            )}
+          </Button>
+        );
+      })}
     </ButtonGroup>
   );
 }

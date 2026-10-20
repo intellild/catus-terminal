@@ -116,7 +116,7 @@ fn wait(session: &Session, condition: impl Fn() -> bool) {
 }
 
 #[test]
-fn changing_workspace_backend_keeps_existing_sessions_and_tmux_detach_preserves_the_window() {
+fn changing_workspace_backend_keeps_existing_sessions_and_tmux_close_preserves_the_session() {
     if Command::new("tmux").arg("-V").output().is_err() {
         eprintln!("tmux is not installed; skipping integration test");
         return;
@@ -157,9 +157,20 @@ fn changing_workspace_backend_keeps_existing_sessions_and_tmux_detach_preserves_
         reattached.core.ready() && reattached.core.snapshot().text().contains("TMUX_BACKEND")
     });
     workspaces.close_session(2);
-    wait(&plain, || {
-        !server.run(&["has-session", "-t", "test"]).status.success()
-    });
+    // Closing a tab detaches the client; the shared session keeps running until
+    // it is closed explicitly from the tmux session menu.
+    thread::sleep(Duration::from_millis(800));
+    assert!(server.run(&["has-session", "-t", "test"]).status.success());
+    assert!(
+        String::from_utf8(
+            server
+                .run(&["list-clients", "-t", "test", "-F", "#{client_name}"])
+                .stdout
+        )
+        .unwrap()
+        .trim()
+        .is_empty()
+    );
     assert!(workspaces.session(1).is_ok());
     assert!(workspaces.session(3).is_ok());
     workspaces.close_session(1);

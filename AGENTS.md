@@ -46,6 +46,13 @@
 - Store workspace profiles, tab ID lists and active tab IDs in a workspace atom
   family. Global workspace ordering stores IDs only; never infer membership by
   filtering all tabs. Tab data lives in its own family and TabItem subscribes by ID.
+- tmux sessions belong to the machine, not the tab: opening a tmux tab attaches the most
+  recent session (or `<tmuxPrefix>0` on an empty machine) and closing a tab only detaches.
+  Session lists, attach targets, explicit kills and the count badge live in registry atoms
+  (`state/tmuxSessions.ts`); components only subscribe and dispatch.
+- Hosts and display preferences share one settings dialog opened from the sidebar
+  (`components/Settings/`). The host editor reuses the workspace form; new per-host options
+  belong there, as with `tmuxPrefix`.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.

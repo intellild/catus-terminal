@@ -37,9 +37,9 @@ impl PtyDelegate for TmuxPtyDelegate {
     ) -> Result<()> {
         self.0.lock().unwrap().resize(size, tx)
     }
-    fn close(&self, preserve: bool, tx: &Sender<Vec<u8>>) -> Duration {
-        self.0.lock().unwrap().close(preserve, tx);
-        // Allow queued session/window and detach commands to reach the server over SSH.
+    fn close(&self, _preserve: bool, tx: &Sender<Vec<u8>>) -> Duration {
+        self.0.lock().unwrap().close(tx);
+        // Allow the queued detach command to reach the server over SSH.
         Duration::from_millis(500)
     }
     fn tmux_info(&self) -> Option<TmuxSessionInfo> {

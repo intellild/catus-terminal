@@ -1,6 +1,7 @@
 import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
+import { defaultTmuxPrefix } from '../../shared/launch';
 import { terminalSessionsAtom } from './terminalSessions';
 import type { TabKind } from '../../shared/tabs';
 import type {
@@ -16,6 +17,8 @@ export interface TerminalTab {
   readonly number: number;
   // Snapshot launch options: edits affect new tabs, not existing sessions.
   readonly profile: WorkspaceSettings;
+  // tmux target chosen when the tab opened; undefined lets tmux attach its default.
+  readonly tmuxSession?: string;
 }
 export interface WorkspaceState {
   readonly profile: WorkspaceSettings;
@@ -85,6 +88,7 @@ export function newTab(
   store: SessionAccess,
   workspaceId = store.get(sessionAtom).activeWorkspaceId,
   requestedKind?: TabKind,
+  tmuxSession?: string,
 ): void {
   if (workspaceId === null) {
     return;
@@ -107,7 +111,14 @@ export function newTab(
     throw new Error('Terminal session IDs exhausted');
   }
   Atom.batch(() => {
-    store.set(tabAtom(id), { id, workspaceId, number: id, profile: workspace.profile, kind });
+    store.set(tabAtom(id), {
+      id,
+      workspaceId,
+      number: id,
+      profile: workspace.profile,
+      kind,
+      tmuxSession: kind === 'tmux' ? tmuxSession : undefined,
+    });
     store.set(workspaceAtom(workspaceId), {
       ...workspace,
       tabIds: [...workspace.tabIds, id],
@@ -259,6 +270,7 @@ export function editWorkspace(workspace: WorkspaceSettings): EditorState {
     open: true,
     draft: {
       ...workspace,
+      tmuxPrefix: workspace.tmuxPrefix ?? defaultTmuxPrefix,
       type: workspace.type ?? 'local',
       shell: workspace.shell ?? (workspace.command === '$SHELL' ? '$SHELL' : 'custom'),
       host: workspace.host ?? '',
@@ -293,6 +305,7 @@ export function createDraft(workspaces: readonly WorkspaceSettings[]): EditorSta
       cwd: '~',
       icon: '>_',
       color: '#a8e6cf',
+      tmuxPrefix: defaultTmuxPrefix,
       isNew: true,
     },
   };
