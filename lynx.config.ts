@@ -80,10 +80,8 @@ export default defineConfig({
             rootPath,
             'src/app/web/frameDriver.ts',
           ),
-          [path.resolve(rootPath, 'src/app/components/Terminal/TerminalContent.tsx')]: path.resolve(
-            rootPath,
-            'src/app/web/SessionContent.tsx',
-          ),
+          [path.resolve(rootPath, 'src/app/components/Terminal/PanelPlaceholder.tsx')]:
+            path.resolve(rootPath, 'src/app/web/SessionContent.tsx'),
           [path.resolve(rootPath, 'src/app/components/Terminal/SessionContent.tsx')]: path.resolve(
             rootPath,
             'src/app/web/SessionContent.tsx',
