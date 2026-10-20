@@ -139,6 +139,14 @@ test('session lists drive the badge, attach targets and explicit session close',
   registry.set(sessionActionsAtom, { type: 'newTmuxSession' });
   expect(registry.get(tabAtom(9))).toMatchObject({ kind: 'tmux', tmuxSession: 'catus-1' });
 
+  // A plain tmux tab reuses the most recently active session from the registry.
+  registry.set(sessionActionsAtom, { type: 'addTab', kind: 'tmux' });
+  expect(registry.get(tabAtom(10))).toMatchObject({ kind: 'tmux', tmuxSession: 'work' });
+  // Without a cached list the launcher keeps tmux's own default target.
+  registry.set(tmuxSessionsAtom(''), { sessions: [], loaded: true, pending: false, error: '' });
+  registry.set(sessionActionsAtom, { type: 'addTab', kind: 'tmux' });
+  expect(registry.get(tabAtom(11))?.tmuxSession).toBeUndefined();
+
   registry.set(closeTmuxSessionAtom, { destination: '', session: 'work' });
   await rstest.waitFor(() => expect(killTmuxSession).toHaveBeenCalledWith(undefined, 'work'));
   registry.reset();
