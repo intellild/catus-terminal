@@ -8,7 +8,7 @@ import {
   AppLayoutSidebar,
 } from './components/AppLayout';
 import { TabBar } from './components/TabBar';
-import { TerminalContent } from './components/Terminal/TerminalContent';
+import { PanelPlaceholder } from './components/Terminal/PanelPlaceholder';
 import { StatusBar } from './components/StatusBar';
 import {
   SessionTabs,
@@ -52,7 +52,7 @@ export function App() {
           </AppLayoutSidebar>
           <AppLayoutMain>
             <AppLayoutContent>
-              <background-only fallback={<TerminalContent loading />}>
+              <background-only fallback={<PanelPlaceholder loading />}>
                 <SessionContent />
               </background-only>
             </AppLayoutContent>

@@ -1,67 +1,21 @@
 import 'background-only';
 import '../../runtime';
-import { useEffect, useState } from '@lynx-js/react';
-import type { TmuxSessionInfo } from '../../../shared/tmux';
-import type { TerminalHost } from '../../state/terminalSessions';
+import { useAtomSet, useAtomValue } from '@effect/atom-react';
+import { tmuxActionsAtom, tmuxSessionAtom } from '../../state/tmux';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 
-const POLL_INTERVAL = 400;
-
-function terminalHost(): TerminalHost | undefined {
-  return NativeModules?.nodejs?.exposed as TerminalHost | undefined;
-}
-
-function sameInfo(a: TmuxSessionInfo | undefined, b: TmuxSessionInfo | undefined): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (!a || !b || a.activeWindowId !== b.activeWindowId || a.windows.length !== b.windows.length) {
-    return false;
-  }
-  return a.windows.every((window, index) => {
-    const other = b.windows[index]!;
-    return (
-      window.id === other.id &&
-      window.index === other.index &&
-      window.name === other.name &&
-      window.active === other.active
-    );
-  });
-}
-
 /**
- * Tmux owns the tabs inside a tmux terminal. The native session exposes a
- * snapshot of its windows; polling keeps names and the active dot current
- * without adding a second native callback channel.
+ * Tmux owns the tabs inside a tmux terminal. Snapshots and window commands live
+ * in the application registry; this view only subscribes by session ID and
+ * dispatches commands.
  */
 export function TmuxTabBar({ sessionId }: { sessionId: number }) {
   const { t } = useTranslation();
-  const [info, setInfo] = useState<TmuxSessionInfo>();
-  useEffect(() => {
-    let live = true;
-    const refresh = () => {
-      'background only';
-      try {
-        const next = terminalHost()?.getTmuxSessionInfo?.(sessionId) ?? undefined;
-        if (live) {
-          setInfo((previous) => (sameInfo(previous, next) ? previous : next));
-        }
-      } catch {
-        if (live) {
-          setInfo(undefined);
-        }
-      }
-    };
-    refresh();
-    const timer = setInterval(refresh, POLL_INTERVAL);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [sessionId]);
+  const info = useAtomValue(tmuxSessionAtom(sessionId));
+  const dispatch = useAtomSet(tmuxActionsAtom);
   const windows = info?.windows ?? [];
   return (
     <scroll-view
@@ -85,7 +39,7 @@ export function TmuxTabBar({ sessionId }: { sessionId: number }) {
               )}
               bindtap={() => {
                 'background only';
-                terminalHost()?.selectTmuxWindow?.(sessionId, window.id);
+                dispatch({ type: 'selectWindow', sessionId, windowId: window.id });
               }}
             >
               <text
@@ -105,7 +59,7 @@ export function TmuxTabBar({ sessionId }: { sessionId: number }) {
                   className="w-[14px] h-[14px] shrink-0"
                   catchtap={() => {
                     'background only';
-                    terminalHost()?.closeTmuxWindow?.(sessionId, window.id);
+                    dispatch({ type: 'closeWindow', sessionId, windowId: window.id });
                   }}
                 >
                   <Icon name="x" size={11} color="#9ca6b2" />
@@ -123,7 +77,7 @@ export function TmuxTabBar({ sessionId }: { sessionId: number }) {
             className="w-[22px] h-[22px] rounded-[5px]"
             bindtap={() => {
               'background only';
-              terminalHost()?.createTmuxWindow?.(sessionId);
+              dispatch({ type: 'createWindow', sessionId });
             }}
           >
             <Icon name="plus" size={14} color="#c1c7d0" />

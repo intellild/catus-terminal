@@ -3,6 +3,6 @@ export function SessionContent() {
 }
 
 // The first-frame fallback also stays empty in web preview.
-export function TerminalContent(_props: { loading?: boolean }) {
+export function PanelPlaceholder(_props: { loading?: boolean }) {
   return <SessionContent />;
 }

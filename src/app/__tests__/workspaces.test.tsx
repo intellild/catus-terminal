@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { beforeEach, expect, test, rstest } from '@rstest/core';
+import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { sftpClient } from '../api/sftp';
@@ -58,6 +58,10 @@ beforeEach(() => {
       },
     },
   });
+});
+
+afterEach(() => {
+  sessionRegistry.reset();
 });
 
 async function changeInput(
@@ -313,6 +317,34 @@ test('Lynx tabs and dock indicators follow workspace startup, switching, creatio
   await findByText('Local 4');
   await waitForTerminal();
   expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
+});
+
+test('switching between shell and tmux panels keeps the native terminal element', async () => {
+  renderApp();
+  const root = elementTree.root!;
+  await waitForTerminal();
+  const surface = root.querySelector('[data-automation-id=terminal-surface]')!;
+
+  fireEvent.tap(root.querySelector('[data-automation-id=new-tmux-tab]')!);
+  await rstest.waitFor(() =>
+    expect(
+      Number(
+        root.querySelector('[data-automation-id=terminal-surface]')?.getAttribute('terminal-id'),
+      ),
+    ).toBe(2),
+  );
+  expect(root.querySelector('[data-automation-id=tmux-tabs]')).not.toBeNull();
+
+  fireEvent.tap(root.querySelector('[data-automation-id=tab-1]')!);
+  await rstest.waitFor(() =>
+    expect(
+      Number(
+        root.querySelector('[data-automation-id=terminal-surface]')?.getAttribute('terminal-id'),
+      ),
+    ).toBe(1),
+  );
+  expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
+  expect(root.querySelector('[data-automation-id=tmux-tabs]')).toBeNull();
 });
 
 test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {

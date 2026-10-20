@@ -20,7 +20,7 @@ export interface TerminalHost extends TmuxHost {
 // Tests can supply a host without mounting React or loading a native addon.
 export const terminalHostAtom = Atom.make<(TerminalHost & Partial<SftpHost>) | undefined>(
   undefined,
-);
+).pipe(Atom.keepAlive);
 
 export const terminalSessionsAtom = Atom.make((get) => {
   const configuredHost = get.once(terminalHostAtom);
