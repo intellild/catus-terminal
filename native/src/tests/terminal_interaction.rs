@@ -1,8 +1,9 @@
 use super::super::GridSize;
 use super::*;
+use crate::terminal_core::pty::test_sender;
 
 fn grid() -> TerminalGrid {
-    TerminalGrid::new(GridSize::new(12, 3), std::sync::mpsc::channel().0)
+    TerminalGrid::new(GridSize::new(12, 3), test_sender())
 }
 fn mods() -> MouseModifiers {
     MouseModifiers::default()

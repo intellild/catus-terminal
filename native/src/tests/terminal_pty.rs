@@ -1,11 +1,14 @@
 use super::*;
+use crate::terminal_core::pty::{WriterMessage, message_data, test_channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
 impl TerminalSession {
     /// Deterministic PTY sink for input tests; the real VT parser still owns modes.
-    pub(crate) fn recording(output: &[u8]) -> (Self, mpsc::Receiver<Vec<u8>>) {
-        let (tx, rx) = mpsc::channel();
+    pub(crate) fn recording(
+        output: &[u8],
+    ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<WriterMessage>) {
+        let (tx, rx) = test_channel();
         let mut grid = TerminalGrid::new(GridSize::new(80, 24), tx.clone());
         grid.advance(output);
         (
@@ -21,20 +24,20 @@ impl TerminalSession {
 
 #[test]
 fn paste_is_a_single_mode_encoded_packet_while_write_and_key_remain_raw() {
-    let (terminal, input) = TerminalSession::recording(b"\x1b[?2004h");
+    let (terminal, mut input) = TerminalSession::recording(b"\x1b[?2004h");
     terminal.paste("first\n中文\x1b[201~\x03").unwrap();
     assert_eq!(
-        input.try_recv().unwrap(),
+        message_data(input.try_recv().unwrap()),
         "\x1b[200~first\n中文[201~\x1b[201~".as_bytes()
     );
     assert!(input.try_recv().is_err());
     terminal.write(b"typed\n\x1b".to_vec()).unwrap();
-    assert_eq!(input.try_recv().unwrap(), b"typed\n\x1b");
+    assert_eq!(message_data(input.try_recv().unwrap()), b"typed\n\x1b");
     terminal.key("Enter", false, false).unwrap();
-    assert_eq!(input.try_recv().unwrap(), b"\r");
-    terminal.grid.lock().unwrap().advance(b"\x1b[?2004l");
+    assert_eq!(message_data(input.try_recv().unwrap()), b"\r");
+    terminal.grid.blocking_lock().advance(b"\x1b[?2004l");
     terminal.paste("one\r\ntwo\n").unwrap();
-    assert_eq!(input.try_recv().unwrap(), b"one\rtwo\r");
+    assert_eq!(message_data(input.try_recv().unwrap()), b"one\rtwo\r");
     terminal.close();
     assert!(terminal.paste("closed").is_err());
 }
