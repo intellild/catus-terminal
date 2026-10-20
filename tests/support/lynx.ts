@@ -259,6 +259,10 @@ export class LynxApp {
     }
   }
 
+  tmuxSocketName() {
+    return this.tmuxSocket;
+  }
+
   tmuxSessions() {
     if (!this.tmuxSocket) {
       throw new Error('This fixture has no tmux server');

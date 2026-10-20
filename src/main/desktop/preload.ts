@@ -10,6 +10,7 @@
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
 import { listShells } from './shells';
+import { killTmuxSession, listTmuxSessions } from './tmux';
 import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
 import type { TabKind } from '../../shared/tabs';
 import { resolveLaunch } from '../../shared/workspaces';
@@ -22,6 +23,8 @@ contextBridge.exposeInLynxBTS({
   createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) =>
     new TextDecoder(label, options),
   listShells,
+  listTmuxSessions,
+  killTmuxSession,
   loadWorkspaces: workspaces.loadWorkspaces,
   saveWorkspaces: workspaces.saveWorkspaces,
   createTerminalSession: (
@@ -29,6 +32,7 @@ contextBridge.exposeInLynxBTS({
     profile?: WorkspaceSettings,
     environment?: WorkspaceEnvironment,
     kind: TabKind = 'shell',
+    tmuxSession?: string,
   ) =>
     nativeBinding.createTerminalSession(
       id,
@@ -43,7 +47,13 @@ contextBridge.exposeInLynxBTS({
               if (kind === 'tmux') {
                 return {
                   workspaceId: profile.id,
-                  ...resolveTmuxLaunch(profile, environment, id, process.env.CATUS_E2E_TMUX_SOCKET),
+                  ...resolveTmuxLaunch(
+                    profile,
+                    environment,
+                    id,
+                    process.env.CATUS_E2E_TMUX_SOCKET,
+                    tmuxSession,
+                  ),
                 };
               }
               const launch = resolveLaunch(profile, environment);

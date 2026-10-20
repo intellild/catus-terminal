@@ -1,5 +1,32 @@
 import type { TabKind } from './tabs';
+import type { TmuxSessionSummary } from './tmux';
 import type { WorkspaceSettings, WorkspaceEnvironment } from './workspaces';
+
+export const defaultTmuxPrefix = 'catus-';
+
+export function tmuxSessionName(prefix: string, index: number): string {
+  return `${prefix || defaultTmuxPrefix}${index}`;
+}
+
+/** First unused `prefix + index` name, so repeated tabs add catus-0, catus-1, … */
+export function nextTmuxSessionName(prefix: string, sessions: readonly string[]): string {
+  const names = new Set(sessions);
+  let index = 0;
+  while (names.has(tmuxSessionName(prefix, index))) {
+    index += 1;
+  }
+  return tmuxSessionName(prefix, index);
+}
+
+/** The session `tmux attach-session` picks without a target: most recently active. */
+export function mostRecentTmuxSession(
+  sessions: readonly TmuxSessionSummary[],
+): TmuxSessionSummary | undefined {
+  return sessions.reduce<TmuxSessionSummary | undefined>(
+    (latest, session) => (!latest || session.activity > latest.activity ? session : latest),
+    undefined,
+  );
+}
 
 export function quoteShell(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'";
@@ -50,23 +77,26 @@ export function launchPreview(
   kind: TabKind = workspace.defaultTab,
 ): string {
   if (kind === 'tmux') {
-    const launch = resolveTmuxLaunch(workspace, environment, 1);
+    const session = tmuxSessionName(workspace.tmuxPrefix ?? defaultTmuxPrefix, 0);
+    const launch = resolveTmuxLaunch(workspace, environment, 1, 'catus', session);
     return [launch.program, ...launch.args].map(quoteShell).join(' ');
   }
   const launch = resolveLaunch(workspace, environment);
   return [launch.command, ...launch.args].map(quoteShell).join(' ');
 }
 
-// Every terminal tab owns a tmux session so its in-terminal tab bar can list
-// and switch that session's windows without affecting other terminals.
+// A tmux tab attaches an existing session on the target machine. Every tab joins
+// tmux's most recently used session; only a machine without any session gets a
+// new `prefix + index` one. Closing a tab detaches, so tmux work outlives it.
 export function resolveTmuxLaunch(
   workspace: WorkspaceSettings,
   environment: WorkspaceEnvironment,
   tabId: number,
   socket = 'catus',
+  target?: string,
 ) {
   const launch = resolveLaunch(workspace, environment);
-  const session = `catus-${tabId}`;
+  const session = target ?? tmuxSessionName(workspace.tmuxPrefix ?? defaultTmuxPrefix, 0);
   const window = `tab-${tabId}`;
   const remote = workspace.type === 'ssh';
   const shell =
@@ -86,10 +116,9 @@ export function resolveTmuxLaunch(
   // Remote ~ is expanded by tmux, not using the local account's home directory.
   const cwd = remote ? workspace.cwd.replace(/^~(?=\/|$)/, '#{HOME}') : launch.cwd;
   const tmux = { session, window, command, cwd };
-  const prefix = ['tmux', '-L', socket];
+  const base = ['tmux', '-L', socket];
   const args = [
-    '-L',
-    socket,
+    ...base,
     '-CC',
     'new-session',
     '-A',
@@ -105,14 +134,19 @@ export function resolveTmuxLaunch(
     cwd,
     ...(command ? [command] : []),
   ];
-  const target = `=${session}`;
-  const check = [...prefix, 'has-session', '-t', target].map(quoteShell).join(' ');
-  const attach = [...prefix, '-CC', 'attach-session', '-t', target].map(quoteShell).join(' ');
-  const create = ['tmux', ...args].map(quoteShell).join(' ');
+  const targetName = `=${session}`;
+  const check = [...base, 'has-session', '-t', targetName].map(quoteShell).join(' ');
+  const attach = [...base, '-CC', 'attach-session', '-t', targetName].map(quoteShell).join(' ');
+  const create = args.map(quoteShell).join(' ');
+  const attachDefault = [...base, '-CC', 'attach-session'].map(quoteShell).join(' ');
+  const anySession = [...base, 'list-sessions'].map(quoteShell).join(' ');
   // Probe outside control mode: a failed control-mode attach emits %error/%exit,
   // which would terminate the native protocol client before the fallback starts.
   // -A handles another tab creating the session between the probe and creation.
-  const startup = `if ${check} 2>/dev/null; then exec ${attach}; else exec ${create}; fi`;
+  const startup = target
+    ? `if ${check} 2>/dev/null; then exec ${attach}; else exec ${create}; fi`
+    : // No cached session list yet: keep tmux's own default target instead of failing.
+      `if ${check} 2>/dev/null; then exec ${attach}; elif ${anySession} >/dev/null 2>&1; then exec ${attachDefault}; else exec ${create}; fi`;
   return remote
     ? {
         program: 'ssh',

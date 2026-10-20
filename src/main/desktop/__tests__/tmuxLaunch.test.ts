@@ -6,7 +6,7 @@ import { parseWorkspaceConfig } from '../../../shared/workspaces';
 import defaults from '../../../../tests/fixtures/workspaces.json';
 
 test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
-  'tmux startup creates a missing session and attaches to the exact existing session',
+  'tmux startup attaches the default session, creates a missing one and matches exact names',
   () => {
     const socket = `catus-launch-test-${randomUUID()}`;
     const profile = {
@@ -16,13 +16,14 @@ test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       args: [],
       cwd: '/tmp',
     };
-    const launch = resolveTmuxLaunch(profile, { shell: '/bin/sh', home: '/tmp' }, 1, socket);
+    const environment = { shell: '/bin/sh', home: '/tmp' };
     const run = (...args: string[]) => {
       const result = spawnSync('tmux', ['-L', socket, ...args], { encoding: 'utf8' });
       expect(result.status, result.stderr).toBe(0);
       return result.stdout.trim();
     };
-    const start = () => {
+    const start = (target?: string) => {
+      const launch = resolveTmuxLaunch(profile, environment, 1, socket, target);
       // Single -C supports pipes; production -CC additionally disables PTY echo.
       const result = spawnSync(
         launch.program,
@@ -37,14 +38,21 @@ test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(result.stdout).not.toContain('%error');
     };
     try {
+      // No server: the default launch creates the prefixed session.
       start();
-      const target = '=catus-1';
+      const target = '=catus-0';
       const pane = run('list-panes', '-t', target, '-F', '#{pane_id}');
+      expect(run('list-windows', '-t', target, '-F', '#{window_name}')).toBe('tab-1');
+
       // A similarly named session must not be attached by prefix matching.
-      run('new-session', '-d', '-s', 'catus-1-other', '/bin/sh -i');
-      start();
+      run('new-session', '-d', '-s', 'catus-0-other', '/bin/sh -i');
+      start('catus-0');
       expect(run('list-panes', '-t', target, '-F', '#{pane_id}')).toBe(pane);
       expect(run('list-windows', '-t', target, '-F', '#{window_name}')).toBe('tab-1');
+
+      // With sessions present the default launch keeps tmux's own target.
+      start();
+      expect(run('list-panes', '-t', target, '-F', '#{pane_id}')).toBe(pane);
     } finally {
       spawnSync('tmux', ['-L', socket, 'kill-server']);
     }

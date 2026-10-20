@@ -1,6 +1,7 @@
 import * as Schema from 'effect/Schema';
 import { tabKinds } from './tabs';
 import type { TabKind } from './tabs';
+import type { TmuxSessionHost } from './tmux';
 
 const NonBlank = Schema.String.check(
   Schema.makeFilter((value) => !!value.trim(), { message: 'validation.required' }),
@@ -13,6 +14,10 @@ const HostCheck = Schema.makeFilter<{ type?: string; host?: string }>((workspace
   workspace.type !== 'ssh' || isHost(workspace.host)
     ? undefined
     : { path: ['host'], issue: 'validation.host' },
+);
+// New tmux sessions are named `prefix + index`; tmux reserves `:` and spaces.
+const TmuxPrefix = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9_-]+$/, { message: 'validation.tmuxPrefix' }),
 );
 const DefaultTabCheck = Schema.makeFilter<{ type?: string; defaultTab?: TabKind }>((workspace) =>
   workspace.defaultTab !== 'sftp' || workspace.type === 'ssh'
@@ -39,6 +44,8 @@ const fields = {
   command: NonBlank,
   args: Schema.Array(Schema.String),
   cwd: NonBlank,
+  // Sessions created for this host start with this prefix; old files omit it.
+  tmuxPrefix: Schema.optional(TmuxPrefix),
 };
 export const WorkspaceSettingsSchema = Schema.Struct(fields)
   .check(HostCheck)
@@ -56,6 +63,7 @@ export const WorkspaceFormSchema = Schema.Struct({
   remoteCommand: Schema.String,
   shell: Schema.required(fields.shell),
   args: Schema.fromJsonString(fields.args).annotate({ message: 'validation.arguments' }),
+  tmuxPrefix: Schema.Trim.pipe(Schema.decodeTo(TmuxPrefix)),
   isNew: Schema.Boolean,
 })
   .check(HostCheck)
@@ -118,7 +126,7 @@ export interface WorkspaceConfigPayload {
   readonly path: string;
   readonly environment: WorkspaceEnvironment;
 }
-export interface WorkspaceHost {
+export interface WorkspaceHost extends TmuxSessionHost {
   listShells?(destination?: string): Promise<readonly import('./shells').ShellOption[]>;
   loadWorkspaces(): Promise<WorkspaceConfigPayload>;
   saveWorkspaces(config: WorkspaceConfig): Promise<WorkspaceConfigPayload>;

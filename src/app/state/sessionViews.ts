@@ -3,6 +3,7 @@ import * as Atom from 'effect/reactivity/Atom';
 import type { TerminalTab } from './session';
 import type { TabKind } from '../../shared/tabs';
 import type { WorkspaceSettings } from '../../shared/workspaces';
+import { languageAtom, settingsAtom } from './settings';
 import {
   editorAtom,
   loadAtom,
@@ -12,6 +13,7 @@ import {
   activeWorkspaceIdAtom,
   workspaceAtom,
   workspaceIdsAtom,
+  workspaceProfilesAtom,
   tabAtom,
   allTabsAtom,
 } from './session';
@@ -105,10 +107,15 @@ export const statusViewAtom = Atom.make((get) => {
 });
 export const settingsViewAtom = Atom.make((get) => {
   const payload = get(payloadAtom);
+  const settings = get(settingsAtom);
   return {
+    open: settings.open,
+    section: settings.section,
     editor: get(editorAtom),
+    hosts: get(workspaceProfilesAtom),
     canDelete: get(sessionAtom).workspaceIds.length > 1,
     configPath: payload?.path,
     environment: payload?.environment,
+    language: get(languageAtom),
   };
 });

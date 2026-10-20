@@ -4,6 +4,7 @@ import * as Atom from 'effect/reactivity/Atom';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 import { parseWorkspaceConfig, WorkspaceFormSchema } from '../../shared/workspaces';
+import { defaultTmuxPrefix, nextTmuxSessionName } from '../../shared/launch';
 import type { WorkspaceConfig } from '../../shared/workspaces';
 import {
   applyConfig,
@@ -16,12 +17,17 @@ import {
   selectTab,
   selectWorkspace,
   sessionAtom,
+  workspaceAtom,
   workspaceProfilesAtom,
 } from './session';
 import type { TabKind } from '../../shared/tabs';
 import type { WorkspaceDraft } from './session';
 import { nativeWorkspaceHost, workspaceHostAtom } from './workspaceHost';
 import { shellsAtom } from './shells';
+import { languageAtom, settingsAtom } from './settings';
+import type { SettingsSection } from './settings';
+import { i18n } from '../i18n';
+import { tmuxDestination, tmuxSessionsAtom } from './tmuxSessions';
 
 export const loadWorkspacesAtom = Atom.fn<void>()((_, get) =>
   Effect.gen(function* () {
@@ -64,7 +70,12 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
     });
     yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
-    get.set(editorAtom, { ...get(editorAtom), open: false, saving: false, error: '' });
+    const draft = get(editorAtom).draft;
+    const saved = draft && payload.config.workspaces.find((item) => item.id === draft.id);
+    get.set(
+      editorAtom,
+      saved ? editWorkspace(saved) : { ...get(editorAtom), saving: false, error: '' },
+    );
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() =>
@@ -82,7 +93,13 @@ export type SessionAction =
   | { type: 'openWorkspace' | 'deleteWorkspace'; id: string }
   | { type: 'focusTab' | 'closeTab'; id: number }
   | { type: 'editWorkspace'; id?: string }
-  | { type: 'updateDraft'; field: keyof WorkspaceDraft; value: string };
+  | { type: 'updateDraft'; field: keyof WorkspaceDraft; value: string }
+  | { type: 'attachTmux'; session: string }
+  | { type: 'newTmuxSession' }
+  | { type: 'openSettings'; section?: SettingsSection }
+  | { type: 'selectSettingsSection'; section: SettingsSection }
+  | { type: 'selectHost'; id: string }
+  | { type: 'changeLanguage'; language: string };
 
 // All commands read the current registry state; no React closure owns business state.
 export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => {
@@ -100,6 +117,55 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       } else {
         newTab(store);
       }
+      return;
+    case 'attachTmux':
+      if (state.activeWorkspaceId !== null) {
+        newTab(store, state.activeWorkspaceId, 'tmux', action.session);
+      }
+      return;
+    case 'newTmuxSession': {
+      const workspace =
+        state.activeWorkspaceId === null ? undefined : get(workspaceAtom(state.activeWorkspaceId));
+      if (!workspace) {
+        return;
+      }
+      const names = get(tmuxSessionsAtom(tmuxDestination(workspace.profile))).sessions.map(
+        (session) => session.name,
+      );
+      newTab(
+        store,
+        state.activeWorkspaceId ?? undefined,
+        'tmux',
+        nextTmuxSessionName(workspace.profile.tmuxPrefix ?? defaultTmuxPrefix, names),
+      );
+      return;
+    }
+    case 'openSettings':
+      get.set(settingsAtom, { open: true, section: action.section ?? 'hosts' });
+      if (!editor.draft) {
+        const target =
+          workspaces.find((item) => item.id === state.activeWorkspaceId) ?? workspaces[0];
+        if (target) {
+          get.set(editorAtom, editWorkspace(target));
+        }
+      }
+      return;
+    case 'selectSettingsSection':
+      get.set(settingsAtom, { ...get(settingsAtom), section: action.section });
+      return;
+    case 'selectHost': {
+      if (editor.saving) {
+        return;
+      }
+      const target = workspaces.find((item) => item.id === action.id);
+      if (target) {
+        get.set(editorAtom, editWorkspace(target));
+      }
+      return;
+    }
+    case 'changeLanguage':
+      get.set(languageAtom, action.language);
+      void i18n.changeLanguage(action.language);
       return;
     case 'openWorkspace':
       selectWorkspace(store, action.id);
@@ -119,17 +185,20 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       }
       const target = workspaces.find((item) => item.id === (action.id ?? state.activeWorkspaceId));
       if (target) {
+        get.set(settingsAtom, { open: true, section: 'hosts' });
         get.set(editorAtom, editWorkspace(target));
       }
       return;
     }
     case 'addWorkspace':
       if (!editor.saving && state.payload) {
+        get.set(settingsAtom, { open: true, section: 'hosts' });
         get.set(editorAtom, createDraft(workspaces));
       }
       return;
     case 'closeSettings':
       if (!editor.saving) {
+        get.set(settingsAtom, { ...get(settingsAtom), open: false });
         get.set(editorAtom, { ...editor, open: false });
       }
       return;
@@ -158,7 +227,7 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       });
       return;
     }
-    case 'deleteWorkspace':
+    case 'deleteWorkspace': {
       if (
         editor.saving ||
         workspaces.length <= 1 ||
@@ -166,11 +235,14 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       ) {
         return;
       }
-      get.set(persistWorkspacesAtom, {
-        version: 1,
-        workspaces: workspaces.filter((item) => item.id !== action.id),
-      });
+      const remaining = workspaces.filter((item) => item.id !== action.id);
+      get.set(persistWorkspacesAtom, { version: 1, workspaces: remaining });
+      // The deleted host may have been the one shown in the settings content.
+      if (editor.draft?.id === action.id && remaining[0]) {
+        get.set(editorAtom, editWorkspace(remaining[0]));
+      }
       return;
+    }
     case 'saveDraft': {
       if (!editor.draft || !state.payload || editor.saving) {
         return;

@@ -65,6 +65,7 @@ test('startup, shell detection and workspace actions run without React or UI sub
     payload.config.workspaces[0],
     payload.environment,
     'shell',
+    undefined,
   );
   dispatch({ type: 'openWorkspace', id: 'local' });
   dispatch({ type: 'addTab' });
@@ -84,7 +85,10 @@ test('startup, shell detection and workspace actions run without React or UI sub
   stopTabs();
   stopStatus();
   dispatch({ type: 'saveDraft' });
-  await rstest.waitFor(() => expect(registry.get(editorAtom).open).toBe(false));
+  // Saving keeps the settings dialog open on the updated host.
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(registry.get(editorAtom).open).toBe(true);
+  expect(registry.get(editorAtom).draft?.name).toBe('Renamed local');
   expect(
     host.saveWorkspaces.mock.calls[0]![0].workspaces.find((workspace) => workspace.id === 'local')
       ?.name,

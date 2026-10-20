@@ -435,6 +435,10 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
+  fireEvent.tap(root.querySelector('[data-automation-id=open-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).not.toBeNull(),
+  );
   fireEvent.tap(root.querySelector('[data-automation-id=add-workspace]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() =>
@@ -703,9 +707,8 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
     command: '/bin/zsh',
     args: ['-l'],
   });
-  await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=profile-shell]')).toBeNull(),
-  );
+  // Saving keeps the settings dialog open on the same host.
+  expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull();
   await openEditor(root);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull(),
@@ -906,4 +909,97 @@ test('each workspace owns its menu and outside taps close the current instance',
   expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
     'Shell',
   );
+});
+
+function hoverHost(id: string, enter: boolean) {
+  const eventName = enter ? 'mouseenter' : 'mouseleave';
+  fireEvent(
+    elementTree.root!.querySelector(`[data-automation-id=settings-host-${id}]`)!.parentElement!,
+    Object.assign(new Event(`bindEvent:${eventName}`), { eventType: 'bindEvent', eventName }),
+  );
+}
+
+async function openSettings(root: NonNullable<typeof elementTree.root>) {
+  fireEvent.tap(root.querySelector('[data-automation-id=open-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).not.toBeNull(),
+  );
+}
+
+test('settings opens from the sidebar with host and display sections', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  expect(root.querySelector('[data-automation-id=settings-host-shell]')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).not.toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-nav-display]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-language]')).not.toBeNull(),
+  );
+  expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-language]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-language-en]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-nav-hosts]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).toBeNull(),
+  );
+});
+
+test('deleting a host requires the confirmation popover', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  hoverHost('local', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-local]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-popover]')).not.toBeNull(),
+  );
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  fireEvent.tap(root.querySelector('[data-automation-id=cancel-delete-host]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-popover]')).toBeNull(),
+  );
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  expect(root.querySelector('[data-automation-id=settings-host-local]')).not.toBeNull();
+
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(root.querySelector('[data-automation-id=settings-host-local]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=settings-host-shell]')).not.toBeNull();
+});
+
+test('the tmux prefix is edited with the host and saved', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  expect(
+    (root.querySelector('[data-automation-id=profile-tmuxPrefix]') as HTMLInputElement).value,
+  ).toBe('catus-');
+  await changeInput(root, '[data-automation-id=profile-tmuxPrefix]', 'dev-');
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(
+    rstest
+      .mocked(host.saveWorkspaces)
+      .mock.calls[0]![0].workspaces.find((item) => item.id === 'shell')?.tmuxPrefix,
+  ).toBe('dev-');
 });
