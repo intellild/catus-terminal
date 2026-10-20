@@ -348,9 +348,11 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 TerminalView 和 NativeTerminalView 在内容区仅挂载一次，切换 tab 更新 terminal-id，保留 session 和 renderer。
 tab ID 就是 session ID；全局 `sessionRegistry` 中的 `sessionAtom` 写入时统一同步 Rust session：
 创建 tab 时创建 session，关闭 tab 或删除 workspace 时调用 `closeTerminalSession(id)`。
-tmux tab 的标题栏由 `components/Terminal/TmuxTabBar.tsx` 组合：它轮询
-`getTmuxSessionInfo(id)`，把 Rust `TmuxClient` 缓存的窗口列表渲染成 tab，并通过
-`selectTmuxWindow` / `createTmuxWindow` / `closeTmuxWindow` 操作控制连接。
+tmux tab 的标题栏由 `components/Terminal/TmuxTabBar.tsx` 组合。窗口快照保存在
+`state/tmux.ts` 的 `tmuxSessionAtom` family 中（按 session ID，`keepAlive` 全局存活）；
+`tmuxSyncAtom` 在应用级 registry 中轮询 `getTmuxSessionInfo(id)`，与 Rust `TmuxClient`
+按 ID 同步，registry reset/dispose 会清理轮询。组件只订阅快照，并通过 `tmuxActionsAtom`
+分发 `selectTmuxWindow` / `createTmuxWindow` / `closeTmuxWindow`；挂载/卸载不会启动或停止同步。
 `TmuxClient` 在 attach 后列出 session 窗口、绑定当前窗口的 active pane；切换窗口时
 清空旧 pane 的待处理输入并重新同步屏幕。窗口增删、重命名和 session 切换通知会刷新
 缓存，因此 tab 名称和激活状态不需要额外的 native 回调通道。原生测试覆盖窗口列表解析、
@@ -607,7 +609,8 @@ src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/�
 src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom
 src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
-src/app/components/Terminal/TmuxTabBar.tsx  tmux 窗口快照轮询与标题栏 tab 操作
+src/app/state/tmux.ts                   tmux 窗口快照 family、registry 轮询和窗口命令
+src/app/components/Terminal/TmuxTabBar.tsx  订阅 tmux 快照并分发标题栏操作
 src/shared/tmux.ts                     tmux 窗口/session 的 host 类型
 src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                创建 LynxWindow

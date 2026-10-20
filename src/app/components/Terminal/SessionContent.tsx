@@ -11,7 +11,7 @@ export function SessionContent() {
   const view = useAtomValue(contentViewAtom);
   const dispatch = useAtomSet(sessionActionsAtom);
   return (
-    <TerminalContent
+    <TerminalC、】】】ntent
       workspace={view.workspace}
       activeTab={view.activeTab}
       tabCount={view.tabCount}
@@ -19,7 +19,7 @@ export function SessionContent() {
       error={view.error}
       titleTabs={
         !view.error && !view.terminalError && view.activeTab?.kind === 'tmux' ? (
-          <TmuxTabBar key={view.activeTab.id} sessionId={view.activeTab.id} />
+          <TmuxTabBar sessionId={view.activeTab.id} />
         ) : undefined
       }
       onRetry={() => {
@@ -46,6 +46,6 @@ export function SessionContent() {
           <SftpBrowser id={tab.id} host={tab.profile.host!} />
         </view>
       ))}
-    </TerminalContent>
+    </TerminalCntent>
   );
 }

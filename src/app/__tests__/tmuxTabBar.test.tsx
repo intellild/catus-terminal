@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import { act, fireEvent, render } from '@lynx-js/react/testing-library';
 import { TmuxTabBar } from '../components/Terminal/TmuxTabBar';
+import { SessionProvider } from '../state/SessionProvider';
+import { sessionRegistry } from '../state/sessionRegistry';
+import { terminalHostAtom } from '../state/terminalSessions';
+import type { TerminalHost } from '../state/terminalSessions';
+import { tmuxSessionAtom } from '../state/tmux';
 import type { TmuxSessionInfo } from '../../shared/tmux';
 
 const first: TmuxSessionInfo = {
@@ -17,30 +22,34 @@ let createTmuxWindow: ReturnType<typeof rstest.fn>;
 let closeTmuxWindow: ReturnType<typeof rstest.fn>;
 
 beforeEach(() => {
-  rstest.useFakeTimers();
+  sessionRegistry.reset();
   getTmuxSessionInfo = rstest.fn(() => first);
   selectTmuxWindow = rstest.fn();
   createTmuxWindow = rstest.fn();
   closeTmuxWindow = rstest.fn();
-  rstest.stubGlobal('NativeModules', {
-    nodejs: {
-      exposed: {
-        getTmuxSessionInfo,
-        selectTmuxWindow,
-        createTmuxWindow,
-        closeTmuxWindow,
-      },
-    },
-  });
+  sessionRegistry.set(terminalHostAtom, {
+    createTerminalSession: rstest.fn(),
+    closeTerminalSession: rstest.fn(),
+    getTmuxSessionInfo,
+    selectTmuxWindow,
+    createTmuxWindow,
+    closeTmuxWindow,
+  } satisfies TerminalHost);
+  sessionRegistry.set(tmuxSessionAtom(7), first);
 });
 
 afterEach(() => {
-  rstest.useRealTimers();
+  sessionRegistry.reset();
   rstest.unstubAllGlobals();
 });
 
-test('TmuxTabBar renders native windows, switches, creates and closes tmux tabs', async () => {
-  render(<TmuxTabBar sessionId={7} />, { enableMainThread: true });
+test('TmuxTabBar renders registry snapshots and dispatches tmux commands', async () => {
+  render(
+    <SessionProvider>
+      <TmuxTabBar sessionId={7} />
+    </SessionProvider>,
+    { enableMainThread: true },
+  );
   const root = elementTree.root!;
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=tmux-window-1]')).not.toBeNull(),
@@ -60,9 +69,8 @@ test('TmuxTabBar renders native windows, switches, creates and closes tmux tabs'
   });
   expect(closeTmuxWindow).toHaveBeenCalledWith(7, '@1');
 
-  getTmuxSessionInfo.mockReturnValue({ ...first, windows: [first.windows[0]!] });
   await act(async () => {
-    rstest.advanceTimersByTime(400);
+    sessionRegistry.set(tmuxSessionAtom(7), { ...first, windows: [first.windows[0]!] });
   });
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=tmux-window-1]')).toBeNull(),

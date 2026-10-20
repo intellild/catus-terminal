@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { beforeEach, expect, test, rstest } from '@rstest/core';
+import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { sftpClient } from '../api/sftp';
@@ -58,6 +58,10 @@ beforeEach(() => {
       },
     },
   });
+});
+
+afterEach(() => {
+  sessionRegistry.reset();
 });
 
 async function changeInput(
