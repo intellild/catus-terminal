@@ -273,7 +273,8 @@ TabBar / HostList / SessionContent / StatusBar / HostForm
 首次运行复制到 `~/.config/catus-terminal/hosts.json`；也可通过
 `CATUS_HOSTS_FILE=/absolute/path/hosts.json pnpm start` 指定配置位置。
 设置面板显示实际路径。保存前通过 Effect Schema 校验，以临时文件和 rename
-写入 JSON；已有配置损坏时显示错误，不会覆盖。
+写入 JSON；已有配置无法解析或校验失败时，会在同目录备份为 `hosts.json.bak`
+（重名时追加序号），然后写入默认配置。
 
 ```json
 {

@@ -38,9 +38,24 @@ test('first load writes built-in defaults; saves round-trip through a new host',
   expect(reopened.config).toEqual(config);
 });
 
-test('malformed existing JSON is reported and remains unchanged', async () => {
+test('malformed existing JSON is backed up beside the config and replaced with defaults', async () => {
   const { file, host } = await setup();
   await writeFile(file, '{broken-json');
-  await expect(host.loadHosts()).rejects.toThrow();
-  expect(await readFile(file, 'utf8')).toBe('{broken-json');
+  const payload = await host.loadHosts();
+  expect(payload.config.hosts[0]!.command).toBe('$SHELL');
+  expect(await readFile(`${file}.bak`, 'utf8')).toBe('{broken-json');
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(payload.config);
+});
+
+test('schema-invalid configs use unique backup names and restart from defaults', async () => {
+  const { file, host } = await setup();
+  await writeFile(file, JSON.stringify({ version: 1, hosts: [] }));
+  await host.loadHosts();
+  expect(await readFile(`${file}.bak`, 'utf8')).toBe(JSON.stringify({ version: 1, hosts: [] }));
+
+  await writeFile(file, JSON.stringify({ version: 2, hosts: [] }));
+  const payload = await host.loadHosts();
+  expect(await readFile(`${file}.1.bak`, 'utf8')).toBe(JSON.stringify({ version: 2, hosts: [] }));
+  expect(payload.config.hosts).toHaveLength(1);
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(payload.config);
 });

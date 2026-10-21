@@ -74,8 +74,9 @@
   The stylesheet contains only Tailwind directives, without handwritten selectors.
 - Keep native window-control spacing consistent with the tab bar. Interactive
   elements inside draggable regions must use `[-x-app-region:no-drag]`.
-- Validate host configuration and save atomically. Never overwrite an
-  invalid existing configuration file.
+- Validate host configuration and save atomically. Rename an invalid existing
+  config to a numbered `.bak` beside it, then write defaults; never discard it
+  silently.
 - Put UI copy in `locales/en.toml` and use i18next interpolation/plurals. Resources
   are compiled and initialized synchronously for both Lynx runtimes. Use
   `useTranslation()` in components so language changes rerender them; direct

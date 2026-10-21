@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -24,26 +24,54 @@ export function createHostService(
     path: configPath,
     environment,
   });
-  async function loadHosts(): Promise<HostsConfigPayload> {
+  async function readHosts(): Promise<HostsConfig> {
+    return parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8')));
+  }
+  async function writeDefaults(): Promise<HostsConfig> {
+    await mkdir(path.dirname(configPath), { recursive: true });
     try {
-      return payload(parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8'))));
+      await writeFile(configPath, JSON.stringify(defaults, null, 2) + '\n', {
+        flag: 'wx',
+        mode: 0o600,
+      });
     } catch (error) {
-      // An invalid existing file is reported, never replaced by defaults.
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error;
+      }
+    }
+    return readHosts();
+  }
+  async function backupPath(): Promise<string> {
+    let index = 0;
+    while (true) {
+      const candidate = index === 0 ? `${configPath}.bak` : `${configPath}.${index}.bak`;
+      try {
+        await stat(candidate);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return candidate;
+        }
+        throw error;
+      }
+      index += 1;
+    }
+  }
+  async function loadHosts(): Promise<HostsConfigPayload> {
+    let contents: string;
+    try {
+      contents = await readFile(configPath, 'utf8');
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw error;
       }
-      await mkdir(path.dirname(configPath), { recursive: true });
-      try {
-        await writeFile(configPath, JSON.stringify(defaults, null, 2) + '\n', {
-          flag: 'wx',
-          mode: 0o600,
-        });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-          throw error;
-        }
-      }
-      return payload(parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8'))));
+      return payload(await writeDefaults());
+    }
+    try {
+      return payload(parseHostsConfig(JSON.parse(contents)));
+    } catch {
+      // Keep the broken file beside the config, then start from defaults.
+      await rename(configPath, await backupPath());
+      return payload(await writeDefaults());
     }
   }
   async function saveHosts(value: HostsConfig): Promise<HostsConfigPayload> {
