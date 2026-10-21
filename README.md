@@ -238,9 +238,10 @@ TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
 - 左下角齿轮打开设置：一级菜单分为主机和显示。主机页用纵向列表管理 workspace，
   悬停行显示删除按钮，删除前用 popover 二次确认；右侧内容区复用现有表单并编辑 tmux 前缀。
   配置至少保留一个 workspace，删除会释放该 workspace 的会话。
-- workspace 上的右键菜单提供编辑和删除，编辑会打开同一设置面板。显示页放置 i18n
+- workspace 不再有右键菜单：编辑和删除都在设置的主机列表里完成。显示页放置 i18n
   （界面语言）选项，目前只有 English。
 - 配置分为本地和 SSH，远程显示 Host；两者都可以选择检测到的 Shell 或输入自定义命令。
+  主机类型在创建后固定，编辑器不会允许再切换。
 - Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
   远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
 - Workspace 设置使用 **Default tab**（JSON 字段 `defaultTab`）选择加号创建的 tab 类型：

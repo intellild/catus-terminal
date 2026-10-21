@@ -100,34 +100,6 @@ test('English TOML translations render with correct plurals in Lynx', async () =
   await expectSummary('0 workspaces open · 0 tabs');
 });
 
-// TODO: re-enable after switching editor targets no longer times out on the SSH Host field.
-test.skip('workspace modal switches local and SSH fields with a command preview', async () => {
-  await app.automation('workspace-test').rightClick();
-  await app.automation('workspace-menu-edit').tap();
-  await waitFor('local shell select', () => app.automation('profile-shell').node());
-  await expectScreenshot(
-    'workspace-editor-local',
-    await app.automation('workspace-editor-form').screenshot(),
-  );
-  await app.automation('close-settings').tap();
-  await app.automation('workspace-other').rightClick();
-  await app.automation('workspace-menu-edit').tap();
-  await waitFor('SSH host input', () => app.automation('profile-host').node());
-  expect(await app.automation('profile-shell').node()).toBeDefined();
-  expect(await app.automation('ssh-command-preview').node()).toBeDefined();
-  await expectScreenshot(
-    'workspace-editor-ssh',
-    await app.automation('workspace-editor-form').screenshot(),
-  );
-  await app.automation('workspace-type-local').tap();
-  await waitFor('local shell select', () => app.automation('profile-shell').node());
-  expect(await app.automation('profile-host').node()).toBeUndefined();
-  await app.automation('close-settings').tap();
-  await waitFor('closed modal', async () =>
-    !(await app.automation('profile-shell').node()) ? true : undefined,
-  );
-});
-
 test('SFTP browser uses native directory APIs and keeps terminal ownership separate', async () => {
   const surface = (await app.automation('terminal-surface').node())!;
   await app.automation('workspace-other').tap();
@@ -198,8 +170,8 @@ test('SFTP browser uses native directory APIs and keeps terminal ownership separ
 });
 
 test('shell Select detects local and remote candidates and exposes custom command input', async () => {
-  await app.automation('workspace-test').rightClick();
-  await app.automation('workspace-menu-edit').tap();
+  await app.automation('open-settings').tap();
+  await app.automation('settings-host-test').tap();
   await waitFor('local shell select', () => app.automation('profile-shell').node());
   await app.automation('profile-shell').tap();
   await app.automation('profile-shell-option-1').visibleTarget();
@@ -213,8 +185,8 @@ test('shell Select detects local and remote candidates and exposes custom comman
     await app.automation('workspace-editor-form').screenshot(),
   );
   await app.automation('close-settings').tap();
-  await app.automation('workspace-other').rightClick();
-  await app.automation('workspace-menu-edit').tap();
+  await app.automation('open-settings').tap();
+  await app.automation('settings-host-other').tap();
   await waitFor('remote Host field', () => app.automation('profile-host').node());
   await app.automation('profile-shell').tap();
   // The SSH fixture reports zsh and bash. This waits for the real host process
@@ -231,44 +203,11 @@ test('shell Select detects local and remote candidates and exposes custom comman
   await waitFor('remote custom command input', () => app.automation('profile-command').node());
 });
 
-// TODO: re-enable after full-suite DevTool discovery remains available following runtime exits.
-test.skip('dock plus creates a workspace; right-click edits and deletes only the target workspace', async () => {
-  await app.automation('add-workspace').tap();
-  await waitFor('new workspace form', () => app.automation('profile-shell').node());
-  await writeFile(
-    '.tmp/e2e/artifacts/workspace-add.actual.png',
-    await app.automation('workspace-editor-form').screenshot(),
-  );
-  await app.automation('save-workspace').tap();
-  await waitFor('new workspace in dock', () => app.automation('workspace-workspace-1').node());
-  expect(await app.sessionExists(2)).toBe(false);
-  await app.automation('workspace-other').rightClick();
-  await app.automation('workspace-menu-edit').visibleTarget();
-  await writeFile(
-    '.tmp/e2e/artifacts/workspace-menu.actual.png',
-    await app.automation('workspace-context-menu').screenshot(),
-  );
-  expect(await app.sessionExists(2)).toBe(false);
-  await app.automation('workspace-menu-edit').tap();
-  await waitFor('inactive SSH workspace editor', () => app.automation('profile-host').node());
-  await app.automation('close-settings').tap();
-  await app.automation('workspace-workspace-1').tap();
-  await waitFor('new workspace terminal', () => app.automation('tab-2').node());
-  expect(await app.sessionExists(2)).toBe(true);
-  await app.automation('workspace-workspace-1').rightClick();
-  await app.automation('workspace-menu-delete').tap();
-  await waitFor('deleted workspace', async () =>
-    !(await app.automation('workspace-workspace-1').node()) ? true : undefined,
-  );
-  expect(await app.sessionExists(2)).toBe(false);
-  expect(await app.sessionExists(1)).toBe(true);
-});
-
 // TODO: re-enable after windowless Select hit-testing and composed screenshots work.
 // Native mouse clicks work, but DevTool cannot reliably hit the mounted options.
 test.skip('Popover anchors the Select, escapes the form scroll view and dismisses on outside taps', async () => {
-  await app.automation('workspace-test').rightClick();
-  await app.automation('workspace-menu-edit').tap();
+  await app.automation('open-settings').tap();
+  await app.automation('settings-host-test').tap();
   await app.automation('profile-shell').tap();
   await app.automation('profile-shell-option-1').visibleTarget();
   const trigger = (await app.automation('profile-shell').node())!;
@@ -318,38 +257,7 @@ test.skip('Popover anchors the Select, escapes the form scroll view and dismisse
   );
   expect(await app.automation('profile-shell').node()).toBeDefined();
   await app.automation('close-settings').tap();
-  await app.automation('workspace-other').rightClick();
-  await app.automation('workspace-menu-edit').visibleTarget();
-  await app.tap('.workspace-menu-dismiss');
-  await waitFor('closed context menu', async () =>
-    !(await app.automation('workspace-context-menu').node()) ? true : undefined,
-  );
   expect(await app.sessionExists(2)).toBe(false);
-});
-
-// TODO: re-enable after full-suite DevTool discovery is stable; isolated execution currently passes.
-test.skip('workspace menus dismiss outside and edit the workspace that owns the instance', async () => {
-  for (const id of ['test', 'other', 'test']) {
-    await app.automation(`workspace-${id}`).rightClick();
-    await app.automation('workspace-menu-edit').visibleTarget();
-    await writeFile(`.tmp/e2e/artifacts/workspace-menu-${id}.actual.png`, await app.screenshot());
-    await app.tap('.workspace-menu-dismiss');
-    await waitFor('dismissed workspace menu', async () =>
-      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
-    );
-  }
-  for (const [id, name] of [
-    ['test', 'Test'],
-    ['other', 'Other'],
-  ]) {
-    await app.automation(`workspace-${id}`).rightClick();
-    await app.automation('workspace-menu-edit').tap();
-    expect(await app.automation('profile-name').invoke('getValue', {})).toBe(name);
-    await app.automation('close-settings').tap();
-    await waitFor('closed workspace menu', async () =>
-      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
-    );
-  }
 });
 
 // Capture each editor from a fresh app while the combined switching scenario is skipped.
@@ -357,8 +265,8 @@ test.each([
   ['test', 'workspace-editor-local', 'profile-shell'],
   ['other', 'workspace-editor-ssh', 'profile-host'],
 ])('workspace editor screenshot fixture (%s)', async (id, screenshot, field) => {
-  await app.automation(`workspace-${id}`).rightClick();
-  await app.automation('workspace-menu-edit').tap();
+  await app.automation('open-settings').tap();
+  await app.automation(`settings-host-${id}`).tap();
   await app.automation(field).visibleTarget();
   await expectScreenshot(screenshot, await app.automation('workspace-editor-form').screenshot());
 });

@@ -3,53 +3,25 @@ import '../../runtime';
 import { useAtomSet, useAtomValue } from '@effect/atom-react';
 import { workspaceViewAtom } from '../../state/sessionViews';
 import { sessionActionsAtom } from '../../state/sessionActions';
-import { memo, useState } from '@lynx-js/react';
+import { memo } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
-import { ContextMenu, useContextMenuTrigger } from '../ui/ContextMenu';
-import { WorkspaceContextMenu } from './WorkspaceContextMenu';
 import { Popover, PopoverAnchor, usePopoverHoverTrigger, PopoverContent } from '../ui/Popover';
 
 export const WorkspaceItem = memo(function WorkspaceItem({ id }: { id: string }) {
-  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <>
-      <Popover>
-        <WorkspaceItemContent
-          id={id}
-          onContextMenu={(point) => {
-            setPoint(point);
-            setMenuOpen(true);
-          }}
-          onSelect={() => setMenuOpen(false)}
-        />
-      </Popover>
-      <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <WorkspaceContextMenu id={id} point={point} onEdit={() => setMenuOpen(false)} />
-      </ContextMenu>
-    </>
+    <Popover>
+      <WorkspaceItemContent id={id} />
+    </Popover>
   );
 });
 
-function WorkspaceItemContent({
-  id,
-  onContextMenu,
-  onSelect,
-}: {
-  id: string;
-  onContextMenu(point: { x: number; y: number }): void;
-  onSelect(): void;
-}) {
+function WorkspaceItemContent({ id }: { id: string }) {
   const { workspace, active, running } = useAtomValue(workspaceViewAtom(id));
   const dispatch = useAtomSet(sessionActionsAtom);
   const { t } = useTranslation();
   const hover = usePopoverHoverTrigger();
-  const menu = useContextMenuTrigger(({ x, y }) => {
-    hover.close();
-    onContextMenu({ x, y });
-  });
   if (!workspace) {
     return null;
   }
@@ -65,7 +37,6 @@ function WorkspaceItemContent({
           ref={hover.ref}
           bindmouseenter={hover.onMouseEnter}
           bindmouseleave={hover.onMouseLeave}
-          bindmousedown={menu.onMouseDown}
           data-automation-id={`workspace-${workspace.id}`}
           accessibility-label={workspace.name}
           className={cn(
@@ -74,7 +45,6 @@ function WorkspaceItemContent({
           )}
           bindtap={() => {
             hover.close();
-            onSelect();
             dispatch({ type: 'openWorkspace', id });
           }}
         >

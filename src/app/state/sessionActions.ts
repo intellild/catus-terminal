@@ -212,6 +212,10 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       if (!editor.draft || editor.saving) {
         return;
       }
+      // The host type is chosen once; changing it would invalidate the profile.
+      if (action.field === 'type' && !editor.draft.isNew) {
+        return;
+      }
       const { field, value } = action;
       get.set(editorAtom, {
         ...editor,

@@ -2,22 +2,11 @@ import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@rstest/core';
 import { LynxApp, waitFor } from '../support/lynx';
 
-test('covered menus and Select keep their layout and dismiss correctly in a native window', async () => {
+test('covered dialogs and Select keep their layout and dismiss correctly in a native window', async () => {
   const app = new LynxApp();
   try {
     // Cover views use native overlay surfaces; exercise the real NSView host.
     await app.start({ windowless: false });
-    await app.automation('workspace-test').rightClick();
-    await app.automation('workspace-menu-edit').visibleTarget();
-    await writeFile(
-      '.tmp/e2e/artifacts/covered-menu.png',
-      await app.automation('workspace-context-menu').screenshot(),
-    );
-    await app.tap('.workspace-menu-dismiss');
-    await waitFor('dismissed covered menu', async () =>
-      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
-    );
-
     await app.automation('open-settings').tap();
     await app.automation('settings-dialog').visibleTarget();
     await app.automation('add-workspace').tap();
