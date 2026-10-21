@@ -1,9 +1,9 @@
 # Catus Terminal
 
 使用 Lynx UI 实现的桌面终端界面，参考 Opera 的 workspace 与 tab 布局。
-左侧 dock 放置可配置的终端类型，每个 workspace 保留自己的 terminal tabs；
+左侧 dock 放置可配置的终端类型，每个 host 保留自己的 terminal tabs；
 内容区已接入 portable-pty、Alacritty 字符网格和 Rust wgpu atlas 渲染。
-每个 host（workspace）可选择默认 tab 类型（普通 shell、tmux 或 SFTP），顶部加号按钮组
+每个 host 可选择默认 tab 类型（普通 shell、tmux 或 SFTP），顶部加号按钮组
 也可直接创建另外两种 tab；tmux tab 会在 terminal 自己的标题栏中显示 session 窗口。
 tmux 按钮上的角标显示目标机器的 session 数量，右键可选择 attach 或关闭 session；
 左下角设置按钮提供 host（含 tmux 前缀）与显示（i18n）设置。
@@ -16,8 +16,8 @@ pnpm dev:web
 pnpm build:web
 ```
 
-打开终端输出的 `Preview` 地址。Web 模式复用 tab、workspace、设置弹窗和状态栏，
-内容区保持空白，不需要编译 Rust 或启动 Lynxtron。配置使用内存中的默认 workspace，
+打开终端输出的 `Preview` 地址。Web 模式复用 tab、host、设置弹窗和状态栏，
+内容区保持空白，不需要编译 Rust 或启动 Lynxtron。配置使用内存中的默认 host，
 支持编辑、新建和删除；刷新后恢复默认值，不读写桌面配置。Shell 候选不做系统检测，
 可以选择默认 Shell 或自定义命令。Web 模式不启动 PTY 或 SSH/SFTP 连接。
 构建产物位于 `dist/web/main.web.bundle`。
@@ -25,16 +25,16 @@ pnpm build:web
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
 构建与测试将 React hooks 映射到 ReactLynx。`components/app-layout.tsx` 导出
 布局组件，由 `app.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
-首帧渲染窗口骨架。tab、workspace 列表、内容和状态栏各有独立的
-`<background-only>` 边界及首帧 fallback；设置 Dialog 与新建/编辑按钮一起组合在 workspace 区域内。
+首帧渲染窗口骨架。tab、host 列表、内容和状态栏各有独立的
+`<background-only>` 边界及首帧 fallback；设置 Dialog 与新建/编辑按钮一起组合在 host 区域内。
 `app.tsx` 在两个线程中都使用同一层
 `state/session-provider.tsx`，保持首屏到后台接管时的组件树结构一致。
 Provider 精确导入 `@effect/atom-react/RegistryContext`，各区域继承应用级 registry；
 主线程只创建空 registry，业务 atom、配置加载及 Node 编码器适配只在 BTS 运行。
 `index.tsx` 在 BTS 入口启动 `state/session-runtime.ts`，不依赖 React 挂载。
-配置加载、保存、workspace/tab/编辑操作由 `session-actions.ts` 的 action atoms 执行；
-全局状态仅保存 workspace ID 顺序和当前 workspace ID；`workspaceAtom(id)` family
-保存每个 workspace 的配置、`tabIds` 和 `activeTabId`，不通过筛选全局 tabs 推导归属。
+配置加载、保存、host/tab/编辑操作由 `session-actions.ts` 的 action atoms 执行；
+全局状态仅保存 host ID 顺序和当前 host ID；`hostAtom(id)` family
+保存每个 host 的配置、`tabIds` 和 `activeTabId`，不通过筛选全局 tabs 推导归属。
 `tabAtom(id)` family 保存 tab 数据，TabItem 只接收 ID 并独立订阅 `tabViewAtom(id)`。
 各区域订阅 `session-views.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
 Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会停止它们。
@@ -48,7 +48,7 @@ Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会�
 <AppLayout>
   <AppLayoutHeader>{/* 原生窗口按钮留白、tab 栏 */}</AppLayoutHeader>
   <AppLayoutBody>
-    <AppLayoutSidebar>{/* workspace 列表 */}</AppLayoutSidebar>
+    <AppLayoutSidebar>{/* host 列表 */}</AppLayoutSidebar>
     <AppLayoutMain>
       <AppLayoutContent>{/* terminal 内容 */}</AppLayoutContent>
       <AppLayoutFooter>{/* 状态栏 */}</AppLayoutFooter>
@@ -60,8 +60,8 @@ Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会�
 UI 样式统一使用 Tailwind CSS v3 和官方 `@lynx-js/tailwind-preset`，通过
 `postcss.config.js` 接入 Rspeedy。`src/app/tailwind.css` 只包含 Tailwind 指令，
 组件通过 `className` 声明样式；`tailwind.config.ts` 扫描 UI 源码，并用
-`satisfies Config` 检查配置类型。运行时的 workspace 颜色和 tab 宽度通过
-CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工具类。
+`satisfies Config` 检查配置类型。运行时的 host 颜色和 tab 宽度通过
+CSS 变量传给 `bg-[var(--host-color)]`、`w-[var(--tab-width)]` 等工具类。
 选中状态使用完整的条件类名，避免动态拼接造成漏生成。
 参见[官方 Tailwind 接入文档](https://lynxjs.org/rspeedy/styling)。
 
@@ -74,13 +74,13 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 
 ```tsx
 <Button variant="ghost" size="icon" bindtap={onAdd}>+</Button>
-<Button disabled={saving} bindtap={onSave}>{t('workspace.save')}</Button>
+<Button disabled={saving} bindtap={onSave}>{t('host.save')}</Button>
 ```
 
 参考 [shadcn Button Group](https://ui.shadcn.com/docs/components/button-group)，
 `ButtonGroup` 用于组合一组执行动作的按钮，支持 `horizontal` / `vertical`
 方向和 `ButtonGroupSeparator`、`ButtonGroupText`。顶部 tab 栏的 `+` 区域使用
-`ButtonGroup`：加号创建 workspace 的默认 tab，旁边的图标按钮分别创建其余 tab 类型。
+`ButtonGroup`：加号创建 host 的默认 tab，旁边的图标按钮分别创建其余 tab 类型。
 
 ```tsx
 <ButtonGroup>
@@ -149,12 +149,12 @@ macOS 默认还会尝试 Xcode 工具链。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
-workspace 设置表单通过项目 UI 组件封装 Lynx 原生 `<input>`。
+host 设置表单通过项目 UI 组件封装 Lynx 原生 `<input>`。
 表单使用 React Hook Form，`FormField` 通过 `useController` 绑定 Lynx 受控组件。
-`src/shared/workspaces.ts` 集中定义配置与表单 Schema，表单通过
+`src/shared/hosts.ts` 集中定义配置与表单 Schema，表单通过
 `Schema.toStandardSchemaV1` 和 `standardSchemaResolver` 显示字段错误。
 Schema 同时将 args JSON 和表单字段转换为启动参数类型，并按 `defaultTab` 校验
-SFTP 只能用于 SSH workspace；Effect registry 保留草稿、Shell 检测及配置保存，
+SFTP 只能用于 SSH host；Effect registry 保留草稿、Shell 检测及配置保存，
 并在保存时用同一 Schema 再次校验。
 
 `src/app/components/ui/` 放置 shadcn 风格的组合组件：`Input` 封装原生
@@ -179,7 +179,7 @@ SFTP 只能用于 SSH workspace；Effect registry 保留草稿、Shell 检测及
 `DialogContent` 自动把遮罩和内容放进共享的 `CoverView`，点击遮罩或关闭按钮关闭；
 `overlayProps.closeOnPress` 和 `showCloseButton` 可关闭对应的默认行为。
 `SettingsDialog` 只挂载一次，连接设置入口、主机列表、删除确认、Shell 检测和保存命令；
-`WorkspaceSettings` 只渲染表单，不依赖 Dialog 或开关/关闭逻辑。
+`HostForm` 只渲染表单，不依赖 Dialog 或开关/关闭逻辑。
 主机类型在创建时选择，编辑已有主机时只读。
 Dialog 内的 Select / Popover 保持更高的浮层层级。
 目前封装显示状态、布局和点击交互，不提供 Escape / Tab 焦点陷阱。
@@ -189,7 +189,7 @@ Popover 的 Anchor / Positioner 负责定位，点击外部区域关闭浮层。
 `lynx.config.ts` 保留 Lynx UI 的主线程模板注册，并将其 `delayFrames` 替换为
 `ui/frames.ts`：由应用现有 MTS RAF 推进 Presence，绕过当前 Lynxtron BTS RAF
 回调不推进的问题。此适配不改变终端的帧调度，不增加 RAF 循环。
-Shell 候选项和菜单操作由业务层传入，通用组件不读取 workspace 状态。
+Shell 候选项和菜单操作由业务层传入，通用组件不读取 host 状态。
 
 需要组合多个样式来源时，通过 `src/app/lib/utils.ts` 的 `cn(...inputs)` 合并 className：
 `clsx` 处理条件和数组，`tailwind-merge` 消除冲突，后传入的样式覆盖默认样式。
@@ -223,63 +223,62 @@ app.tsx → state/session-provider.tsx
   两个线程使用一致的 Provider；主线程 registry 为空，BTS 启动业务 atom
        ↓
 state/session-actions.ts
-  action atom 加载/保存配置，执行 workspace/tab/编辑操作
+  action atom 加载/保存配置，执行 host/tab/编辑操作
        ↓
 state/session-views.ts → components/session-views.tsx
   各区域订阅自己的视图 atom，发送操作指令
        ↓
-TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
+TabBar / HostList / SessionContent / StatusBar / HostForm
   各自接收状态及事件，更新对应区域
 ```
 
-## Workspaces 与配置
+## Hosts 与配置
 
-- 启动应用时自动打开配置中的第一个 workspace，并创建第一个 tab。
-- 首次点击未启动的 workspace 创建 tab；再次点击恢复它上次选中的 tab。
-- 顶部 `+` 按钮组为当前 workspace 创建 tab：加号创建默认 tab，其余图标按钮分别
-  创建 shell、tmux 或 SFTP tab；SFTP 只在 SSH workspace 显示。关闭最后一个 tab 后圆点消失。
-- 圆点表示该 workspace 有打开的 tab，当前不表示真实进程存活。
-- 左下角齿轮打开设置：一级菜单分为主机和显示。主机页用纵向列表管理 workspace，
+- 启动应用时自动打开配置中的第一个 host，并创建第一个 tab。
+- 首次点击未启动的 host 创建 tab；再次点击恢复它上次选中的 tab。
+- 顶部 `+` 按钮组为当前 host 创建 tab：加号创建默认 tab，其余图标按钮分别
+  创建 shell、tmux 或 SFTP tab；SFTP 只在 SSH host 显示。关闭最后一个 tab 后圆点消失。
+- 圆点表示该 host 有打开的 tab，当前不表示真实进程存活。
+- 左下角齿轮打开设置：一级菜单分为主机和显示。主机页用纵向列表管理 host，
   悬停行显示删除按钮，删除前用 popover 二次确认；右侧内容区复用现有表单并编辑 tmux 前缀。
-  配置至少保留一个 workspace，删除会释放该 workspace 的会话。
-- workspace 不再有右键菜单：编辑和删除都在设置的主机列表里完成。显示页放置 i18n
+  配置至少保留一个 host，删除会释放该 host 的会话。
+- host 不再有右键菜单：编辑和删除都在设置的主机列表里完成。显示页放置 i18n
   （界面语言）选项，目前只有 English。
 - 配置分为本地和 SSH，远程显示 Host；两者都可以选择检测到的 Shell 或输入自定义命令。
   主机类型在创建后固定，编辑器不会允许再切换。
 - Shell 候选项由 Effect atom 异步管理。本地读取 `/etc/shells` 并检查可执行权限，
   远程通过 SSH 检测；Host 输入防抖 400ms，SSH 检测超时 8 秒，失败可重试。
-- Workspace 设置使用 **Default tab**（JSON 字段 `defaultTab`）选择加号创建的 tab 类型：
-  `shell`、`tmux` 或 `sftp`，默认 `shell`。SFTP 只能用于 SSH workspace。
-  tmux 不再是 workspace 开关，而是每个 tab 独立的启动类型。
+- Host 设置使用 **Default tab**（JSON 字段 `defaultTab`）选择加号创建的 tab 类型：
+  `shell`、`tmux` 或 `sftp`，默认 `shell`。SFTP 只能用于 SSH host。
+  tmux 不再是 host 开关，而是每个 tab 独立的启动类型。
 - 配置修改用于新建 tab，已运行的 tab 保留启动参数；tab 状态不跨应用重启保存。
-- tmux tab 使用 tmux control mode，本地使用本机 tmux，SSH workspace 使用远端 tmux，
+- tmux tab 使用 tmux control mode，本地使用本机 tmux，SSH host 使用远端 tmux，
   目标机器需安装 tmux 3.2 或更新版本。catus 使用独立的 `-L catus` socket，不干扰
   用户自己的 tmux；每个 host 可配置 session 前缀（JSON `tmuxPrefix`，默认 `catus-`），
-  Shell、自定义命令和工作目录仍由 workspace 配置决定。
+  Shell、自定义命令和工作目录仍由 host 配置决定。
 - 打开 tmux tab 时优先 attach 目标机器最近使用的 session；只有机器上没有任何 session
   时才新建 `<prefix>0`。`-CC attach-session` 之后 native 通过
   `display-message -p '#{session_name}'` 确认实际 session 名称，再列出并绑定窗口，
   因此没有本地 session 缓存时也能 attach tmux 的默认目标。
 - 加号按钮上的角标显示当前 host 的 session 数量；registry 每 10 秒轮询，
-  workspace/tab 变化和菜单打开时立即刷新。右键打开 session 菜单：点击行 attach 对应
+  host/tab 变化和菜单打开时立即刷新。右键打开 session 菜单：点击行 attach 对应
   session，行悬停显示关闭按钮，菜单底部新建下一个空闲的 `<prefix>N`。
 - 关闭 terminal tab 只 detach，tmux session 继续运行；结束 session 使用菜单中的关闭按钮。
   窗口显示在 terminal 标题栏：点击切换窗口，`+` 新建窗口，窗口多于一个时可关闭。
   窗口名称和激活状态由 native session 提供，`%window-add`、`%window-renamed`、
   `%window-close` 等 control-mode 通知保持同步。退出应用同样只断开控制连接。
   例如可以在应用外通过 `tmux -L catus attach -t catus-0` 连接对应 session。
-  旧配置的 `tmux` / `tmuxSessionName` 字段会在读取时迁移为 `defaultTab: "tmux"` 并被移除。
 
-默认配置模板为 `config/workspaces.json`，只内置用户默认 Shell 的本地配置；workspace 类型分为本地和 SSH。
-首次运行复制到 `~/.config/catus-terminal/workspaces.json`；也可通过
-`CATUS_WORKSPACES_FILE=/absolute/path/workspaces.json pnpm start` 指定配置位置。
+默认配置模板为 `config/hosts.json`，只内置用户默认 Shell 的本地配置；host 类型分为本地和 SSH。
+首次运行复制到 `~/.config/catus-terminal/hosts.json`；也可通过
+`CATUS_HOSTS_FILE=/absolute/path/hosts.json pnpm start` 指定配置位置。
 设置面板显示实际路径。保存前通过 Effect Schema 校验，以临时文件和 rename
 写入 JSON；已有配置损坏时显示错误，不会覆盖。
 
 ```json
 {
   "version": 1,
-  "workspaces": [
+  "hosts": [
     {
       "id": "shell",
       "name": "Shell",
@@ -297,7 +296,7 @@ TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
 `$SHELL` 使用用户账户默认 shell，`~` / `~/...` 展开为用户主目录。
 `shell` 保存 `$SHELL`、检测到的绝对路径或 `custom`。选定的 Shell 以 `-l` 启动；
 `custom` 使用 `command` 字段，本地通过默认 Shell 执行，远程作为 SSH 命令执行。
-SSH 的 `remoteCommand` 可在选定 Shell 前运行额外命令。旧配置的 executable/args 仍然兼容。
+SSH 的 `remoteCommand` 可在选定 Shell 前运行额外命令。
 编辑 JSON 后重启应用加载。真实界面截图见 [Shell](docs/workspaces-shell.jpeg)、
 [多个 tabs](docs/workspaces-tabs.jpeg)，实测结果见 [验证报告](docs/workspaces-verification.json)。
 
@@ -363,12 +362,12 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell。
 SessionContent 按 active tab 组装面板：TmuxPanel 作为稳定的 terminal 会话外壳，
 内部嵌入 TerminalPanel；tmux tab 时在 header 显示窗口 tabs，shell tab 复用同一外壳。
-SftpPanel 和 PanelPlaceholder 分别承载 SFTP、loading/空 workspace/配置错误。面板基于 `ui/panel.tsx` 的 Panel、PanelHeader、PanelTitle、
+SftpPanel 和 PanelPlaceholder 分别承载 SFTP、loading/空 host/配置错误。面板基于 `ui/panel.tsx` 的 Panel、PanelHeader、PanelTitle、
 PanelActions、PanelContent 和 PanelFooter 组合，布局与 shadcn 的分段结构一致。
 TerminalView 和 NativeTerminalView 在空/错误/SFTP 状态通过隐藏的 TerminalPanel 保持挂载，
 切换回 terminal 时复用同一个 native element 并更新 terminal-id；session 和 renderer 不随面板重建。
 tab ID 就是 session ID；全局 `sessionRegistry` 中的 `sessionAtom` 写入时统一同步 Rust session：
-创建 tab 时创建 session，关闭 tab 或删除 workspace 时调用 `closeTerminalSession(id)`。
+创建 tab 时创建 session，关闭 tab 或删除 host 时调用 `closeTerminalSession(id)`。
 tmux tab 的标题栏由 `components/terminal/tmux-tab-bar.tsx` 组合。窗口快照保存在
 `state/tmux.ts` 的 `tmuxSessionAtom` family 中（按 session ID，`keepAlive` 全局存活）；
 `tmuxSyncAtom` 在应用级 registry 中轮询 `getTmuxSessionInfo(id)`，与 Rust `TmuxClient`
@@ -383,14 +382,14 @@ loading 和配置错误不会卸载 native element。字体逐字符栅格化；
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
 
 `src/app/__tests__/terminal-sessions.test.ts` 不挂载 React，验证 atom 分配数字 ID、关闭后台 tab、
-删除 workspace、创建失败和 registry 释放；UI 测试验证卸载/重新挂载保留 session。
+删除 host、创建失败和 registry 释放；UI 测试验证卸载/重新挂载保留 session。
 
 `native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
 `terminal_pty.rs` 验证真实 shell 往返、resize、退出；`renderer.rs` 验证真实网格
 在 Metal 上绘制和回读、颜色与 atlas 复用。`test:napi` 同时验证默认 shell 导出。
 数字 ID、props 切换、session renderer 保留及真实 layout resize 见
 [session 验证报告](docs/terminal-session-verification.json)；该报告记录单一 view 重构之前的实现。
-当前 UI 回归测试还验证切换、空 workspace、重建 tab 和错误重试过程中始终复用同一 native element。
+当前 UI 回归测试还验证切换、空 host、重建 tab 和错误重试过程中始终复用同一 native element。
 实际保留元素引用的 ID 切换及 ID 0 解绑验证见
 [持续挂载 view 验证报告](docs/terminal-persistent-view-verification.json)，记录的是 native VSync 重构之前的实现。
 实际 PTY 输出见 [截图](docs/terminal-pty.jpeg) 和 [验证报告](docs/terminal-pty-verification.json)。
@@ -469,8 +468,8 @@ tests/support/screenshots.ts
   PNG 解码 → pixelmatch（包含抗锯齿像素）→ 基准 / actual / diff
 ```
 
-`tests/e2e/terminal.test.ts` 验证首个 workspace 启动、native key 输入、tab 独立 PTY
-和保留内容、workspace 首次激活、关闭最后一个 tab 后解绑并移除 dock 圆点。
+`tests/e2e/terminal.test.ts` 验证首个 host 启动、native key 输入、tab 独立 PTY
+和保留内容、host 首次激活、关闭最后一个 tab 后解绑并移除 dock 圆点。
 每个用例独立启动应用，在临时目录写配置，不修改用户配置。
 基准在 `tests/e2e/__screenshots__/<platform>-<arch>/`；默认缺失基准或尺寸变化直接失败。
 截图目录暂时加入 gitignore，本地基准保留；新 checkout 需先运行 `pnpm run test:e2e:update` 并检查生成的图片，再运行截图对比。
@@ -618,15 +617,15 @@ Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 ## 代码位置
 
 ```text
-config/workspaces.json                             内置终端类型与默认 shell 配置
-src/shared/workspaces.ts                           Effect Schema 校验、启动参数解析与 host 类型
+config/hosts.json                                  内置终端类型与默认 shell 配置
+src/shared/hosts.ts                                Effect Schema 校验、启动参数解析与 host 类型
 src/app/app.tsx                                    组合静态 layout 和各区域的后台边界
 src/app/components/app-layout.tsx                  主线程首帧布局骨架与窗口 tab 栏
-src/app/components/                                tab、workspace、内容、状态栏、设置的展示组件
+src/app/components/                                tab、host、内容、状态栏、设置的展示组件
 src/app/state/session-provider.tsx                 两个线程共有的唯一 Effect registry Provider
 src/app/components/session-views.tsx               直接渲染的后台区域组件，订阅 atom 并绑定事件
 src/app/state/session-runtime.ts                   BTS 入口启动的独立 atom runtime
-src/app/state/session-actions.ts                   配置加载、保存与 workspace/tab/设置操作
+src/app/state/session-actions.ts                   配置加载、保存与 host/tab/设置操作
 src/app/state/session-views.ts                     各 UI 区域的派生视图 atom
 src/app/runtime.ts                                 preload 的 Node 编码器构造函数适配
 src/app/state/session.ts                           Effect atoms、tab 生命周期和配置编辑状态
@@ -642,7 +641,7 @@ src/app/components/terminal/session-content.tsx    按 active tab 组装各面�
 src/app/components/sftp-panel.tsx                  SFTP 面板
 src/app/components/terminal/tmux-tab-bar.tsx       订阅 tmux 快照并分发标题栏操作
 src/shared/tmux.ts                                 tmux 窗口/session 的 host 类型
-src/main/desktop/workspace-config.ts               Node.js JSON 配置读写与账户默认 shell
+src/main/desktop/host-config.ts                    Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                           创建 LynxWindow
 rsbuild.config.ts                                  pluginLynxtron 启用 AutoLink
 native/
@@ -723,7 +722,7 @@ native terminal 当前只实现 macOS 后端。
 
 ## SFTP 异步接口
 
-已实现本地/SSH workspace 编辑弹窗，以及使用系统 SSH 管道 + russh-sftp 的文件浏览面板。
+已实现本地/SSH host 编辑弹窗，以及使用系统 SSH 管道 + russh-sftp 的文件浏览面板。
 Native 接口使用 napi-rs async Promise，Node main 持有连接并接收异步结果，
 Lynx BTS 使用 `lynxBridge` 请求文件操作。主线程路径已通过 windowless SFTP E2E，
 绕过了 BTS 中的 Node Environment 回调断言；上游根因仍待确认。

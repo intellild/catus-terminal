@@ -17,13 +17,13 @@ mod platform;
 mod sftp;
 mod sftp_api;
 pub use sftp_api::{SftpConnection, SftpEntry, SftpMetadata, SftpOptions, connect_sftp};
+mod host;
 #[cfg(feature = "native-view")]
 mod renderer;
 pub mod terminal_core;
 mod terminal_session;
 #[cfg(feature = "native-view")]
 pub mod text;
-mod workspace;
 pub use terminal_session::{
     TerminalSessionCommand, TerminalSessionInfo, close_terminal_session, close_tmux_window,
     create_terminal_session, create_tmux_window, detach_terminal_session,

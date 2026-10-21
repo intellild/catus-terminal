@@ -15,7 +15,7 @@
 
 - `src/app/`: ReactLynx UI, shared UI components and Effect atom state.
 - `src/main/desktop/`: Node.js host, preload and configuration persistence.
-- `src/shared/` and `config/`: Shared schemas and bundled workspace defaults.
+- `src/shared/` and `config/`: Shared schemas and bundled host defaults.
 - `locales/`: TOML translation resources; currently English only.
 - `native/`: Project-specific Rust/napi-rs crate with statically linked C++.
   Terminal computation, text rendering and platform adapters are separate modules;
@@ -46,15 +46,15 @@
 - Run business state and actions in the application-level Effect registry,
   independently of React. Hooks subscribe to region view atoms and dispatch
   commands; registry reset/dispose owns cancellation and resource cleanup.
-- Store workspace profiles, tab ID lists and active tab IDs in a workspace atom
-  family. Global workspace ordering stores IDs only; never infer membership by
+- Store host profiles, tab ID lists and active tab IDs in a host atom
+  family. Global host ordering stores IDs only; never infer membership by
   filtering all tabs. Tab data lives in its own family and TabItem subscribes by ID.
 - tmux sessions belong to the machine, not the tab: opening a tmux tab attaches the most
   recent session (or `<tmuxPrefix>0` on an empty machine) and closing a tab only detaches.
   Session lists, attach targets, explicit kills and the count badge live in registry atoms
   (`state/tmux-sessions.ts`); components only subscribe and dispatch.
 - Hosts and display preferences share one settings dialog opened from the sidebar
-  (`components/settings/`). The host editor reuses the workspace form; new per-host options
+  (`components/settings/`). The host editor reuses the host form; new per-host options
   belong there, as with `tmuxPrefix`.
 - Never import `effect` from a module the main thread renders. Effect's circular
   initialization leaves `Schema.make` undefined in the MTS bundle, so the MTS script
@@ -67,14 +67,14 @@
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
 - Use `data-automation-id` for test locators. E2E uses `app.automation(id)`;
-  keep workspace, tab and session IDs as business identifiers.
+  keep host, tab and session IDs as business identifiers.
 - Use Tailwind utilities, `cn` when merging class lists and cva for variants.
   Use plain className strings or expressions when no merging is needed. Keep
   conditional classes as complete literals and runtime values in CSS variables.
   The stylesheet contains only Tailwind directives, without handwritten selectors.
 - Keep native window-control spacing consistent with the tab bar. Interactive
   elements inside draggable regions must use `[-x-app-region:no-drag]`.
-- Validate workspace configuration and save atomically. Never overwrite an
+- Validate host configuration and save atomically. Never overwrite an
   invalid existing configuration file.
 - Put UI copy in `locales/en.toml` and use i18next interpolation/plurals. Resources
   are compiled and initialized synchronously for both Lynx runtimes. Use
@@ -88,7 +88,7 @@
   platform adapters include OS headers or handle native surfaces.
 - JS allocates numeric `u32` session IDs; Rust rejects duplicates and reserves 0
   for an unbound view. Atom actions own session creation/deletion. React mounting
-  does not own sessions; tab/workspace closure and registry disposal release them.
+  does not own sessions; tab/host closure and registry disposal release them.
 - Keep the terminal view mounted when switching tabs or showing loading/errors.
   Switch content through `terminal-id`; derive viewport dimensions from native
   layout callbacks. Do not add custom width/height or active props, or remount

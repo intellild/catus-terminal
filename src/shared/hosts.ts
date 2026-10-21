@@ -10,8 +10,8 @@ const Host = NonBlank.check(
   Schema.isPattern(/^(?![\s-])(?!.*[\r\n\0])[\s\S]+$/, { message: 'validation.host' }),
 );
 const isHost = Schema.is(Host);
-const HostCheck = Schema.makeFilter<{ type?: string; host?: string }>((workspace) =>
-  workspace.type !== 'ssh' || isHost(workspace.host)
+const HostCheck = Schema.makeFilter<{ type?: string; host?: string }>((host) =>
+  host.type !== 'ssh' || isHost(host.host)
     ? undefined
     : { path: ['host'], issue: 'validation.host' },
 );
@@ -19,13 +19,13 @@ const HostCheck = Schema.makeFilter<{ type?: string; host?: string }>((workspace
 const TmuxPrefix = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9_-]+$/, { message: 'validation.tmuxPrefix' }),
 );
-const DefaultTabCheck = Schema.makeFilter<{ type?: string; defaultTab?: TabKind }>((workspace) =>
-  workspace.defaultTab !== 'sftp' || workspace.type === 'ssh'
+const DefaultTabCheck = Schema.makeFilter<{ type?: string; defaultTab?: TabKind }>((host) =>
+  host.defaultTab !== 'sftp' || host.type === 'ssh'
     ? undefined
     : { path: ['defaultTab'], issue: 'validation.sftpDefault' },
 );
 const fields = {
-  id: NonBlank.check(Schema.isPattern(/^[a-zA-Z0-9_-]+$/, { message: 'validation.workspaceId' })),
+  id: NonBlank.check(Schema.isPattern(/^[a-zA-Z0-9_-]+$/, { message: 'validation.hostId' })),
   name: NonBlank,
   icon: NonBlank,
   color: Schema.String.check(
@@ -47,12 +47,10 @@ const fields = {
   // Sessions created for this host start with this prefix; old files omit it.
   tmuxPrefix: Schema.optional(TmuxPrefix),
 };
-export const WorkspaceSettingsSchema = Schema.Struct(fields)
-  .check(HostCheck)
-  .check(DefaultTabCheck);
+export const HostProfileSchema = Schema.Struct(fields).check(HostCheck).check(DefaultTabCheck);
 
 // The form keeps string values for Lynx controls; decoding produces launch settings.
-export const WorkspaceFormSchema = Schema.Struct({
+export const HostFormSchema = Schema.Struct({
   ...fields,
   name: Schema.Trim.pipe(Schema.decodeTo(fields.name)),
   icon: Schema.Trim.pipe(Schema.decodeTo(fields.icon)),
@@ -68,68 +66,47 @@ export const WorkspaceFormSchema = Schema.Struct({
 })
   .check(HostCheck)
   .check(DefaultTabCheck);
-export type WorkspaceFormValues = typeof WorkspaceFormSchema.Encoded;
+export type HostFormValues = typeof HostFormSchema.Encoded;
 
-export const WorkspaceConfigSchema = Schema.Struct({
+export const HostsConfigSchema = Schema.Struct({
   version: Schema.Literal(1),
-  workspaces: Schema.Array(WorkspaceSettingsSchema).check(Schema.isMinLength(1)),
+  hosts: Schema.Array(HostProfileSchema).check(Schema.isMinLength(1)),
 }).check(
   Schema.makeFilter((config) => {
     const ids = new Set<string>();
     const issues: Schema.FilterIssue[] = [];
-    config.workspaces.forEach((workspace, index) => {
-      if (ids.has(workspace.id)) {
+    config.hosts.forEach((host, index) => {
+      if (ids.has(host.id)) {
         issues.push({
-          path: ['workspaces', index, 'id'],
-          issue: `Duplicate workspace ID: ${workspace.id}`,
+          path: ['hosts', index, 'id'],
+          issue: `Duplicate host ID: ${host.id}`,
         });
       }
-      ids.add(workspace.id);
+      ids.add(host.id);
     });
     return issues;
   }),
 );
-export type WorkspaceSettings = typeof WorkspaceSettingsSchema.Type;
-export type WorkspaceConfig = typeof WorkspaceConfigSchema.Type;
+export type HostProfile = typeof HostProfileSchema.Type;
+export type HostsConfig = typeof HostsConfigSchema.Type;
 
-// Version 1 used a per-workspace "Use tmux" flag. Tab kinds now select tmux
-// per tab; migrate the old flag and drop the retired fields before decoding.
-function migrateWorkspace(value: unknown): unknown {
-  if (!value || typeof value !== 'object') {
-    return value;
-  }
-  const workspace = value as Record<string, unknown>;
-  const { tmux, tmuxSessionName: _tmuxSessionName, ...rest } = workspace;
-  return {
-    ...rest,
-    defaultTab: workspace.defaultTab ?? (tmux === true ? 'tmux' : 'shell'),
-  };
+export function parseHostsConfig(value: unknown): HostsConfig {
+  return Schema.decodeUnknownSync(HostsConfigSchema)(value);
 }
 
-export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
-  if (!value || typeof value !== 'object') {
-    return Schema.decodeUnknownSync(WorkspaceConfigSchema)(value);
-  }
-  const config = value as Record<string, unknown>;
-  const workspaces = Array.isArray(config.workspaces)
-    ? config.workspaces.map(migrateWorkspace)
-    : config.workspaces;
-  return Schema.decodeUnknownSync(WorkspaceConfigSchema)({ ...config, workspaces });
-}
-
-export interface WorkspaceEnvironment {
+export interface HostEnvironment {
   readonly shell: string;
   readonly home: string;
 }
-export interface WorkspaceConfigPayload {
-  readonly config: WorkspaceConfig;
+export interface HostsConfigPayload {
+  readonly config: HostsConfig;
   readonly path: string;
-  readonly environment: WorkspaceEnvironment;
+  readonly environment: HostEnvironment;
 }
-export interface WorkspaceHost extends TmuxSessionHost {
+export interface HostService extends TmuxSessionHost {
   listShells?(destination?: string): Promise<readonly import('./shells').ShellOption[]>;
-  loadWorkspaces(): Promise<WorkspaceConfigPayload>;
-  saveWorkspaces(config: WorkspaceConfig): Promise<WorkspaceConfigPayload>;
+  loadHosts(): Promise<HostsConfigPayload>;
+  saveHosts(config: HostsConfig): Promise<HostsConfigPayload>;
 }
 
 export { resolveLaunch, launchPreview, quoteShell } from './launch';

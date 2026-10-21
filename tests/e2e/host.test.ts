@@ -14,28 +14,28 @@ afterEach(async () => {
   await app.close();
 });
 
-test('workspace Schema validation blocks a blank SSH host and allows a local workspace', async () => {
+test('host Schema validation blocks a blank SSH host and allows a local host', async () => {
   await app.automation('open-settings').tap();
-  await app.automation('add-workspace').tap();
-  await waitFor('workspace Hook Form', () => app.automation('profile-name').node());
-  await app.automation('workspace-type-ssh').tap();
+  await app.automation('add-host').tap();
+  await waitFor('host Hook Form', () => app.automation('profile-name').node());
+  await app.automation('host-type-ssh').tap();
   await waitFor('SSH host field', () => app.automation('profile-host').node());
-  await app.automation('save-workspace').invoke('scrollIntoView', {
+  await app.automation('save-host').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.automation('save-workspace').tap();
+  await app.automation('save-host').tap();
   await waitFor('Schema validation error', () => app.automation('editor-error').node());
-  expect(await app.automation('workspace-workspace-1').node()).toBeUndefined();
-  await writeFile('.tmp/e2e/artifacts/workspace-schema-validation.png', await app.screenshot());
-  await app.automation('workspace-type-local').invoke('scrollIntoView', {
+  expect(await app.automation('host-host-1').node()).toBeUndefined();
+  await writeFile('.tmp/e2e/artifacts/host-schema-validation.png', await app.screenshot());
+  await app.automation('host-type-local').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.automation('workspace-type-local').tap();
-  await app.automation('save-workspace').invoke('scrollIntoView', {
+  await app.automation('host-type-local').tap();
+  await app.automation('save-host').invoke('scrollIntoView', {
     scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
   });
-  await app.automation('save-workspace').tap();
-  await waitFor('saved local workspace', () => app.automation('workspace-workspace-1').node());
+  await app.automation('save-host').tap();
+  await waitFor('saved local host', () => app.automation('host-host-1').node());
   expect(await app.automation('editor-error').node()).toBeUndefined();
 });
 
@@ -91,18 +91,18 @@ test('English TOML translations render with correct plurals in Lynx', async () =
   };
   const expectSummary = (expected: string) =>
     waitFor(expected, async () => ((await summary()) === expected ? true : undefined));
-  await expectSummary('1 workspace open · 1 tab');
+  await expectSummary('1 host open · 1 tab');
   await app.automation('new-tab').tap();
-  await expectSummary('1 workspace open · 2 tabs');
+  await expectSummary('1 host open · 2 tabs');
   await app.automation('close-tab-2').tap();
-  await expectSummary('1 workspace open · 1 tab');
+  await expectSummary('1 host open · 1 tab');
   await app.automation('close-tab-1').tap();
-  await expectSummary('0 workspaces open · 0 tabs');
+  await expectSummary('0 hosts open · 0 tabs');
 });
 
 test('SFTP browser uses native directory APIs and keeps terminal ownership separate', async () => {
   const surface = (await app.automation('terminal-surface').node())!;
-  await app.automation('workspace-other').tap();
+  await app.automation('host-other').tap();
   await waitFor('SSH terminal', () => app.automation('tab-2').node());
   await app.automation('new-sftp-tab').tap();
   await waitFor('remote directory listing', () => app.automation('sftp-entry-0').node());
@@ -182,7 +182,7 @@ test('shell Select detects local and remote candidates and exposes custom comman
   await waitFor('custom command input', () => app.automation('profile-command').node());
   await expectScreenshot(
     'shell-select-local',
-    await app.automation('workspace-editor-form').screenshot(),
+    await app.automation('host-editor-form').screenshot(),
   );
   await app.automation('close-settings').tap();
   await app.automation('open-settings').tap();
@@ -196,7 +196,7 @@ test('shell Select detects local and remote candidates and exposes custom comman
   expect(await app.automation('profile-command').node()).toBeUndefined();
   await expectScreenshot(
     'shell-select-remote',
-    await app.automation('workspace-editor-form').screenshot(),
+    await app.automation('host-editor-form').screenshot(),
   );
   await app.automation('profile-shell').tap();
   await app.automation('profile-shell-option-custom').tap();
@@ -262,11 +262,11 @@ test.skip('Popover anchors the Select, escapes the form scroll view and dismisse
 
 // Capture each editor from a fresh app while the combined switching scenario is skipped.
 test.each([
-  ['test', 'workspace-editor-local', 'profile-shell'],
-  ['other', 'workspace-editor-ssh', 'profile-host'],
-])('workspace editor screenshot fixture (%s)', async (id, screenshot, field) => {
+  ['test', 'host-editor-local', 'profile-shell'],
+  ['other', 'host-editor-ssh', 'profile-host'],
+])('host editor screenshot fixture (%s)', async (id, screenshot, field) => {
   await app.automation('open-settings').tap();
   await app.automation(`settings-host-${id}`).tap();
   await app.automation(field).visibleTarget();
-  await expectScreenshot(screenshot, await app.automation('workspace-editor-form').screenshot());
+  await expectScreenshot(screenshot, await app.automation('host-editor-form').screenshot());
 });

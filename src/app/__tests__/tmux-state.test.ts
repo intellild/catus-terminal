@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
-import { sessionAtom, tabAtom, workspaceAtom } from '../state/session';
+import defaults from '../../../tests/fixtures/hosts.json';
+import { parseHostsConfig } from '../../shared/hosts';
+import { sessionAtom, tabAtom, hostAtom } from '../state/session';
 import { terminalHostAtom } from '../state/terminal-sessions';
 import type { TerminalHost } from '../state/terminal-sessions';
 import {
@@ -14,10 +14,10 @@ import {
 } from '../state/tmux';
 import { closeTmuxSessionAtom, tmuxSessionsAtom } from '../state/tmux-sessions';
 import { sessionActionsAtom } from '../state/session-actions';
-import { workspaceHostAtom } from '../state/workspace-host';
+import { hostServiceAtom } from '../state/host-service';
 import type { TmuxSessionInfo } from '../../shared/tmux';
 
-const profile = parseWorkspaceConfig(defaults).workspaces[0]!;
+const profile = parseHostsConfig(defaults).hosts[0]!;
 const first: TmuxSessionInfo = {
   activeWindowId: '@1',
   windows: [
@@ -36,7 +36,7 @@ let selectTmuxWindow: ReturnType<typeof rstest.fn>;
 let createTmuxWindow: ReturnType<typeof rstest.fn>;
 let closeTmuxWindow: ReturnType<typeof rstest.fn>;
 
-function workspace(tabIds: readonly number[], activeTabId: number | undefined) {
+function host(tabIds: readonly number[], activeTabId: number | undefined) {
   return { profile, tabIds, activeTabId };
 }
 
@@ -56,14 +56,14 @@ beforeEach(() => {
   } satisfies TerminalHost);
   registry.set(sessionAtom, {
     payload: null,
-    workspaceIds: ['w'],
-    activeWorkspaceId: 'w',
+    hostIds: ['w'],
+    activeHostId: 'w',
     nextTab: 8,
   });
-  registry.set(workspaceAtom('w'), workspace([7], 7));
+  registry.set(hostAtom('w'), host([7], 7));
   registry.set(tabAtom(7), {
     id: 7,
-    workspaceId: 'w',
+    hostId: 'w',
     kind: 'tmux',
     number: 7,
     profile,
@@ -93,7 +93,7 @@ test('tmux snapshots are global, polled by session ID and cleared on tab release
   expect(createTmuxWindow).toHaveBeenCalledWith(7);
   expect(closeTmuxWindow).toHaveBeenCalledWith(7, '@2');
 
-  registry.set(workspaceAtom('w'), workspace([], undefined));
+  registry.set(hostAtom('w'), host([], undefined));
   await wait(450);
   expect(registry.get(tmuxSessionAtom(7))).toBeUndefined();
 });
@@ -114,9 +114,9 @@ test('session lists drive the badge, attach targets and explicit session close',
   ];
   const listTmuxSessions = rstest.fn(async () => sessions);
   const killTmuxSession = rstest.fn(async () => {});
-  registry.set(workspaceHostAtom, {
-    loadWorkspaces: rstest.fn(),
-    saveWorkspaces: rstest.fn(),
+  registry.set(hostServiceAtom, {
+    loadHosts: rstest.fn(),
+    saveHosts: rstest.fn(),
     listTmuxSessions,
     killTmuxSession,
   });

@@ -1,6 +1,6 @@
 import type { TabKind } from './tabs';
 import type { TmuxSessionSummary } from './tmux';
-import type { WorkspaceSettings, WorkspaceEnvironment } from './workspaces';
+import type { HostProfile, HostEnvironment } from './hosts';
 
 export const defaultTmuxPrefix = 'catus-';
 
@@ -32,56 +32,54 @@ export function quoteShell(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
-export function resolveLaunch(workspace: WorkspaceSettings, environment: WorkspaceEnvironment) {
+export function resolveLaunch(host: HostProfile, environment: HostEnvironment) {
   const cwd =
-    workspace.cwd === '~'
+    host.cwd === '~'
       ? environment.home
-      : workspace.cwd.startsWith('~/')
-        ? environment.home + workspace.cwd.slice(1)
-        : workspace.cwd;
-  if (workspace.type === 'ssh') {
+      : host.cwd.startsWith('~/')
+        ? environment.home + host.cwd.slice(1)
+        : host.cwd;
+  if (host.type === 'ssh') {
     const shellCommand =
-      !workspace.shell || workspace.shell === '$SHELL'
+      !host.shell || host.shell === '$SHELL'
         ? ''
-        : workspace.shell === 'custom'
-          ? workspace.command.trim()
-          : `exec ${quoteShell(workspace.shell)} -l`;
-    const remoteCommand = [workspace.remoteCommand?.trim(), shellCommand]
-      .filter(Boolean)
-      .join('; ');
+        : host.shell === 'custom'
+          ? host.command.trim()
+          : `exec ${quoteShell(host.shell)} -l`;
+    const remoteCommand = [host.remoteCommand?.trim(), shellCommand].filter(Boolean).join('; ');
     return {
       command: 'ssh',
-      args: ['-t', '--', workspace.host!.trim(), ...(remoteCommand ? [remoteCommand] : [])],
+      args: ['-t', '--', host.host!.trim(), ...(remoteCommand ? [remoteCommand] : [])],
       cwd,
     };
   }
-  if (workspace.shell && workspace.shell !== 'custom') {
+  if (host.shell && host.shell !== 'custom') {
     return {
-      command: workspace.shell === '$SHELL' ? environment.shell : workspace.shell,
+      command: host.shell === '$SHELL' ? environment.shell : host.shell,
       args: ['-l'],
       cwd,
     };
   }
-  if (workspace.command === '$SHELL') {
-    return { command: environment.shell, args: workspace.args, cwd };
+  if (host.command === '$SHELL') {
+    return { command: environment.shell, args: host.args, cwd };
   }
   // Legacy profiles retain their executable + argv. New command-line fields run through the shell.
-  return workspace.args.length
-    ? { command: workspace.command, args: workspace.args, cwd }
-    : { command: environment.shell, args: ['-lc', workspace.command], cwd };
+  return host.args.length
+    ? { command: host.command, args: host.args, cwd }
+    : { command: environment.shell, args: ['-lc', host.command], cwd };
 }
 
 export function launchPreview(
-  workspace: WorkspaceSettings,
-  environment: WorkspaceEnvironment,
-  kind: TabKind = workspace.defaultTab,
+  host: HostProfile,
+  environment: HostEnvironment,
+  kind: TabKind = host.defaultTab,
 ): string {
   if (kind === 'tmux') {
-    const session = tmuxSessionName(workspace.tmuxPrefix ?? defaultTmuxPrefix, 0);
-    const launch = resolveTmuxLaunch(workspace, environment, 1, 'catus', session);
+    const session = tmuxSessionName(host.tmuxPrefix ?? defaultTmuxPrefix, 0);
+    const launch = resolveTmuxLaunch(host, environment, 1, 'catus', session);
     return [launch.program, ...launch.args].map(quoteShell).join(' ');
   }
-  const launch = resolveLaunch(workspace, environment);
+  const launch = resolveLaunch(host, environment);
   return [launch.command, ...launch.args].map(quoteShell).join(' ');
 }
 
@@ -89,32 +87,29 @@ export function launchPreview(
 // tmux's most recently used session; only a machine without any session gets a
 // new `prefix + index` one. Closing a tab detaches, so tmux work outlives it.
 export function resolveTmuxLaunch(
-  workspace: WorkspaceSettings,
-  environment: WorkspaceEnvironment,
+  host: HostProfile,
+  environment: HostEnvironment,
   tabId: number,
   socket = 'catus',
   target?: string,
 ) {
-  const launch = resolveLaunch(workspace, environment);
-  const session = target ?? tmuxSessionName(workspace.tmuxPrefix ?? defaultTmuxPrefix, 0);
+  const launch = resolveLaunch(host, environment);
+  const session = target ?? tmuxSessionName(host.tmuxPrefix ?? defaultTmuxPrefix, 0);
   const window = `tab-${tabId}`;
-  const remote = workspace.type === 'ssh';
+  const remote = host.type === 'ssh';
   const shell =
-    !workspace.shell || workspace.shell === '$SHELL'
+    !host.shell || host.shell === '$SHELL'
       ? ''
-      : workspace.shell === 'custom'
-        ? workspace.command.trim()
-        : `exec ${quoteShell(workspace.shell)} -l`;
+      : host.shell === 'custom'
+        ? host.command.trim()
+        : `exec ${quoteShell(host.shell)} -l`;
   const command = remote
-    ? [
-        workspace.remoteCommand?.trim(),
-        shell || (workspace.remoteCommand?.trim() ? 'exec "$SHELL" -l' : ''),
-      ]
+    ? [host.remoteCommand?.trim(), shell || (host.remoteCommand?.trim() ? 'exec "$SHELL" -l' : '')]
         .filter(Boolean)
         .join('; ')
     : [launch.command, ...launch.args].map(quoteShell).join(' ');
   // Remote ~ is expanded by tmux, not using the local account's home directory.
-  const cwd = remote ? workspace.cwd.replace(/^~(?=\/|$)/, '#{HOME}') : launch.cwd;
+  const cwd = remote ? host.cwd.replace(/^~(?=\/|$)/, '#{HOME}') : launch.cwd;
   const tmux = { session, window, command, cwd };
   const base = ['tmux', '-L', socket];
   const args = [
@@ -150,7 +145,7 @@ export function resolveTmuxLaunch(
   return remote
     ? {
         program: 'ssh',
-        args: ['-tt', '--', workspace.host!.trim(), startup],
+        args: ['-tt', '--', host.host!.trim(), startup],
         cwd: launch.cwd,
         tmux,
       }

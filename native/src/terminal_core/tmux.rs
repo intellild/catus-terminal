@@ -224,7 +224,7 @@ impl TmuxClient {
         self.size = size;
         if let Some(window) = &self.window {
             // Each tab owns a window. Explicit window sizing avoids one tab's
-            // viewport changing every other window attached to the workspace.
+            // viewport changing every other window attached to the host.
             self.command(
                 format!(
                     "resize-window -t {window} -x {} -y {}",

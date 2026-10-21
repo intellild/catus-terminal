@@ -10,11 +10,11 @@ import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import * as Schema from 'effect/Schema';
 import * as SchemaIssue from 'effect/SchemaIssue';
-import { WorkspaceFormSchema } from '../../../shared/workspaces';
+import { HostFormSchema } from '../../../shared/hosts';
 import type { ShellOption } from '../../../shared/shells';
-import type { WorkspaceEnvironment } from '../../../shared/workspaces';
+import type { HostEnvironment } from '../../../shared/hosts';
 import { launchPreview } from '../../../shared/launch';
-import type { WorkspaceDraft } from '../../state/session';
+import type { HostDraft } from '../../state/session';
 import {
   Form,
   FormField,
@@ -26,19 +26,19 @@ import {
   FormSubmit,
 } from '../ui/form';
 
-interface WorkspaceSettingsProps {
-  draft: WorkspaceDraft;
+interface HostFormProps {
+  draft: HostDraft;
   saving: boolean;
   error: string;
   shells: { options: readonly ShellOption[]; loading: boolean; error: string };
   onRetryShells(): void;
   configPath?: string;
-  environment?: WorkspaceEnvironment;
-  onChange(field: keyof WorkspaceDraft, value: string): void;
+  environment?: HostEnvironment;
+  onChange(field: keyof HostDraft, value: string): void;
   onSave(): void;
 }
 
-export function WorkspaceSettings({
+export function HostForm({
   saving,
   error,
   shells,
@@ -48,13 +48,13 @@ export function WorkspaceSettings({
   onChange,
   onSave,
   draft,
-}: WorkspaceSettingsProps) {
+}: HostFormProps) {
   const { t } = useTranslation();
   const resolver = useMemo(() => {
     const translateIssue = (message: string) =>
       message.startsWith('validation.') ? t(message) : message;
-    return standardSchemaResolver<WorkspaceDraft, unknown, typeof WorkspaceFormSchema.Type>(
-      Schema.toStandardSchemaV1(WorkspaceFormSchema.annotate({}), {
+    return standardSchemaResolver<HostDraft, unknown, typeof HostFormSchema.Type>(
+      Schema.toStandardSchemaV1(HostFormSchema.annotate({}), {
         leafHook: (issue) => translateIssue(SchemaIssue.defaultLeafHook(issue)),
         checkHook: (issue) => {
           const message = SchemaIssue.defaultCheckHook(issue);
@@ -63,7 +63,7 @@ export function WorkspaceSettings({
       }),
     );
   }, [t]);
-  const form = useForm<WorkspaceDraft, unknown, typeof WorkspaceFormSchema.Type>({
+  const form = useForm<HostDraft, unknown, typeof HostFormSchema.Type>({
     defaultValues: draft,
     resolver,
     shouldFocusError: false,
@@ -72,7 +72,7 @@ export function WorkspaceSettings({
     // Registry commands can update dependent fields (shell, command and args).
     // Sync only those values; resetting on every input cancels RHF revalidation.
     let changed = false;
-    for (const name of Object.keys(draft) as (keyof WorkspaceDraft)[]) {
+    for (const name of Object.keys(draft) as (keyof HostDraft)[]) {
       if (form.getValues(name) !== draft[name]) {
         form.setValue(name, draft[name]);
         changed = true;
@@ -83,14 +83,14 @@ export function WorkspaceSettings({
     }
   }, [draft, form]);
   const shellOptions = [
-    { value: '$SHELL', label: t('workspace.defaultShell') },
+    { value: '$SHELL', label: t('host.defaultShell') },
     ...shells.options,
     ...(draft.shell !== '$SHELL' &&
     draft.shell !== 'custom' &&
     !shells.options.some((option) => option.value === draft.shell)
       ? [{ value: draft.shell, label: draft.shell }]
       : []),
-    { value: 'custom', label: t('workspace.customCommand') },
+    { value: 'custom', label: t('host.customCommand') },
   ];
   const typeLocked = !draft.isNew;
   const preview =
@@ -99,26 +99,26 @@ export function WorkspaceSettings({
       : '';
   return (
     <scroll-view scroll-y className="shrink min-h-0">
-      <view key={draft.id} data-automation-id="workspace-editor-form">
+      <view key={draft.id} data-automation-id="host-editor-form">
         <Form
           control={form.control}
           disabled={saving}
           onChange={(name, value) => {
             'background only';
-            onChange(name as keyof WorkspaceDraft, value);
+            onChange(name as keyof HostDraft, value);
           }}
           onSubmit={() => {
             'background only';
             return form.handleSubmit(onSave)();
           }}
         >
-          <Field name="name" label={t('workspace.name')} />
+          <Field name="name" label={t('host.name')} />
           <view className="flex flex-row gap-[8px] p-[4px] bg-[#14191f] rounded-[8px] mb-[20px]">
             {(['local', 'ssh'] as const).map((type) => (
               <Button
                 variant="ghost"
                 disabled={saving || typeLocked}
-                data-automation-id={`workspace-type-${type}`}
+                data-automation-id={`host-type-${type}`}
                 key={type}
                 className={cn(
                   'flex-1 h-auto py-[7px] rounded-[6px] font-normal',
@@ -136,19 +136,15 @@ export function WorkspaceSettings({
               </Button>
             ))}
           </view>
-          {typeLocked ? <FormDescription>{t('workspace.typeLocked')}</FormDescription> : null}
+          {typeLocked ? <FormDescription>{t('host.typeLocked')}</FormDescription> : null}
           {draft.type === 'ssh' ? (
-            <Field
-              name="host"
-              label={t('workspace.host')}
-              description={t('workspace.hostDescription')}
-            />
+            <Field name="host" label={t('host.host')} description={t('host.hostDescription')} />
           ) : null}
           <FormField
             name="shell"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('workspace.shell')}</FormLabel>
+                <FormLabel>{t('host.shell')}</FormLabel>
                 <FormControl>
                   <Select
                     value={field.value}
@@ -178,10 +174,10 @@ export function WorkspaceSettings({
                 </FormControl>
                 <FormDescription>
                   {shells.loading
-                    ? t('workspace.detectingShells')
+                    ? t('host.detectingShells')
                     : draft.type === 'ssh'
-                      ? t('workspace.remoteShells')
-                      : t('workspace.localShells')}
+                      ? t('host.remoteShells')
+                      : t('host.localShells')}
                 </FormDescription>
                 {shells.error ? (
                   <view>
@@ -209,39 +205,39 @@ export function WorkspaceSettings({
           {draft.shell === 'custom' ? (
             <Field
               name="command"
-              label={t('workspace.customCommand')}
-              description={t('workspace.customDescription')}
+              label={t('host.customCommand')}
+              description={t('host.customDescription')}
             />
           ) : null}
           {draft.type === 'ssh' ? (
             <>
               <Field
                 name="remoteCommand"
-                label={t('workspace.extraCommand')}
-                description={t('workspace.extraDescription')}
+                label={t('host.extraCommand')}
+                description={t('host.extraDescription')}
               />
               <FormItem>
-                <FormLabel>{t('workspace.commandPreview')}</FormLabel>
+                <FormLabel>{t('host.commandPreview')}</FormLabel>
                 <text
                   data-automation-id="ssh-command-preview"
                   className="text-[12px] text-[#a8e6cf] break-all leading-[19px]"
                 >
-                  {preview || t('workspace.enterHost')}
+                  {preview || t('host.enterHost')}
                 </text>
               </FormItem>
             </>
           ) : null}
-          <Field name="cwd" label={t('workspace.cwd')} />
+          <Field name="cwd" label={t('host.cwd')} />
           <Field
             name="tmuxPrefix"
-            label={t('workspace.tmuxPrefix')}
-            description={t('workspace.tmuxPrefixDescription')}
+            label={t('host.tmuxPrefix')}
+            description={t('host.tmuxPrefixDescription')}
           />
           <FormField
             name="defaultTab"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('workspace.defaultTab')}</FormLabel>
+                <FormLabel>{t('host.defaultTab')}</FormLabel>
                 <FormControl>
                   <ButtonGroup className="w-full gap-[2px]">
                     {(['shell', 'tmux', 'sftp'] as const).map((kind) => {
@@ -289,8 +285,8 @@ export function WorkspaceSettings({
                 </FormControl>
                 <FormDescription>
                   {draft.type === 'ssh'
-                    ? t('workspace.defaultTabDescription')
-                    : t('workspace.defaultTabDescriptionLocal')}
+                    ? t('host.defaultTabDescription')
+                    : t('host.defaultTabDescriptionLocal')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -298,13 +294,13 @@ export function WorkspaceSettings({
           />
           <view className="flex flex-row gap-[14px]">
             <view className="flex-1">
-              <Field name="icon" label={t('workspace.icon')} />
+              <Field name="icon" label={t('host.icon')} />
             </view>
             <view className="flex-1">
-              <Field name="color" label={t('workspace.color')} />
+              <Field name="color" label={t('host.color')} />
             </view>
           </view>
-          <FormDescription>{t('workspace.changes')}</FormDescription>
+          <FormDescription>{t('host.changes')}</FormDescription>
           {error || Object.keys(form.formState.errors).length ? (
             <text
               data-automation-id="editor-error"
@@ -314,8 +310,8 @@ export function WorkspaceSettings({
             </text>
           ) : null}
           <view className="flex flex-row items-center gap-[14px] mt-[20px]">
-            <FormSubmit data-automation-id="save-workspace">
-              {saving ? t('common.saving') : draft.isNew ? t('workspace.add') : t('workspace.save')}
+            <FormSubmit data-automation-id="save-host">
+              {saving ? t('common.saving') : draft.isNew ? t('host.add') : t('host.save')}
             </FormSubmit>
           </view>
         </Form>

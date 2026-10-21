@@ -1,5 +1,5 @@
 import type { TerminalTab } from './session';
-import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
+import type { HostProfile, HostEnvironment } from '../../shared/hosts';
 import type { TabKind } from '../../shared/tabs';
 import type { RemoteFs, SftpHost } from '../../shared/sftp';
 import type { TmuxHost } from '../../shared/tmux';
@@ -9,8 +9,8 @@ import * as Atom from 'effect/reactivity/Atom';
 export interface TerminalHost extends TmuxHost {
   createTerminalSession(
     id: number,
-    profile?: WorkspaceSettings,
-    environment?: WorkspaceEnvironment,
+    profile?: HostProfile,
+    environment?: HostEnvironment,
     kind?: TabKind,
     tmuxSession?: string,
   ): void;
@@ -66,7 +66,7 @@ export const terminalSessionsAtom = Atom.make((get) => {
       }
       return entry.connection;
     },
-    reconcile(tabs: readonly TerminalTab[], environment?: WorkspaceEnvironment) {
+    reconcile(tabs: readonly TerminalTab[], environment?: HostEnvironment) {
       const live = new Set(tabs.filter((tab) => tab.kind !== 'sftp').map((tab) => tab.id));
       const remoteLive = new Set(tabs.filter((tab) => tab.kind === 'sftp').map((tab) => tab.id));
       for (const id of remote.keys()) {

@@ -2,12 +2,12 @@ import 'background-only';
 import '../runtime';
 import { useAtomSet, useAtomValue } from '@effect/atom-react';
 import { sessionActionsAtom } from '../state/session-actions';
-import { tabsViewAtom, workspacesViewAtom, statusViewAtom } from '../state/session-views';
+import { tabsViewAtom, hostsViewAtom, statusViewAtom } from '../state/session-views';
 import { TabList } from './tab-bar';
 import { TabActions } from './tab-bar/tab-actions';
 import { TabItem } from './tab-bar/tab-item';
-import { WorkspaceItem } from './workspace/workspace-item';
-import { WorkspaceList } from './workspace/workspace-list';
+import { HostItem } from './host/host-item';
+import { HostList } from './host/host-list';
 import { StatusBar } from './status-bar';
 import { tmuxSessionsViewAtom } from '../state/tmux';
 import { closeTmuxSessionAtom, refreshTmuxSessionsAtom } from '../state/tmux-sessions';
@@ -61,14 +61,14 @@ export function SessionTabActions() {
   );
 }
 
-export function SessionWorkspaces() {
-  const view = useAtomValue(workspacesViewAtom);
+export function SessionHosts() {
+  const view = useAtomValue(hostsViewAtom);
   return (
-    <WorkspaceList loading={view.loading && !view.workspaceIds.length} action={<SettingsButton />}>
-      {view.workspaceIds.map((id) => (
-        <WorkspaceItem key={id} id={id} />
+    <HostList loading={view.loading && !view.hostIds.length} action={<SettingsButton />}>
+      {view.hostIds.map((id) => (
+        <HostItem key={id} id={id} />
       ))}
-    </WorkspaceList>
+    </HostList>
   );
 }
 

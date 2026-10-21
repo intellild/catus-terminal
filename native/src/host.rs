@@ -1,4 +1,4 @@
-//! Workspace ownership is independent of rendering and the selected terminal backend.
+//! Host ownership is independent of rendering and the selected terminal backend.
 mod delegate;
 mod factory;
 mod plain;
@@ -8,22 +8,22 @@ use crate::{
     terminal_session::{Session, TerminalSessionCommand},
 };
 use anyhow::{Context, Result, anyhow};
-pub(crate) use delegate::WorkspaceDelegate;
-use factory::WorkspaceFactory;
+pub(crate) use delegate::HostDelegate;
+use factory::HostFactory;
 use std::{collections::HashMap, sync::Arc};
 
-pub(crate) struct Workspace {
+pub(crate) struct Host {
     sessions: HashMap<u32, Arc<Session>>,
-    delegate: Arc<dyn WorkspaceDelegate>,
+    delegate: Arc<dyn HostDelegate>,
 }
-impl Workspace {
-    fn new(delegate: Arc<dyn WorkspaceDelegate>) -> Self {
+impl Host {
+    fn new(delegate: Arc<dyn HostDelegate>) -> Self {
         Self {
             sessions: HashMap::new(),
             delegate,
         }
     }
-    fn set_delegate(&mut self, delegate: Arc<dyn WorkspaceDelegate>) {
+    fn set_delegate(&mut self, delegate: Arc<dyn HostDelegate>) {
         self.delegate = delegate;
     }
     fn create_session(&mut self, id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
@@ -57,14 +57,14 @@ impl Workspace {
     }
 }
 
-/// Global numeric handles locate a workspace; membership belongs to Workspace.
+/// Global numeric handles locate a host; membership belongs to Host.
 #[derive(Default)]
-pub(crate) struct Workspaces {
-    factory: WorkspaceFactory,
-    workspaces: HashMap<String, Workspace>,
+pub(crate) struct Hosts {
+    factory: HostFactory,
+    hosts: HashMap<String, Host>,
     owners: HashMap<u32, String>,
 }
-impl Workspaces {
+impl Hosts {
     pub(crate) fn create_session(
         &mut self,
         id: u32,
@@ -78,35 +78,35 @@ impl Workspaces {
         if self.owners.contains_key(&id) {
             return Err(anyhow!("Duplicate terminal session ID: {id}"));
         }
-        let workspace_id = command
+        let host_id = command
             .as_ref()
-            .and_then(|command| command.workspace_id.as_deref())
+            .and_then(|command| command.host_id.as_deref())
             .unwrap_or("default")
             .to_owned();
-        let workspace = match self.workspaces.entry(workspace_id.clone()) {
+        let host = match self.hosts.entry(host_id.clone()) {
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(self.factory.create(command.as_ref()))
             }
             std::collections::hash_map::Entry::Occupied(entry) => {
-                let workspace = entry.into_mut();
-                self.factory.configure(workspace, command.as_ref());
-                workspace
+                let host = entry.into_mut();
+                self.factory.configure(host, command.as_ref());
+                host
             }
         };
-        if let Err(error) = workspace.create_session(id, command) {
-            if workspace.is_empty() {
-                self.workspaces.remove(&workspace_id);
+        if let Err(error) = host.create_session(id, command) {
+            if host.is_empty() {
+                self.hosts.remove(&host_id);
             }
             return Err(error);
         }
-        self.owners.insert(id, workspace_id);
+        self.owners.insert(id, host_id);
         Ok(())
     }
     pub(crate) fn session(&self, id: u32) -> Result<Arc<Session>> {
         self.owners
             .get(&id)
-            .and_then(|owner| self.workspaces.get(owner))
-            .and_then(|workspace| workspace.session(id))
+            .and_then(|owner| self.hosts.get(owner))
+            .and_then(|host| host.session(id))
             .with_context(|| format!("Unknown or released terminal session: {id}"))
     }
     pub(crate) fn close_session(&mut self, id: u32) {
@@ -119,19 +119,19 @@ impl Workspaces {
         let Some(owner) = self.owners.remove(&id) else {
             return;
         };
-        if let Some(workspace) = self.workspaces.get_mut(&owner) {
+        if let Some(host) = self.hosts.get_mut(&owner) {
             if preserve {
-                workspace.detach_session(id);
+                host.detach_session(id);
             } else {
-                workspace.close_session(id);
+                host.close_session(id);
             }
-            if workspace.is_empty() {
-                self.workspaces.remove(&owner);
+            if host.is_empty() {
+                self.hosts.remove(&owner);
             }
         }
     }
 }
 
 #[cfg(test)]
-#[path = "tests/workspace.rs"]
+#[path = "tests/host.rs"]
 mod tests;

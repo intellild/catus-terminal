@@ -1,4 +1,4 @@
-import type { WorkspaceSettings } from '../../shared/workspaces';
+import type { HostProfile } from '../../shared/hosts';
 import type { TerminalTab } from '../state/session';
 import { Panel, PanelContent } from './ui/panel';
 import { SftpBrowser } from './sftp-browser';
@@ -9,19 +9,19 @@ export function SftpPanel({
   id,
   host,
   tab,
-  workspace,
+  profile,
 }: {
   id: number;
   host: string;
   tab: TerminalTab;
-  workspace?: WorkspaceSettings;
+  profile?: HostProfile;
 }) {
   return (
     <Panel>
       <PanelContent>
         <SftpBrowser id={id} host={host} />
       </PanelContent>
-      <SessionPanelFooter workspace={workspace} tab={tab} />
+      <SessionPanelFooter host={profile} tab={tab} />
     </Panel>
   );
 }

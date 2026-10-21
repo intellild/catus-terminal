@@ -47,8 +47,8 @@ export const TabItem = memo(function TabItem({ id }: { id: number }) {
     >
       <view className="flex-1 min-w-0 h-full flex flex-row items-center gap-[7px]">
         <view
-          className="w-[5px] h-[5px] rounded-full shrink-0 bg-[var(--workspace-color)]"
-          style={`--workspace-color: ${tab.profile.color}`}
+          className="w-[5px] h-[5px] rounded-full shrink-0 bg-[var(--host-color)]"
+          style={`--host-color: ${tab.profile.color}`}
         />
         {tab.kind !== 'shell' ? (
           <Icon

@@ -9,7 +9,7 @@ test('covered dialogs and Select keep their layout and dismiss correctly in a na
     await app.start({ windowless: false });
     await app.automation('open-settings').tap();
     await app.automation('settings-dialog').visibleTarget();
-    await app.automation('add-workspace').tap();
+    await app.automation('add-host').tap();
     interface InspectorNode {
       nodeId: number;
       nodeName: string;

@@ -22,7 +22,7 @@ export function SessionContent() {
           id={terminalTab?.id}
           sessionId={view.error ? 0 : view.terminalId}
           tab={terminalTab}
-          workspace={view.workspace}
+          host={view.host}
           terminalError={view.terminalError}
         />
       </view>
@@ -33,12 +33,12 @@ export function SessionContent() {
             !placeholder && activeTab?.id === tab.id ? 'flex-1 min-h-0 flex flex-col' : 'hidden'
           }
         >
-          <SftpPanel id={tab.id} host={tab.profile.host!} tab={tab} workspace={view.workspace} />
+          <SftpPanel id={tab.id} host={tab.profile.host!} tab={tab} profile={view.host} />
         </view>
       ))}
       {placeholder ? (
         <PanelPlaceholder
-          workspace={view.workspace}
+          host={view.host}
           loading={view.loading}
           error={view.error}
           onRetry={() => {

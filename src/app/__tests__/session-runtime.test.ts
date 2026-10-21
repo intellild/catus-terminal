@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
-import type { WorkspaceConfig, WorkspaceConfigPayload } from '../../shared/workspaces';
+import defaults from '../../../tests/fixtures/hosts.json';
+import { parseHostsConfig } from '../../shared/hosts';
+import type { HostsConfig, HostsConfigPayload } from '../../shared/hosts';
 import {
   editorAtom,
   loadAtom,
   sessionAtom,
   allTabsAtom,
   tabAtom,
-  workspaceAtom,
+  hostAtom,
 } from '../state/session';
 import { sessionActionsAtom } from '../state/session-actions';
 import type { SessionAction } from '../state/session-actions';
@@ -20,20 +20,20 @@ import {
   tabsViewAtom,
   tabViewAtom,
   statusViewAtom,
-  workspaceViewAtom,
-  workspacesViewAtom,
+  hostViewAtom,
+  hostsViewAtom,
 } from '../state/session-views';
 
 let registry: AtomRegistry.AtomRegistry;
-const payload: WorkspaceConfigPayload = {
-  config: parseWorkspaceConfig(defaults),
-  path: '/tmp/catus/workspaces.json',
+const payload: HostsConfigPayload = {
+  config: parseHostsConfig(defaults),
+  path: '/tmp/catus/hosts.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 function makeHost() {
   return {
-    loadWorkspaces: rstest.fn(async () => payload),
-    saveWorkspaces: rstest.fn(async (config: WorkspaceConfig) => ({ ...payload, config })),
+    loadHosts: rstest.fn(async () => payload),
+    saveHosts: rstest.fn(async (config: HostsConfig) => ({ ...payload, config })),
     listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh' }]),
   };
 }
@@ -54,25 +54,25 @@ async function loaded() {
   await rstest.waitFor(() => expect(registry.get(loadAtom)).toEqual({ loading: false, error: '' }));
 }
 
-test('startup, shell detection and workspace actions run without React or UI subscriptions', async () => {
+test('startup, shell detection and host actions run without React or UI subscriptions', async () => {
   const host = makeHost();
   startSessionRuntime(registry, host);
   startSessionRuntime(registry, host);
   await loaded();
-  expect(host.loadWorkspaces).toHaveBeenCalledOnce();
+  expect(host.loadHosts).toHaveBeenCalledOnce();
   expect(terminal.createTerminalSession).toHaveBeenCalledExactlyOnceWith(
     1,
-    payload.config.workspaces[0],
+    payload.config.hosts[0],
     payload.environment,
     'shell',
     undefined,
   );
-  dispatch({ type: 'openWorkspace', id: 'local' });
+  dispatch({ type: 'openHost', id: 'local' });
   dispatch({ type: 'addTab' });
   expect(registry.get(allTabsAtom).map((tab) => tab.id)).toEqual([1, 2, 3]);
   dispatch({ type: 'closeTab', id: 2 });
   expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2);
-  dispatch({ type: 'editWorkspace', id: 'local' });
+  dispatch({ type: 'editHost', id: 'local' });
   await rstest.waitFor(() => expect(registry.get(shellOptionsAtom).options).toHaveLength(1));
   expect(host.listShells).toHaveBeenCalledOnce();
   const tabsChanged = rstest.fn();
@@ -86,39 +86,38 @@ test('startup, shell detection and workspace actions run without React or UI sub
   stopStatus();
   dispatch({ type: 'saveDraft' });
   // Saving keeps the settings dialog open on the updated host.
-  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
   expect(registry.get(editorAtom).open).toBe(true);
   expect(registry.get(editorAtom).draft?.name).toBe('Renamed local');
-  expect(
-    host.saveWorkspaces.mock.calls[0]![0].workspaces.find((workspace) => workspace.id === 'local')
-      ?.name,
-  ).toBe('Renamed local');
+  expect(host.saveHosts.mock.calls[0]![0].hosts.find((host) => host.id === 'local')?.name).toBe(
+    'Renamed local',
+  );
   dispatch({ type: 'addTab' });
   expect(registry.get(allTabsAtom).at(-1)?.profile.name).toBe('Renamed local');
-  dispatch({ type: 'deleteWorkspace', id: 'local' });
-  await rstest.waitFor(() => expect(registry.get(sessionAtom).workspaceIds).not.toContain('local'));
+  dispatch({ type: 'deleteHost', id: 'local' });
+  await rstest.waitFor(() => expect(registry.get(sessionAtom).hostIds).not.toContain('local'));
   expect(terminal.closeTerminalSession.mock.calls).toEqual([[2], [3], [4]]);
   expect(registry.get(allTabsAtom).map((tab) => tab.id)).toEqual([1]);
 });
 
 test('configuration retry cancels stale responses; disposed runtimes never create sessions', async () => {
   const host = makeHost();
-  let finishOld!: (value: WorkspaceConfigPayload) => void;
-  const old = new Promise<WorkspaceConfigPayload>((resolve) => {
+  let finishOld!: (value: HostsConfigPayload) => void;
+  const old = new Promise<HostsConfigPayload>((resolve) => {
     finishOld = resolve;
   });
-  host.loadWorkspaces.mockReturnValueOnce(old);
+  host.loadHosts.mockReturnValueOnce(old);
   startSessionRuntime(registry, host);
   dispatch({ type: 'reload' });
   await loaded();
-  finishOld({ ...payload, config: { version: 1, workspaces: [payload.config.workspaces[1]!] } });
+  finishOld({ ...payload, config: { version: 1, hosts: [payload.config.hosts[1]!] } });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(registry.get(sessionAtom).activeWorkspaceId).toBe('shell');
+  expect(registry.get(sessionAtom).activeHostId).toBe('shell');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
-  host.loadWorkspaces.mockReturnValueOnce(
+  host.loadHosts.mockReturnValueOnce(
     old.then(
       () =>
-        new Promise<WorkspaceConfigPayload>((resolve) => {
+        new Promise<HostsConfigPayload>((resolve) => {
           finishOld = resolve;
         }),
     ),
@@ -136,24 +135,24 @@ test('failed deletion preserves sessions and retries; saving blocks duplicate co
   const host = makeHost();
   startSessionRuntime(registry, host);
   await loaded();
-  dispatch({ type: 'openWorkspace', id: 'local' });
-  host.saveWorkspaces.mockRejectedValueOnce(new Error('Permission denied'));
-  dispatch({ type: 'deleteWorkspace', id: 'local' });
+  dispatch({ type: 'openHost', id: 'local' });
+  host.saveHosts.mockRejectedValueOnce(new Error('Permission denied'));
+  dispatch({ type: 'deleteHost', id: 'local' });
   await rstest.waitFor(() => expect(registry.get(editorAtom).error).toContain('Permission denied'));
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
-  let finishSave!: (value: WorkspaceConfigPayload) => void;
-  host.saveWorkspaces.mockImplementationOnce(
+  let finishSave!: (value: HostsConfigPayload) => void;
+  host.saveHosts.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finishSave = resolve;
       }),
   );
-  dispatch({ type: 'deleteWorkspace', id: 'local' });
+  dispatch({ type: 'deleteHost', id: 'local' });
   await rstest.waitFor(() => expect(registry.get(editorAtom).saving).toBe(true));
-  dispatch({ type: 'deleteWorkspace', id: 'local' });
-  dispatch({ type: 'addWorkspace' });
-  expect(host.saveWorkspaces).toHaveBeenCalledTimes(2);
-  finishSave({ ...payload, config: host.saveWorkspaces.mock.calls[1]![0] });
+  dispatch({ type: 'deleteHost', id: 'local' });
+  dispatch({ type: 'addHost' });
+  expect(host.saveHosts).toHaveBeenCalledTimes(2);
+  finishSave({ ...payload, config: host.saveHosts.mock.calls[1]![0] });
   await rstest.waitFor(() =>
     expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2),
   );
@@ -201,34 +200,34 @@ test('tab families notify only changed items; selection leaves the tab list unch
   stops.forEach((stop) => stop());
 });
 
-test('workspace families notify only affected buttons; the dock subscribes to IDs only', async () => {
+test('host families notify only affected buttons; the dock subscribes to IDs only', async () => {
   startSessionRuntime(registry, makeHost());
   await loaded();
   const shellChanged = rstest.fn();
   const localChanged = rstest.fn();
   const listChanged = rstest.fn();
-  registry.get(workspaceViewAtom('shell'));
-  registry.get(workspaceViewAtom('local'));
-  registry.get(workspacesViewAtom);
+  registry.get(hostViewAtom('shell'));
+  registry.get(hostViewAtom('local'));
+  registry.get(hostsViewAtom);
   const stops = [
-    registry.subscribe(workspaceViewAtom('shell'), shellChanged),
-    registry.subscribe(workspaceViewAtom('local'), localChanged),
-    registry.subscribe(workspacesViewAtom, listChanged),
+    registry.subscribe(hostViewAtom('shell'), shellChanged),
+    registry.subscribe(hostViewAtom('local'), localChanged),
+    registry.subscribe(hostsViewAtom, listChanged),
   ];
   dispatch({ type: 'addTab' });
-  // Running stays true: adding tabs does not rerender the workspace button.
+  // Running stays true: adding tabs does not rerender the host button.
   expect(shellChanged).not.toHaveBeenCalled();
   expect(localChanged).not.toHaveBeenCalled();
   expect(listChanged).not.toHaveBeenCalled();
-  registry.update(workspaceAtom('local'), (state) => ({
+  registry.update(hostAtom('local'), (state) => ({
     ...state!,
-    profile: { ...state!.profile, name: 'Updated workspace' },
+    profile: { ...state!.profile, name: 'Updated host' },
   }));
   expect(localChanged).toHaveBeenCalledOnce();
   expect(shellChanged).not.toHaveBeenCalled();
   expect(listChanged).not.toHaveBeenCalled();
   localChanged.mockClear();
-  dispatch({ type: 'openWorkspace', id: 'local' });
+  dispatch({ type: 'openHost', id: 'local' });
   expect(shellChanged).toHaveBeenCalledOnce();
   expect(localChanged).toHaveBeenCalledOnce();
   expect(listChanged).not.toHaveBeenCalled();

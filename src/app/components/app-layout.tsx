@@ -38,7 +38,7 @@ export function AppLayoutBody({ children }: LayoutChildren) {
 export function AppLayoutSidebar({ children }: LayoutChildren) {
   return (
     <view
-      data-automation-id="workspace-dock"
+      data-automation-id="host-dock"
       className="w-12 shrink-0 flex flex-col items-center bg-[#181b20] border-r border-solid border-[#282c32] py-[6px]"
     >
       {children}

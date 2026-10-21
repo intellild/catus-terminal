@@ -2,31 +2,31 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import defaults from '../../../config/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
+import defaults from '../../../config/hosts.json';
+import { parseHostsConfig } from '../../shared/hosts';
 import type {
-  WorkspaceConfig,
-  WorkspaceConfigPayload,
-  WorkspaceEnvironment,
-  WorkspaceHost,
-} from '../../shared/workspaces';
+  HostsConfig,
+  HostsConfigPayload,
+  HostEnvironment,
+  HostService,
+} from '../../shared/hosts';
 
-export function createWorkspaceHost(
-  configPath = process.env.CATUS_WORKSPACES_FILE ??
-    path.join(homedir(), '.config', 'catus-terminal', 'workspaces.json'),
-  environment: WorkspaceEnvironment = {
+export function createHostService(
+  configPath = process.env.CATUS_HOSTS_FILE ??
+    path.join(homedir(), '.config', 'catus-terminal', 'hosts.json'),
+  environment: HostEnvironment = {
     shell: userInfo().shell || process.env.SHELL || '/bin/sh',
     home: homedir(),
   },
-): WorkspaceHost {
-  const payload = (config: WorkspaceConfig): WorkspaceConfigPayload => ({
+): HostService {
+  const payload = (config: HostsConfig): HostsConfigPayload => ({
     config,
     path: configPath,
     environment,
   });
-  async function loadWorkspaces(): Promise<WorkspaceConfigPayload> {
+  async function loadHosts(): Promise<HostsConfigPayload> {
     try {
-      return payload(parseWorkspaceConfig(JSON.parse(await readFile(configPath, 'utf8'))));
+      return payload(parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8'))));
     } catch (error) {
       // An invalid existing file is reported, never replaced by defaults.
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -43,11 +43,11 @@ export function createWorkspaceHost(
           throw error;
         }
       }
-      return payload(parseWorkspaceConfig(JSON.parse(await readFile(configPath, 'utf8'))));
+      return payload(parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8'))));
     }
   }
-  async function saveWorkspaces(value: WorkspaceConfig): Promise<WorkspaceConfigPayload> {
-    const config = parseWorkspaceConfig(value);
+  async function saveHosts(value: HostsConfig): Promise<HostsConfigPayload> {
+    const config = parseHostsConfig(value);
     await mkdir(path.dirname(configPath), { recursive: true });
     const temporaryPath = `${configPath}.${randomUUID()}.tmp`;
     try {
@@ -61,5 +61,5 @@ export function createWorkspaceHost(
     }
     return payload(config);
   }
-  return { loadWorkspaces, saveWorkspaces };
+  return { loadHosts, saveHosts };
 }

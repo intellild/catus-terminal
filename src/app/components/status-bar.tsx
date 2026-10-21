@@ -1,10 +1,10 @@
 import { useTranslation } from '../i18n';
 export function StatusBar({
-  workspaceCount = 0,
+  hostCount = 0,
   tabCount = 0,
   hasSession = false,
 }: {
-  workspaceCount?: number;
+  hostCount?: number;
   tabCount?: number;
   hasSession?: boolean;
 }) {
@@ -15,7 +15,7 @@ export function StatusBar({
         <view className="w-[5px] h-[5px] rounded-[3px] bg-[#859e94]" />
         <text data-automation-id="session-summary" className="text-[10px] text-[#8997a2]">
           {t('status.summary', {
-            workspaces: t('status.workspaces', { count: workspaceCount }),
+            hosts: t('status.hosts', { count: hostCount }),
             tabs: t('tabs.count', { count: tabCount }),
           })}
         </text>

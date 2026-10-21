@@ -1,9 +1,9 @@
 import { expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import { editorAtom, editWorkspace } from '../state/session';
+import { editorAtom, editHost } from '../state/session';
 import { shellHostAtom, shellOptionsAtom, shellsAtom } from '../state/shells';
-import defaults from '../../../tests/fixtures/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
+import defaults from '../../../tests/fixtures/hosts.json';
+import { parseHostsConfig } from '../../shared/hosts';
 
 // A pending host response must not overwrite candidates for a newer Host.
 test('Effect owns loading, failures, retry and stale remote shell responses', async () => {
@@ -24,7 +24,7 @@ test('Effect owns loading, failures, retry and stale remote shell responses', as
   registry.set(shellHostAtom, { listShells });
   const release = registry.mount(shellOptionsAtom);
   try {
-    registry.set(editorAtom, editWorkspace(parseWorkspaceConfig(defaults).workspaces[0]!));
+    registry.set(editorAtom, editHost(parseHostsConfig(defaults).hosts[0]!));
     await rstest.waitFor(() => expect(registry.get(shellOptionsAtom).options).toHaveLength(1));
     expect(listShells).toHaveBeenLastCalledWith(undefined);
     const calls = listShells.mock.calls.length;

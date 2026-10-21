@@ -19,9 +19,9 @@ native/
   src/terminal_core/session.rs 网格、键盘、鼠标、粘贴和选区
   src/terminal_core/pty.rs     Pty 句柄、阻塞 I/O 线程、async 桥接和进程回收
   src/terminal_core/pty/       PtyDelegate trait 与普通/tmux 协议适配
-  src/workspace.rs             Workspace 会话归属、创建、查找、关闭和 detach
-  src/workspace/               WorkspaceDelegate trait 与普通/tmux 后端
-  src/workspace/factory.rs     WorkspaceFactory 选择后端并注入 Workspace::new
+  src/host.rs                 Host 会话归属、创建、查找、关闭和 detach
+  src/host/                   HostDelegate trait 与普通/tmux 后端
+  src/host/factory.rs         HostFactory 选择后端并注入 Host::new
   src/terminal_session.rs      N-API u32 句柄接口和 session renderer
   src/terminal_view.rs         layout resize、revision 和网格快照编排
   src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
@@ -123,7 +123,7 @@ SDK C ABI / 泛型桥接的独立宿主测试位于 `src/tests/lynx_native_view*
 
 `createTerminalSession(id)` 接收 JS 分配的正整数 `u32` ID，创建默认 shell，成功返回 void。
 Rust 不分配 ID，互斥保护注册表创建，拒绝重复 ID 和保留值 0；创建失败不占用 ID。
-第二个可选参数 `{ workspaceId?, program, args, cwd?, tmux? }` 指定所属 workspace 和启动参数。
+第二个可选参数 `{ hostId?, program, args, cwd?, tmux? }` 指定所属 host 和启动参数。
 `tmux` 存在时 tmux tab 使用 session 模式：`resolveTmuxLaunch` 在目标机器上没有 session
 时新建 `<prefix>0`，否则 attach 最近使用的 session（或菜单指定的目标）。Rust 在 control
 mode attach 后先用 `display-message -p '#{session_name}'` 确认实际 session，再列出并管理
@@ -131,15 +131,15 @@ mode attach 后先用 `display-message -p '#{session_name}'` 确认实际 sessio
 `getTmuxSessionInfo(id)`、`selectTmuxWindow(id, windowId)`、`createTmuxWindow(id)` 和
 `closeTmuxWindow(id, windowId)` 驱动 terminal 标题栏中的 tmux tab；返回的
 `TmuxSessionInfo.windows` 包含窗口 ID、index、名称和 active 状态。
-省略 `workspaceId` 时归入默认 workspace，兼容直接调用 N-API 的测试和主机。
+省略 `hostId` 时归入默认 host，兼容直接调用 N-API 的测试和主机。
 E2E preload 用 `CATUS_E2E_PTY`
 和 `CATUS_E2E_NODE` 指向 JS fixture 与 Node，不读取用户的 shell 初始化脚本。
 数字 tab ID 直接作为 session ID；JS 全局 `sessionRegistry` 的 `sessionAtom` 写入时同步 native session。
-新 tab 创建 session、关闭 tab 或删除 workspace 时删除对应 session，registry 销毁时 detach 剩余 session。
+新 tab 创建 session、关闭 tab 或删除 host 时删除对应 session，registry 销毁时 detach 剩余 session。
 `TerminalView` 只展示 atom 派生的 ID 和错误；React unmount/remount 不影响 session 生命周期。
 `TerminalView` 与 `NativeTerminalView` 持续挂载，切换 tab 只更新 `terminal-id`，无需 active 或 key。
 没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，Rust 停止该 view 的帧监听；loading/配置错误也保持挂载。
-Rust `Workspace` 强引用自己所属的 session；全局 `Workspaces` 只维护 workspace 和数字句柄的归属索引。
+Rust `Host` 强引用自己所属的 session；全局 `Hosts` 只维护 host 和数字句柄的归属索引。
 每个 session 拥有计算层和带锁的 renderer/viewport。
 renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
 切换 tab 保留同一个 native element、shell 和 renderer，由 OnPropertiesChanged 更新 session 绑定。
@@ -156,7 +156,7 @@ async，`TmuxPtyDelegate` 的 `TmuxClient` 使用 tokio Mutex。PTY 的
 master/child/input/error 和 grid 都使用 tokio 锁，UI/N-API/测试的同步边界用
 `block_on`/`blocking_lock` 进入 async API。关闭时先发送 delegate 命令，再发送带
 grace 的 Close；writer 在 grace 内保持 fd 打开，让 shell 消费已排队的命令后退出。
-`workspace.rs` 管理生命周期，`terminal_session.rs` 提供 N-API 和 native handle，
+`host.rs` 管理生命周期，`terminal_session.rs` 提供 N-API 和 native handle，
 `terminal_view.rs` 编排共享渲染流程，
 `platform/macos/terminal.rs` 提供 macOS cxx 适配。
 `OnLayoutChanged` 接收逻辑尺寸及 backing scale，更新 viewport，再用 crossfont
@@ -167,12 +167,12 @@ grace 的 Close；writer 在 grace 内保持 fd 打开，让 shell 消费已排�
 不访问 PTY 或 OS 指针。macOS 回调在 `platform/macos/surface.rs` 导入 IOSurface。
 native view 不独立持有或创建 renderer。
 
-配置数据在 TypeScript 中使用 `WorkspaceSettings` / `WorkspaceSettingsSchema`，JSON 格式保持兼容。
-Rust `Workspace` 统一管理会话创建、查找、关闭、detach 和成员清理；
-`WorkspaceFactory` 根据启动参数选择普通或 tmux delegate，传给 `Workspace::new(delegate)`。
-`Workspaces` 持有 factory；已有 workspace 的后端更新也由 factory 注入，
-`Workspace` 本身不判断后端类型。
-`WorkspaceDelegate` 只创建对应后端的会话，不管理终端协议。
+配置数据在 TypeScript 中使用 `HostProfile` / `HostProfileSchema`，配置文件字段为 `hosts`。
+Rust `Host` 统一管理会话创建、查找、关闭、detach 和成员清理；
+`HostFactory` 根据启动参数选择普通或 tmux delegate，传给 `Host::new(delegate)`。
+`Hosts` 持有 factory；已有 host 的后端更新也由 factory 注入，
+`Host` 本身不判断后端类型。
+`HostDelegate` 只创建对应后端的会话，不管理终端协议。
 `TerminalSession` 管理网格和输入编码，持有一个 `Pty`；`Pty` 统一管理 PTY 句柄、
 I/O 线程、错误、退出状态和子进程回收，通过 `PtyDelegate` 调用后端特有操作。
 `terminal_core/pty/plain.rs` 处理普通 PTY 字节和窗口尺寸；`terminal_core/pty/tmux.rs`
@@ -181,23 +181,23 @@ I/O 线程、错误、退出状态和子进程回收，通过 `PtyDelegate` 调�
 `PtyDelegate::close` 返回进程回收前的宽限时间，让 tmux 关闭命令先经过 writer 送到服务端。
 `Pty` 的 Drop 默认 detach；显式 close 后的再次 close、detach 或 Drop 不重复发送关闭命令。
 每个 session 保留创建时的 `PtyDelegate`，因此修改配置只影响新建 tab；原来的普通或 tmux
-会话继续使用自己的后端。创建失败不留下空 workspace 或占用数字 ID。
+会话继续使用自己的后端。创建失败不留下空 host 或占用数字 ID。
 
 ```text
-WorkspaceSettings
-  preload 解析启动参数，传入 workspaceId
+HostProfile
+  preload 解析启动参数，传入 hostId
        ↓
-Workspaces（workspace.rs）
-  检查全局 ID 唯一性，定位所属 Workspace
+Hosts（host.rs）
+  检查全局 ID 唯一性，定位所属 Host
        ↓
-WorkspaceFactory（workspace/factory.rs）
-  选择普通 / tmux delegate → Workspace::new(delegate)
-  已有 workspace 则更新未来会话使用的 delegate
+HostFactory（host/factory.rs）
+  选择普通 / tmux delegate → Host::new(delegate)
+  已有 host 则更新未来会话使用的 delegate
        ↓
-Workspace
+Host
   保存 session 成员，统一创建 / 查找 / close / detach
        ↓
-WorkspaceDelegate（workspace/delegate.rs）
+HostDelegate（host/delegate.rs）
   选择普通或 tmux 会话及其 PtyDelegate
        ↓
 TerminalSession（terminal_core/session.rs）
@@ -287,7 +287,7 @@ prefix 键切换窗口时，native client 重新绑定 active pane 并同步屏�
 真实 Lynx 渲染、窗口 tab 和输入验收位于 `../tests/e2e/tmux.test.ts`。
 
 ```text
-workspace default tab / tmux tab button → preload resolveTmuxLaunch()
+host default tab / tmux tab button → preload resolveTmuxLaunch()
        ↓
 terminal_core/pty.rs
   本地 tmux / SSH -tt → tmux -CC（每 terminal 独立 session）

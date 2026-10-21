@@ -36,7 +36,7 @@ fn failed_pty_creation_does_not_occupy_the_supplied_id() {
     let error = create_session_with_command(
         id,
         Some(TerminalSessionCommand {
-            workspace_id: None,
+            host_id: None,
             tmux: None,
             cwd: None,
             program: "/nonexistent/catus-test-shell".into(),
@@ -133,7 +133,7 @@ fn configured_command_runs_in_the_requested_directory() {
     create_session_with_command(
         id,
         Some(TerminalSessionCommand {
-            workspace_id: None,
+            host_id: None,
             tmux: None,
             program: "/bin/sh".into(),
             args: vec!["-c".into(), "printf 'CWD='; pwd".into()],

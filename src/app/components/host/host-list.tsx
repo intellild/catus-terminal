@@ -1,6 +1,6 @@
 import type { ReactNode } from '@lynx-js/react';
 
-export function WorkspaceList({
+export function HostList({
   children,
   loading = false,
   action,

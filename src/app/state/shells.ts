@@ -6,7 +6,7 @@ import * as AsyncResult from 'effect/reactivity/AsyncResult';
 import * as Cause from 'effect/Cause';
 import type { ShellHost, ShellOption } from '../../shared/shells';
 import { editorAtom } from './session';
-import { workspaceHostAtom, nativeWorkspaceHost } from './workspace-host';
+import { hostServiceAtom, nativeHostService } from './host-service';
 
 export const shellHostAtom = Atom.make<ShellHost | undefined>(undefined).pipe(Atom.keepAlive);
 // The standalone session runtime mounts this atom. Dependencies cancel stale
@@ -27,7 +27,7 @@ export const shellsAtom = Atom.make<
     return Effect.succeed({ request, options: [] });
   }
   const destination = request === 'local' ? undefined : request.slice(4);
-  const host = get(shellHostAtom) ?? get(workspaceHostAtom) ?? nativeWorkspaceHost();
+  const host = get(shellHostAtom) ?? get(hostServiceAtom) ?? nativeHostService();
   return Effect.gen(function* () {
     // Avoid opening an SSH process for each keystroke in the Host field.
     if (destination !== undefined) {
