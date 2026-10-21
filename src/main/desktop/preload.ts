@@ -11,13 +11,13 @@ import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
 import { listShells } from './shells';
 import { killTmuxSession, listTmuxSessions } from './tmux';
-import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/workspaces';
+import type { HostProfile, HostEnvironment } from '../../shared/hosts';
 import type { TabKind } from '../../shared/tabs';
-import { resolveLaunch } from '../../shared/workspaces';
+import { resolveLaunch } from '../../shared/hosts';
 import { resolveTmuxLaunch } from '../../shared/launch';
-import { createWorkspaceHost } from './workspace-config';
+import { createHostService } from './config';
 import { TextEncoder, TextDecoder } from 'node:util';
-const workspaces = createWorkspaceHost();
+const hosts = createHostService();
 contextBridge.exposeInLynxBTS({
   createTextEncoder: () => new TextEncoder(),
   createTextDecoder: (label?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) =>
@@ -25,12 +25,12 @@ contextBridge.exposeInLynxBTS({
   listShells,
   listTmuxSessions,
   killTmuxSession,
-  loadWorkspaces: workspaces.loadWorkspaces,
-  saveWorkspaces: workspaces.saveWorkspaces,
+  loadConfig: hosts.loadConfig,
+  saveConfig: hosts.saveConfig,
   createTerminalSession: (
     id: number,
-    profile?: WorkspaceSettings,
-    environment?: WorkspaceEnvironment,
+    profile?: HostProfile,
+    environment?: HostEnvironment,
     kind: TabKind = 'shell',
     tmuxSession?: string,
   ) =>
@@ -38,7 +38,7 @@ contextBridge.exposeInLynxBTS({
       id,
       process.env.CATUS_E2E_PTY
         ? {
-            workspaceId: profile?.id,
+            hostId: profile?.id,
             program: process.env.CATUS_E2E_NODE ?? process.execPath,
             args: [process.env.CATUS_E2E_PTY],
           }
@@ -46,7 +46,7 @@ contextBridge.exposeInLynxBTS({
           ? (() => {
               if (kind === 'tmux') {
                 return {
-                  workspaceId: profile.id,
+                  hostId: profile.id,
                   ...resolveTmuxLaunch(
                     profile,
                     environment,
@@ -58,7 +58,7 @@ contextBridge.exposeInLynxBTS({
               }
               const launch = resolveLaunch(profile, environment);
               return {
-                workspaceId: profile.id,
+                hostId: profile.id,
                 program: launch.command,
                 args: [...launch.args],
                 cwd: launch.cwd,

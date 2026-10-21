@@ -73,12 +73,13 @@ export class LynxApp {
     await mkdir('.tmp/e2e/artifacts', { recursive: true });
     this.temporary = await mkdtemp(path.join(tmpdir(), 'catus-e2e-'));
     this.tmuxSocket = options.tmux ? path.basename(this.temporary) : '';
-    const configuration = path.join(this.temporary, 'workspaces.json');
+    const configuration = path.join(this.temporary, 'config.json');
     await writeFile(
       configuration,
       JSON.stringify({
         version: 1,
-        workspaces: [
+        display: { language: 'en' },
+        hosts: [
           {
             id: 'test',
             name: 'Test',
@@ -104,6 +105,7 @@ export class LynxApp {
             name: 'Other',
             icon: 'O',
             color: '#9eb9e8',
+            defaultTab: 'shell' as const,
             command: '$SHELL',
             args: [],
             cwd: '~',
@@ -153,7 +155,7 @@ export class LynxApp {
           NODE_ENV: 'test',
           PATH: fixturePath,
           CATUS_SFTP_DIRECTORY: path.join(this.temporary, 'one', 'two', 'three', 'remote'),
-          CATUS_WORKSPACES_FILE: configuration,
+          CATUS_CONFIG_FILE: configuration,
           CATUS_E2E_DOWNLOAD_FILE: options.ssh
             ? path.join(this.temporary, 'downloaded.txt')
             : undefined,

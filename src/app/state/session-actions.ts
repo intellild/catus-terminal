@@ -3,44 +3,45 @@ import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
-import { parseWorkspaceConfig, WorkspaceFormSchema } from '../../shared/workspaces';
+import { HostFormSchema } from '../../shared/hosts';
+import { parseConfig } from '../../shared/config';
 import { defaultTmuxPrefix, nextTmuxSessionName } from '../../shared/launch';
-import type { WorkspaceConfig } from '../../shared/workspaces';
+import type { AppConfig, DisplayPreferences } from '../../shared/config';
 import {
   applyConfig,
   closeTab,
   createDraft,
   editorAtom,
-  editWorkspace,
+  editHost,
   loadAtom,
   newTab,
   selectTab,
-  selectWorkspace,
+  selectHost,
   sessionAtom,
-  workspaceAtom,
-  workspaceProfilesAtom,
+  hostAtom,
+  hostProfilesAtom,
 } from './session';
 import type { TabKind } from '../../shared/tabs';
-import type { WorkspaceDraft } from './session';
-import { nativeWorkspaceHost, workspaceHostAtom } from './workspace-host';
+import type { HostDraft } from './session';
+import { nativeHostService, hostServiceAtom } from './host-service';
 import { shellsAtom } from './shells';
 import { languageAtom, settingsAtom } from './settings';
 import type { SettingsSection } from './settings';
 import { i18n } from '../i18n';
 import { tmuxDestination, tmuxSessionsAtom } from './tmux-sessions';
 
-export const loadWorkspacesAtom = Atom.fn<void>()((_, get) =>
+export const loadConfigAtom = Atom.fn<void>()((_, get) =>
   Effect.gen(function* () {
     get.set(loadAtom, { loading: true, error: '' });
     const host = yield* Effect.try({
-      try: () => get(workspaceHostAtom) ?? nativeWorkspaceHost(),
+      try: () => get(hostServiceAtom) ?? nativeHostService(),
       catch: (error) => error,
     });
     const payload = yield* Effect.tryPromise({
-      try: () => host.loadWorkspaces(),
+      try: () => host.loadConfig(),
       catch: (error) => error,
     });
-    yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
+    yield* Effect.try({ try: () => parseConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
     get.set(loadAtom, { loading: false, error: '' });
   }).pipe(
@@ -50,31 +51,31 @@ export const loadWorkspacesAtom = Atom.fn<void>()((_, get) =>
   ),
 ).pipe(Atom.keepAlive);
 
-const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
+const persistConfigAtom = Atom.fn<AppConfig>()((config, get) =>
   Effect.gen(function* () {
     if (get(editorAtom).saving) {
       return;
     }
     get.set(editorAtom, { ...get(editorAtom), saving: true, error: '' });
     const checked = yield* Effect.try({
-      try: () => parseWorkspaceConfig(config),
+      try: () => parseConfig(config),
       catch: (error) => error,
     });
     const host = yield* Effect.try({
-      try: () => get(workspaceHostAtom) ?? nativeWorkspaceHost(),
+      try: () => get(hostServiceAtom) ?? nativeHostService(),
       catch: (error) => error,
     });
     const payload = yield* Effect.tryPromise({
-      try: () => host.saveWorkspaces(checked),
+      try: () => host.saveConfig(checked),
       catch: (error) => error,
     });
-    yield* Effect.try({ try: () => parseWorkspaceConfig(payload.config), catch: (error) => error });
+    yield* Effect.try({ try: () => parseConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
     const draft = get(editorAtom).draft;
-    const saved = draft && payload.config.workspaces.find((item) => item.id === draft.id);
+    const saved = draft && payload.config.hosts.find((item) => item.id === draft.id);
     // Deleting the displayed host leaves a draft that no longer exists; select the
     // replacement only now, after persistence cleared the saving state.
-    get.set(editorAtom, editWorkspace(saved ?? payload.config.workspaces[0]!));
+    get.set(editorAtom, editHost(saved ?? payload.config.hosts[0]!));
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() =>
@@ -84,15 +85,43 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
   ),
 ).pipe(Atom.keepAlive);
 
+export const saveDisplayPreferencesAtom = Atom.fn<DisplayPreferences>()((display, get) =>
+  Effect.gen(function* () {
+    if (!get(sessionAtom).payload) {
+      return;
+    }
+    const checked = yield* Effect.try({
+      try: () =>
+        parseConfig({
+          version: 1,
+          hosts: get(hostProfilesAtom),
+          display,
+        }),
+      catch: (error) => error,
+    });
+    const host = yield* Effect.try({
+      try: () => get(hostServiceAtom) ?? nativeHostService(),
+      catch: (error) => error,
+    });
+    const payload = yield* Effect.tryPromise({
+      try: () => host.saveConfig(checked),
+      catch: (error) => error,
+    });
+    applyConfig(get.registry, payload);
+  }).pipe(
+    Effect.catch((error) => Effect.sync(() => console.error('Save display preferences', error))),
+  ),
+).pipe(Atom.keepAlive);
+
 export type SessionAction =
   | {
-      type: 'reload' | 'addTab' | 'addWorkspace' | 'closeSettings' | 'saveDraft' | 'retryShells';
+      type: 'reload' | 'addTab' | 'addHost' | 'closeSettings' | 'saveDraft' | 'retryShells';
     }
   | { type: 'addTab'; kind: TabKind }
-  | { type: 'openWorkspace' | 'deleteWorkspace'; id: string }
+  | { type: 'openHost' | 'deleteHost'; id: string }
   | { type: 'focusTab' | 'closeTab'; id: number }
-  | { type: 'editWorkspace'; id?: string }
-  | { type: 'updateDraft'; field: keyof WorkspaceDraft; value: string }
+  | { type: 'editHost'; id?: string }
+  | { type: 'updateDraft'; field: keyof HostDraft; value: string }
   | { type: 'attachTmux'; session: string }
   | { type: 'newTmuxSession' }
   | { type: 'openSettings'; section?: SettingsSection }
@@ -103,39 +132,38 @@ export type SessionAction =
 // All commands read the current registry state; no React closure owns business state.
 export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => {
   const state = get(sessionAtom);
-  const workspaces = get(workspaceProfilesAtom);
+  const hosts = get(hostProfilesAtom);
   const store = get.registry;
   const editor = get(editorAtom);
   switch (action.type) {
     case 'reload':
-      get.set(loadWorkspacesAtom, undefined);
+      get.set(loadConfigAtom, undefined);
       return;
     case 'addTab':
       if ('kind' in action) {
-        newTab(store, state.activeWorkspaceId ?? undefined, action.kind);
+        newTab(store, state.activeHostId ?? undefined, action.kind);
       } else {
         newTab(store);
       }
       return;
     case 'attachTmux':
-      if (state.activeWorkspaceId !== null) {
-        newTab(store, state.activeWorkspaceId, 'tmux', action.session);
+      if (state.activeHostId !== null) {
+        newTab(store, state.activeHostId, 'tmux', action.session);
       }
       return;
     case 'newTmuxSession': {
-      const workspace =
-        state.activeWorkspaceId === null ? undefined : get(workspaceAtom(state.activeWorkspaceId));
-      if (!workspace) {
+      const host = state.activeHostId === null ? undefined : get(hostAtom(state.activeHostId));
+      if (!host) {
         return;
       }
-      const names = get(tmuxSessionsAtom(tmuxDestination(workspace.profile))).sessions.map(
+      const names = get(tmuxSessionsAtom(tmuxDestination(host.profile))).sessions.map(
         (session) => session.name,
       );
       newTab(
         store,
-        state.activeWorkspaceId ?? undefined,
+        state.activeHostId ?? undefined,
         'tmux',
-        nextTmuxSessionName(workspace.profile.tmuxPrefix ?? defaultTmuxPrefix, names),
+        nextTmuxSessionName(host.profile.tmuxPrefix ?? defaultTmuxPrefix, names),
       );
       return;
     }
@@ -148,10 +176,9 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
           get.set(editorAtom, { ...editor, open: true });
         }
       } else {
-        const target =
-          workspaces.find((item) => item.id === state.activeWorkspaceId) ?? workspaces[0];
+        const target = hosts.find((item) => item.id === state.activeHostId) ?? hosts[0];
         if (target) {
-          get.set(editorAtom, editWorkspace(target));
+          get.set(editorAtom, editHost(target));
         }
       }
       return;
@@ -163,18 +190,21 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       if (editor.saving) {
         return;
       }
-      const target = workspaces.find((item) => item.id === action.id);
+      const target = hosts.find((item) => item.id === action.id);
       if (target) {
-        get.set(editorAtom, editWorkspace(target));
+        get.set(editorAtom, editHost(target));
       }
       return;
     }
     case 'changeLanguage':
       get.set(languageAtom, action.language);
       void i18n.changeLanguage(action.language);
+      if (state.payload) {
+        get.set(saveDisplayPreferencesAtom, { language: action.language });
+      }
       return;
-    case 'openWorkspace':
-      selectWorkspace(store, action.id);
+    case 'openHost':
+      selectHost(store, action.id);
       return;
     case 'focusTab':
       selectTab(store, action.id);
@@ -185,21 +215,21 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
     case 'retryShells':
       get.refresh(shellsAtom);
       return;
-    case 'editWorkspace': {
+    case 'editHost': {
       if (editor.saving) {
         return;
       }
-      const target = workspaces.find((item) => item.id === (action.id ?? state.activeWorkspaceId));
+      const target = hosts.find((item) => item.id === (action.id ?? state.activeHostId));
       if (target) {
         get.set(settingsAtom, { open: true, section: 'hosts' });
-        get.set(editorAtom, editWorkspace(target));
+        get.set(editorAtom, editHost(target));
       }
       return;
     }
-    case 'addWorkspace':
+    case 'addHost':
       if (!editor.saving && state.payload) {
         get.set(settingsAtom, { open: true, section: 'hosts' });
-        get.set(editorAtom, createDraft(workspaces));
+        get.set(editorAtom, createDraft(hosts));
       }
       return;
     case 'closeSettings':
@@ -237,17 +267,14 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       });
       return;
     }
-    case 'deleteWorkspace': {
-      if (
-        editor.saving ||
-        workspaces.length <= 1 ||
-        !workspaces.some((item) => item.id === action.id)
-      ) {
+    case 'deleteHost': {
+      if (editor.saving || hosts.length <= 1 || !hosts.some((item) => item.id === action.id)) {
         return;
       }
-      get.set(persistWorkspacesAtom, {
+      get.set(persistConfigAtom, {
         version: 1,
-        workspaces: workspaces.filter((item) => item.id !== action.id),
+        hosts: hosts.filter((item) => item.id !== action.id),
+        display: { language: get(languageAtom) },
       });
       return;
     }
@@ -256,12 +283,13 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
         return;
       }
       try {
-        const { isNew, ...profile } = Schema.decodeUnknownSync(WorkspaceFormSchema)(editor.draft);
-        get.set(persistWorkspacesAtom, {
+        const { isNew, ...profile } = Schema.decodeUnknownSync(HostFormSchema)(editor.draft);
+        get.set(persistConfigAtom, {
           version: 1,
-          workspaces: isNew
-            ? [...workspaces, profile]
-            : workspaces.map((item) => (item.id === profile.id ? profile : item)),
+          hosts: isNew
+            ? [...hosts, profile]
+            : hosts.map((item) => (item.id === profile.id ? profile : item)),
+          display: { language: get(languageAtom) },
         });
       } catch (error) {
         get.set(editorAtom, { ...editor, error: String(error) });

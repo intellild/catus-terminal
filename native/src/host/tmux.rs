@@ -1,4 +1,4 @@
-use super::WorkspaceDelegate;
+use super::HostDelegate;
 use crate::{
     terminal_core::{grid::GridSize, pty::TmuxPtyDelegate, session::TerminalSession},
     terminal_session::TerminalSessionCommand,
@@ -6,15 +6,15 @@ use crate::{
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
-pub(crate) struct TmuxWorkspaceDelegate;
-impl WorkspaceDelegate for TmuxWorkspaceDelegate {
+pub(crate) struct TmuxHostDelegate;
+impl HostDelegate for TmuxHostDelegate {
     fn create_session(
         &self,
         command: Option<TerminalSessionCommand>,
         size: GridSize,
     ) -> Result<TerminalSession> {
-        let command = command.context("Missing tmux workspace command")?;
-        let options = command.tmux.context("Missing tmux workspace options")?;
+        let command = command.context("Missing tmux host command")?;
+        let options = command.tmux.context("Missing tmux host options")?;
         TerminalSession::command_with_delegate(
             &command.program,
             &command.args,

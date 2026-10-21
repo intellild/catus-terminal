@@ -1,6 +1,6 @@
 import { useTranslation } from '../../i18n';
 import type { ReactNode } from '@lynx-js/react';
-import type { WorkspaceSettings } from '../../../shared/workspaces';
+import type { HostProfile } from '../../../shared/hosts';
 import type { TerminalTab } from '../../state/session';
 import { Panel, PanelActions, PanelContent, PanelHeader, PanelTitle } from '../ui/panel';
 import { SessionPanelFooter } from './session-panel-footer';
@@ -10,7 +10,7 @@ export interface TerminalPanelProps {
   id?: number;
   sessionId: number;
   tab?: TerminalTab;
-  workspace?: WorkspaceSettings;
+  host?: HostProfile;
   terminalError: string;
   titleTabs?: ReactNode;
 }
@@ -20,7 +20,7 @@ export function TerminalPanel({
   id,
   sessionId,
   tab,
-  workspace,
+  host,
   terminalError,
   titleTabs,
 }: TerminalPanelProps) {
@@ -57,7 +57,7 @@ export function TerminalPanel({
       <PanelContent>
         <TerminalView id={id} sessionId={sessionId} error={terminalError} />
       </PanelContent>
-      {tab ? <SessionPanelFooter workspace={workspace} tab={tab} /> : null}
+      {tab ? <SessionPanelFooter host={host} tab={tab} /> : null}
     </Panel>
   );
 }

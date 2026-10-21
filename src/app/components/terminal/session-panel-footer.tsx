@@ -1,22 +1,16 @@
 import { useTranslation } from '../../i18n';
 import { PanelFooter } from '../ui/panel';
-import type { WorkspaceSettings } from '../../../shared/workspaces';
+import type { HostProfile } from '../../../shared/hosts';
 import type { TerminalTab } from '../../state/session';
 
 /** Shared footer for the terminal, tmux, SFTP and placeholder panels. */
-export function SessionPanelFooter({
-  workspace,
-  tab,
-}: {
-  workspace?: WorkspaceSettings;
-  tab?: TerminalTab;
-}) {
+export function SessionPanelFooter({ host, tab }: { host?: HostProfile; tab?: TerminalTab }) {
   const { t } = useTranslation();
   return (
     <PanelFooter>
       <text className="text-[10px] text-[#596574]">
         {t('terminal.summary', {
-          name: workspace?.name ?? 'Catus',
+          name: host?.name ?? 'Catus',
           tab: tab ? t('terminal.tab', { number: tab.number }) : t('tabs.empty'),
         })}
       </text>
@@ -26,7 +20,7 @@ export function SessionPanelFooter({
             ? 'common.sftp'
             : tab?.kind === 'tmux'
               ? 'common.tmux'
-              : workspace?.type === 'ssh'
+              : host?.type === 'ssh'
                 ? 'common.ssh'
                 : 'common.local',
         )}

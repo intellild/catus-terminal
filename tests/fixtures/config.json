@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "workspaces": [
+  "hosts": [
     {
       "id": "shell",
       "name": "Shell",
@@ -25,5 +25,8 @@
       "type": "local",
       "defaultTab": "shell"
     }
-  ]
+  ],
+  "display": {
+    "language": "en"
+  }
 }

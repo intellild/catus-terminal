@@ -1,23 +1,23 @@
-import defaults from '../../../config/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
-import type { WorkspaceHost, WorkspaceConfigPayload } from '../../shared/workspaces';
+import defaults from '../../../config/catus-terminal/config.json';
+import { parseConfig } from '../../shared/config';
+import type { HostService, AppConfigPayload } from '../../shared/config';
 import type { TerminalHost } from '../state/terminal-sessions';
 import type { SftpHost } from '../../shared/sftp';
 
 // Preview configuration belongs to this browser runtime, never the desktop config file.
-export function createWebHost(): WorkspaceHost & TerminalHost & SftpHost {
-  let config = parseWorkspaceConfig(defaults);
-  const payload = (): WorkspaceConfigPayload => ({
+export function createWebHost(): HostService & TerminalHost & SftpHost {
+  let config = parseConfig(defaults);
+  const payload = (): AppConfigPayload => ({
     config,
     path: 'web preview (in memory)',
     environment: { shell: '/bin/sh', home: '~' },
   });
   return {
-    async loadWorkspaces() {
+    async loadConfig() {
       return payload();
     },
-    async saveWorkspaces(value) {
-      config = parseWorkspaceConfig(value);
+    async saveConfig(value) {
+      config = parseConfig(value);
       return payload();
     },
     async listShells() {

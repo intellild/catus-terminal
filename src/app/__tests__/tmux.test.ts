@@ -5,11 +5,11 @@ import {
   nextTmuxSessionName,
   resolveTmuxLaunch,
 } from '../../shared/launch';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
-import defaults from '../../../tests/fixtures/workspaces.json';
+import { parseConfig } from '../../shared/config';
+import defaults from '../../../tests/fixtures/config.json';
 
 const environment = { shell: '/bin/zsh', home: '/Users/test' };
-const profile = parseWorkspaceConfig(defaults).workspaces[0]!;
+const profile = parseConfig(defaults).hosts[0]!;
 
 test('a tmux tab attaches the machine default and only creates a session when none exists', () => {
   const first = resolveTmuxLaunch(
@@ -84,33 +84,19 @@ test('SSH tmux runs on the target host and expands remote home without substitut
   expect(custom.tmux.command).toBe("cd /srv; printf 'hello'; exec bash");
 });
 
-test('legacy tmux flags migrate to the default tab kind and retired fields are dropped', () => {
-  const { defaultTab: _defaultTab, ...legacyProfile } = profile;
-  const legacy = parseWorkspaceConfig({
-    version: 1,
-    workspaces: [{ ...legacyProfile, tmux: true, tmuxSessionName: 'dev' }],
-  }).workspaces[0]!;
-  expect(legacy.defaultTab).toBe('tmux');
-  expect(legacy).not.toHaveProperty('tmux');
-  expect(legacy).not.toHaveProperty('tmuxSessionName');
-  const local = parseWorkspaceConfig({
-    version: 1,
-    workspaces: [{ ...legacyProfile, tmux: false }],
-  }).workspaces[0]!;
-  expect(local.defaultTab).toBe('shell');
-});
-
-test('SFTP can only be the default tab for an SSH workspace', () => {
+test('SFTP can only be the default tab for an SSH host', () => {
   expect(
-    parseWorkspaceConfig({
+    parseConfig({
       version: 1,
-      workspaces: [{ ...profile, type: 'ssh', host: 'server', defaultTab: 'sftp' }],
-    }).workspaces[0]!.defaultTab,
+      hosts: [{ ...profile, type: 'ssh', host: 'server', defaultTab: 'sftp' }],
+      display: { language: 'en' },
+    }).hosts[0]!.defaultTab,
   ).toBe('sftp');
   expect(() =>
-    parseWorkspaceConfig({
+    parseConfig({
       version: 1,
-      workspaces: [{ ...profile, type: 'local', defaultTab: 'sftp' }],
+      hosts: [{ ...profile, type: 'local', defaultTab: 'sftp' }],
+      display: { language: 'en' },
     }),
   ).toThrow('validation.sftpDefault');
 });

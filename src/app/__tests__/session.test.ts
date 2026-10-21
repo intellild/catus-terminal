@@ -1,26 +1,27 @@
 import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import { terminalHostAtom } from '../state/terminal-sessions';
-import defaults from '../../../tests/fixtures/workspaces.json';
-import { parseWorkspaceConfig, resolveLaunch } from '../../shared/workspaces';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
+import { resolveLaunch } from '../../shared/launch';
 import {
   applyConfig,
   closeTab,
   allTabsAtom,
-  workspaceAtom,
-  workspaceIdsAtom,
-  workspaceProfilesAtom,
+  hostAtom,
+  hostIdsAtom,
+  hostProfilesAtom,
   tabAtom,
   newTab,
   selectTab,
-  selectWorkspace,
+  selectHost,
   sessionAtom,
   sessionViewAtom,
 } from '../state/session';
 
 const payload = {
-  config: parseWorkspaceConfig(defaults),
-  path: '/tmp/workspaces.json',
+  config: parseConfig(defaults),
+  path: '/tmp/config.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 
@@ -34,53 +35,54 @@ beforeEach(() => {
 });
 afterEach(() => registry.dispose());
 
-test('startup opens only the first workspace and repeated activation preserves its tabs', () => {
+test('startup opens only the first host and repeated activation preserves its tabs', () => {
   applyConfig(registry, payload);
-  expect(registry.get(sessionAtom).workspaceIds).toEqual(['shell', 'local']);
-  expect(registry.get(workspaceAtom('shell'))?.tabIds).toEqual([1]);
-  expect(registry.get(workspaceAtom('local'))?.tabIds).toEqual([]);
-  selectWorkspace(registry, 'local');
+  expect(registry.get(sessionAtom).hostIds).toEqual(['shell', 'local']);
+  expect(registry.get(hostAtom('shell'))?.tabIds).toEqual([1]);
+  expect(registry.get(hostAtom('local'))?.tabIds).toEqual([]);
+  selectHost(registry, 'local');
   newTab(registry);
-  const local = registry.get(workspaceAtom('local'));
+  const local = registry.get(hostAtom('local'));
   expect(local?.tabIds).toEqual([2, 3]);
   expect(local?.activeTabId).toBe(3);
-  selectWorkspace(registry, 'shell');
-  expect(registry.get(workspaceAtom('shell'))?.activeTabId).toBe(1);
-  selectWorkspace(registry, 'local');
-  expect(registry.get(workspaceAtom('local'))).toBe(local);
-  selectWorkspace(registry, 'local');
+  selectHost(registry, 'shell');
+  expect(registry.get(hostAtom('shell'))?.activeTabId).toBe(1);
+  selectHost(registry, 'local');
+  expect(registry.get(hostAtom('local'))).toBe(local);
+  selectHost(registry, 'local');
   expect(registry.get(allTabsAtom)).toHaveLength(3);
 });
 
-test('closing tabs selects a neighbor; closing the last tab stops the workspace until restarted', () => {
+test('closing tabs selects a neighbor; closing the last tab stops the host until restarted', () => {
   applyConfig(registry, payload);
   newTab(registry);
   newTab(registry);
   selectTab(registry, 2);
   closeTab(registry, 2);
-  expect(registry.get(workspaceAtom('shell'))?.activeTabId).toBe(3);
+  expect(registry.get(hostAtom('shell'))?.activeTabId).toBe(3);
   expect(registry.get(tabAtom(2))).toBeUndefined();
   closeTab(registry, 3);
-  expect(registry.get(workspaceAtom('shell'))?.activeTabId).toBe(1);
+  expect(registry.get(hostAtom('shell'))?.activeTabId).toBe(1);
   closeTab(registry, 1);
-  expect(registry.get(workspaceAtom('shell'))?.tabIds).toEqual([]);
-  expect(registry.get(workspaceAtom('shell'))?.activeTabId).toBeUndefined();
-  expect(registry.get(sessionAtom).activeWorkspaceId).toBe('shell');
-  selectWorkspace(registry, 'shell');
-  expect(registry.get(workspaceAtom('shell'))?.tabIds).toEqual([4]);
-  expect(registry.get(workspaceAtom('shell'))?.activeTabId).toBe(4);
+  expect(registry.get(hostAtom('shell'))?.tabIds).toEqual([]);
+  expect(registry.get(hostAtom('shell'))?.activeTabId).toBeUndefined();
+  expect(registry.get(sessionAtom).activeHostId).toBe('shell');
+  selectHost(registry, 'shell');
+  expect(registry.get(hostAtom('shell'))?.tabIds).toEqual([4]);
+  expect(registry.get(hostAtom('shell'))?.activeTabId).toBe(4);
 });
 
-test('profile edits apply to new tabs, while deleting a workspace removes only its sessions', () => {
+test('profile edits apply to new tabs, while deleting a host removes only its sessions', () => {
   applyConfig(registry, payload);
-  selectWorkspace(registry, 'local');
+  selectHost(registry, 'local');
   const updated = {
     ...payload,
     config: {
       version: 1 as const,
-      workspaces: payload.config.workspaces.map((workspace) =>
-        workspace.id === 'local' ? { ...workspace, command: '/bin/bash' } : workspace,
+      hosts: payload.config.hosts.map((host) =>
+        host.id === 'local' ? { ...host, command: '/bin/bash' } : host,
       ),
+      display: payload.config.display,
     },
   };
   applyConfig(registry, updated);
@@ -91,50 +93,56 @@ test('profile edits apply to new tabs, while deleting a workspace removes only i
     ...updated,
     config: {
       version: 1,
-      workspaces: updated.config.workspaces.filter((workspace) => workspace.id !== 'local'),
+      hosts: updated.config.hosts.filter((host) => host.id !== 'local'),
+      display: payload.config.display,
     },
   });
   expect(registry.get(allTabsAtom)).toHaveLength(1);
-  expect(registry.get(workspaceAtom('local'))).toBeUndefined();
+  expect(registry.get(hostAtom('local'))).toBeUndefined();
   expect(registry.get(tabAtom(2))).toBeUndefined();
   expect(registry.get(tabAtom(3))).toBeUndefined();
-  expect(registry.get(sessionAtom).activeWorkspaceId).toBe('shell');
+  expect(registry.get(sessionAtom).activeHostId).toBe('shell');
 });
 
 test('Effect Atom derived view reflects active tabs and dock indicators', () => {
   const release = registry.mount(sessionViewAtom);
   applyConfig(registry, payload);
   expect(registry.get(sessionViewAtom).runningIds.has('shell')).toBe(true);
-  selectWorkspace(registry, 'local');
-  expect(registry.get(sessionViewAtom).activeTab?.workspaceId).toBe('local');
+  selectHost(registry, 'local');
+  expect(registry.get(sessionViewAtom).activeTab?.hostId).toBe('local');
   expect(registry.get(sessionViewAtom).runningIds.size).toBe(2);
-  closeTab(registry, registry.get(workspaceAtom('local'))!.activeTabId!);
+  closeTab(registry, registry.get(hostAtom('local'))!.activeTabId!);
   expect(registry.get(sessionViewAtom).runningIds.has('local')).toBe(false);
   release();
 });
 
 test('configuration validates IDs and commands and resolves the account shell and home', () => {
-  expect(resolveLaunch(payload.config.workspaces[0]!, payload.environment)).toEqual({
+  expect(resolveLaunch(payload.config.hosts[0]!, payload.environment)).toEqual({
     command: '/bin/zsh',
     args: ['-l'],
     cwd: '/Users/test',
   });
-  expect(() => parseWorkspaceConfig({ version: 1, workspaces: [] })).toThrow();
+  expect(() => parseConfig({ version: 1, hosts: [], display: { language: 'en' } })).toThrow();
   expect(() =>
-    parseWorkspaceConfig({
+    parseConfig({
       version: 1,
-      workspaces: [defaults.workspaces[0], defaults.workspaces[0]],
+      hosts: [defaults.hosts[0], defaults.hosts[0]],
+      display: { language: 'en' },
     }),
   ).toThrow('Duplicate');
   expect(() =>
-    parseWorkspaceConfig({ version: 1, workspaces: [{ ...defaults.workspaces[0], command: ' ' }] }),
+    parseConfig({
+      version: 1,
+      hosts: [{ ...defaults.hosts[0], command: ' ' }],
+      display: { language: 'en' },
+    }),
   ).toThrow('validation.required');
 });
 
 test('SSH launch uses argv and quotes preview without interpolating a host into a shell', async () => {
   const { launchPreview } = await import('../../shared/launch');
   const profile = {
-    ...payload.config.workspaces[0]!,
+    ...payload.config.hosts[0]!,
     type: 'ssh' as const,
     host: 'user@server',
     remoteCommand: "printf 'hello world'",
@@ -148,14 +156,14 @@ test('SSH launch uses argv and quotes preview without interpolating a host into 
     "'ssh' '-t' '--' 'user@server' 'printf '\\''hello world'\\''' ".trim(),
   );
   expect(() =>
-    parseWorkspaceConfig({
+    parseConfig({
       ...payload.config,
-      workspaces: [{ ...profile, host: '-oProxyCommand=bad' }],
+      hosts: [{ ...profile, host: '-oProxyCommand=bad' }],
     }),
   ).toThrow();
   applyConfig(registry, {
     ...payload,
-    config: { version: 1, workspaces: [profile] },
+    config: { version: 1, hosts: [profile], display: payload.config.display },
   });
   newTab(registry, profile.id, 'sftp');
   expect(registry.get(tabAtom(2))?.kind).toBe('sftp');
@@ -172,7 +180,7 @@ test('SSH launch uses argv and quotes preview without interpolating a host into 
 });
 
 test('selected shells launch directly locally and become a quoted SSH command remotely', () => {
-  const profile = { ...payload.config.workspaces[0]!, shell: '/bin/zsh', args: [] };
+  const profile = { ...payload.config.hosts[0]!, shell: '/bin/zsh', args: [] };
   expect(resolveLaunch(profile, payload.environment)).toEqual({
     command: '/bin/zsh',
     args: ['-l'],
@@ -196,28 +204,28 @@ test('selected shells launch directly locally and become a quoted SSH command re
   ).toEqual(['-t', '--', 'alias', 'exec fish']);
 });
 
-test('workspace families keep their own membership and updates do not notify other workspaces', () => {
+test('host families keep their own membership and updates do not notify other hosts', () => {
   applyConfig(registry, payload);
-  selectWorkspace(registry, 'local');
-  const shell = registry.get(workspaceAtom('shell'));
-  const ids = registry.get(workspaceIdsAtom);
-  registry.get(workspaceProfilesAtom);
+  selectHost(registry, 'local');
+  const shell = registry.get(hostAtom('shell'));
+  const ids = registry.get(hostIdsAtom);
+  registry.get(hostProfilesAtom);
   const shellChanged = rstest.fn();
   const idsChanged = rstest.fn();
   const profilesChanged = rstest.fn();
   const stops = [
-    registry.subscribe(workspaceAtom('shell'), shellChanged),
-    registry.subscribe(workspaceIdsAtom, idsChanged),
-    registry.subscribe(workspaceProfilesAtom, profilesChanged),
+    registry.subscribe(hostAtom('shell'), shellChanged),
+    registry.subscribe(hostIdsAtom, idsChanged),
+    registry.subscribe(hostProfilesAtom, profilesChanged),
   ];
   newTab(registry);
   selectTab(registry, 2);
   closeTab(registry, 3);
-  expect(registry.get(workspaceAtom('local'))?.tabIds).toEqual([2]);
-  expect(registry.get(workspaceAtom('local'))?.activeTabId).toBe(2);
-  expect(registry.get(workspaceAtom('shell'))).toBe(shell);
-  expect(registry.get(workspaceIdsAtom)).toBe(ids);
-  registry.get(workspaceProfilesAtom);
+  expect(registry.get(hostAtom('local'))?.tabIds).toEqual([2]);
+  expect(registry.get(hostAtom('local'))?.activeTabId).toBe(2);
+  expect(registry.get(hostAtom('shell'))).toBe(shell);
+  expect(registry.get(hostIdsAtom)).toBe(ids);
+  registry.get(hostProfilesAtom);
   expect(shellChanged).not.toHaveBeenCalled();
   expect(idsChanged).not.toHaveBeenCalled();
   expect(profilesChanged).not.toHaveBeenCalled();
@@ -226,7 +234,7 @@ test('workspace families keep their own membership and updates do not notify oth
   expect(registry.get(sessionAtom)).not.toHaveProperty('activeTabs');
   stops.forEach((stop) => stop());
   registry.reset();
-  expect(registry.get(workspaceIdsAtom)).toEqual([]);
-  expect(registry.get(workspaceAtom('shell'))).toBeUndefined();
+  expect(registry.get(hostIdsAtom)).toEqual([]);
+  expect(registry.get(hostAtom('shell'))).toBeUndefined();
   expect(registry.get(tabAtom(2))).toBeUndefined();
 });

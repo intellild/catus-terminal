@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { LynxApp, waitFor } from '../support/lynx';
 import { colorPixels } from '../support/screenshots';
 
-test('dock plus opens the workspace editor and its Select after repeated mounts', async () => {
+test('dock plus opens the host editor and its Select after repeated mounts', async () => {
   const app = new LynxApp();
   const logPath = '.tmp/e2e/artifacts/lynxtron.log';
   let logOffset: number;
@@ -12,9 +12,9 @@ test('dock plus opens the workspace editor and its Select after repeated mounts'
     logOffset = (await readFile(logPath, 'utf8')).length;
     for (let attempt = 0; attempt < 2; attempt++) {
       await app.automation('open-settings').tap();
-      await app.automation('add-workspace').tap();
+      await app.automation('add-host').tap();
       await app.automation('profile-shell').visibleTarget();
-      expect(await app.automation('profile-name').invoke<string>('getValue')).toBe('New workspace');
+      expect(await app.automation('profile-name').invoke<string>('getValue')).toBe('New host');
       const normal = await app.automation('profile-name-group').screenshot();
       await app.automation('profile-name').invoke('focus');
       const focused = await waitFor('InputGroup focus border', async () => {
@@ -37,14 +37,14 @@ test('dock plus opens the workspace editor and its Select after repeated mounts'
       await app.automation('profile-shell').tap();
       await app.automation('profile-shell-option-1').visibleTarget();
       await app.tap('.profile-shell-dismiss');
-      await app.automation('save-workspace').invoke('scrollIntoView', {
+      await app.automation('save-host').invoke('scrollIntoView', {
         scrollIntoViewOptions: { block: 'center', inline: 'center', behavior: 'none' },
       });
-      await app.automation('save-workspace').tap();
+      await app.automation('save-host').tap();
       // Saving keeps the settings dialog open on the updated host.
       await app.automation('close-settings').tap();
-      const id = `workspace-${attempt + 1}`;
-      await waitFor('saved workspace', () => app.automation(`workspace-${id}`).node());
+      const id = `host-${attempt + 1}`;
+      await waitFor('saved host', () => app.automation(`host-${id}`).node());
       await app.automation('open-settings').tap();
       await app.automation(`settings-host-${id}`).tap();
       await app.automation('profile-name').visibleTarget();

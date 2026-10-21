@@ -3,7 +3,7 @@ import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
 import * as Effect from 'effect/Effect';
 import type { TmuxSessionHost, TmuxSessionSummary } from '../../shared/tmux';
-import { workspaceHostAtom } from './workspace-host';
+import { hostServiceAtom } from './host-service';
 
 export interface TmuxSessionsState {
   readonly sessions: readonly TmuxSessionSummary[];
@@ -14,7 +14,7 @@ export interface TmuxSessionsState {
 
 const empty: TmuxSessionsState = { sessions: [], loaded: false, pending: false, error: '' };
 
-/** The machine a workspace's tmux sessions live on: the SSH host or the local machine. */
+/** The machine a host's tmux sessions live on: the SSH host or the local machine. */
 export function tmuxDestination(profile?: { type?: string; host?: string }): string {
   return profile?.type === 'ssh' ? (profile.host ?? '').trim() : '';
 }
@@ -49,7 +49,7 @@ export const tmuxSessionsAtom = Atom.family((_destination: string) =>
 function sessionHost(
   get: Atom.FnContext,
 ): (TmuxSessionHost & { listShells?: unknown }) | undefined {
-  const configured = get(workspaceHostAtom);
+  const configured = get(hostServiceAtom);
   if (configured) {
     return configured;
   }

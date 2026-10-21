@@ -36,10 +36,10 @@ async function updateTerminal() {
   await app.terminalFrame(blue);
 }
 
-test('starts the first workspace and presents the fake PTY through JS RAF', async () => {
+test('starts the first host and presents the fake PTY through JS RAF', async () => {
   expect(firstId).toBeGreaterThan(0);
   expect(await app.automation('running-test').node()).toBeDefined();
-  await expectScreenshot('initial-workspace', await app.screenshot());
+  await expectScreenshot('initial-host', await app.screenshot());
 });
 
 test('native key input updates the PTY and automatically repaints ANSI and Unicode text', async () => {
@@ -75,25 +75,25 @@ test('new tabs get independent PTYs; switching back preserves contents and the n
   );
 });
 
-test('workspace first activation creates a session and its dock indicator', async () => {
-  await app.automation('workspace-other').tap();
-  await waitFor('other workspace session bound', async () => {
+test('host first activation creates a session and its dock indicator', async () => {
+  await app.automation('host-other').tap();
+  await waitFor('other host session bound', async () => {
     const node = await app.automation('terminal-surface').node();
     return node && Number(app.attribute(node, 'terminal-id')) === 2 ? node : undefined;
   });
-  await waitFor('other workspace dock indicator', () => app.automation('running-other').node());
+  await waitFor('other host dock indicator', () => app.automation('running-other').node());
   await app.terminalFrame(red);
   expect(await app.automation('running-other').node()).toBeDefined();
   expect(await app.automation('tab-2').node()).toBeDefined();
   expect((await app.automation('terminal-surface').node())!.nodeId).toBe(nodeId);
-  await expectScreenshot('other-workspace', await app.screenshot());
+  await expectScreenshot('other-host', await app.screenshot());
 });
 
 test('closing the last tab unbinds the persistent native view and removes the dock indicator', async () => {
   await app.automation('new-tab').tap();
   await waitFor('new tab', () => app.automation('tab-2').node());
-  await app.automation('workspace-other').tap();
-  await waitFor('other workspace tab', () => app.automation('tab-3').node());
+  await app.automation('host-other').tap();
+  await waitFor('other host tab', () => app.automation('tab-3').node());
   for (const id of [1, 2, 3]) {
     await waitFor(`session ${id} created in Rust registry`, async () =>
       (await app.sessionExists(id)) ? true : undefined,
@@ -105,7 +105,7 @@ test('closing the last tab unbinds the persistent native view and removes the do
   );
   expect(await app.sessionExists(1)).toBe(true);
   expect(await app.sessionExists(2)).toBe(true);
-  await app.automation('workspace-test').tap();
+  await app.automation('host-test').tap();
   await app.automation('close-tab-2').tap();
   await waitFor('session 2 removed from Rust registry', async () =>
     !(await app.sessionExists(2)) ? true : undefined,

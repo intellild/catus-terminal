@@ -15,7 +15,7 @@
     "./**/*.ts",
     "./**/*.tsx",
     "../shared/**/*.ts",
-    "../../config/*.json",
+    "../../config/**/*.json",
     "../../native/*.d.ts",
     "../../native/*.d.cts"
   ]

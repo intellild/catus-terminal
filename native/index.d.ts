@@ -65,7 +65,7 @@ export interface SftpOptions {
 }
 
 export interface TerminalSessionCommand {
-  workspaceId?: string;
+  hostId?: string;
   program: string;
   args: Array<string>;
   cwd?: string;

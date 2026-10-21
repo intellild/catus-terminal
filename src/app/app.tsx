@@ -13,7 +13,7 @@ import { StatusBar } from './components/status-bar';
 import {
   SessionTabs,
   SessionTabActions,
-  SessionWorkspaces,
+  SessionHosts,
   SessionContent,
   SessionStatus,
 } from './components/session-views';
@@ -48,7 +48,7 @@ export function App() {
         <AppLayoutBody>
           <AppLayoutSidebar>
             <background-only>
-              <SessionWorkspaces />
+              <SessionHosts />
             </background-only>
           </AppLayoutSidebar>
           <AppLayoutMain>

@@ -1,7 +1,6 @@
 //! Session ownership and numeric handles; the computation module stays GPU-independent.
 use crate::{
-    terminal_core::session::TerminalSession, terminal_core::tmux::TmuxSessionInfo,
-    workspace::Workspaces,
+    host::Hosts, terminal_core::session::TerminalSession, terminal_core::tmux::TmuxSessionInfo,
 };
 use anyhow::Result;
 use napi_derive::napi;
@@ -10,8 +9,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 #[cfg(feature = "native-view")]
 use crate::{frame::Viewport, renderer::TerminalRenderer};
 
-static WORKSPACES: LazyLock<Mutex<Workspaces>> =
-    LazyLock::new(|| Mutex::new(Workspaces::default()));
+static HOSTS: LazyLock<Mutex<Hosts>> = LazyLock::new(|| Mutex::new(Hosts::default()));
 
 pub(crate) struct Session {
     pub core: TerminalSession,
@@ -27,7 +25,7 @@ pub(crate) struct SessionRenderer {
 
 #[napi(object)]
 pub struct TerminalSessionCommand {
-    pub workspace_id: Option<String>,
+    pub host_id: Option<String>,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
@@ -36,11 +34,11 @@ pub struct TerminalSessionCommand {
 
 fn create_session_with_command(id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
     // Hold the registry through creation so concurrent callers cannot replace a handle.
-    WORKSPACES.lock().unwrap().create_session(id, command)
+    HOSTS.lock().unwrap().create_session(id, command)
 }
 
 fn session(id: u32) -> Result<Arc<Session>> {
-    WORKSPACES.lock().unwrap().session(id)
+    HOSTS.lock().unwrap().session(id)
 }
 
 #[napi]
@@ -53,12 +51,12 @@ pub fn create_terminal_session(
 
 #[napi]
 pub fn close_terminal_session(id: u32) {
-    WORKSPACES.lock().unwrap().close_session(id);
+    HOSTS.lock().unwrap().close_session(id);
 }
 
 #[napi]
 pub fn detach_terminal_session(id: u32) {
-    WORKSPACES.lock().unwrap().detach_session(id);
+    HOSTS.lock().unwrap().detach_session(id);
 }
 
 #[napi]

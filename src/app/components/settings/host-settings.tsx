@@ -6,11 +6,11 @@ import { cn } from '../../lib/utils';
 import { sessionActionsAtom } from '../../state/session-actions';
 import { settingsViewAtom } from '../../state/session-views';
 import { shellOptionsAtom } from '../../state/shells';
-import type { WorkspaceSettings as WorkspaceProfile } from '../../../shared/workspaces';
+import type { HostProfile } from '../../../shared/hosts';
 import { Button } from '../ui/button';
 import { Icon } from '../ui/icon';
 import { Popover, PopoverAnchor, PopoverContent, usePopoverClickTrigger } from '../ui/popover';
-import { WorkspaceSettings } from '../workspace/workspace-settings';
+import { HostForm } from '../host/host-form';
 
 /** Host list plus the editor for the selected host. */
 export function HostSettings() {
@@ -40,7 +40,7 @@ export function HostSettings() {
                 onSelect={select}
                 onDelete={() => {
                   'background only';
-                  dispatch({ type: 'deleteWorkspace', id: host.id });
+                  dispatch({ type: 'deleteHost', id: host.id });
                 }}
               />
             ))}
@@ -57,12 +57,12 @@ export function HostSettings() {
         <view className="p-[8px]">
           <Button
             variant="ghost"
-            data-automation-id="add-workspace"
+            data-automation-id="add-host"
             accessibility-label={t('settings.addHost')}
             className="w-full h-[30px] px-[10px] justify-start gap-[8px] rounded-[6px] bg-[#232a31] hover:bg-[#2b333b]"
             bindtap={() => {
               'background only';
-              dispatch({ type: 'addWorkspace' });
+              dispatch({ type: 'addHost' });
             }}
           >
             <Icon name="plus" size={14} color="#a8e6cf" />
@@ -72,7 +72,7 @@ export function HostSettings() {
       </view>
       <view className="flex-1 min-w-0 flex flex-col px-[24px] py-[18px]">
         {draft ? (
-          <WorkspaceSettings
+          <HostForm
             key={draft.id}
             draft={draft}
             saving={view.editor.saving}
@@ -108,7 +108,7 @@ function HostRow({
   onSelect,
   onDelete,
 }: {
-  host: WorkspaceProfile;
+  host: HostProfile;
   active: boolean;
   canDelete: boolean;
   onSelect(id: string): void;
@@ -162,7 +162,7 @@ function DeleteHostButton({
   onOpenChange,
   onConfirm,
 }: {
-  host: WorkspaceProfile;
+  host: HostProfile;
   onOpenChange(open: boolean): void;
   onConfirm(): void;
 }) {

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/workspaces.json';
-import { parseWorkspaceConfig } from '../../shared/workspaces';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
 import {
   applyConfig,
   closeTab,
   newTab,
-  selectWorkspace,
+  selectHost,
   allTabsAtom,
   terminalErrorsAtom,
   sessionViewAtom,
@@ -14,8 +14,8 @@ import {
 import { terminalHostAtom } from '../state/terminal-sessions';
 
 const payload = {
-  config: parseWorkspaceConfig(defaults),
-  path: '/tmp/catus/workspaces.json',
+  config: parseConfig(defaults),
+  path: '/tmp/catus/config.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 let registry: AtomRegistry.AtomRegistry;
@@ -51,7 +51,7 @@ function start() {
 test('atom writes allocate and release sessions without React or UI subscriptions', () => {
   start();
   newTab(registry);
-  selectWorkspace(registry, 'local');
+  selectHost(registry, 'local');
   expect([...live]).toEqual([1, 2, 3]);
   expect(host.createTerminalSession.mock.calls.map(([id]) => [id])).toEqual([[1], [2], [3]]);
   // A background tab can close without rendering any terminal view.
@@ -69,15 +69,16 @@ test('atom writes allocate and release sessions without React or UI subscription
   expect(host.createTerminalSession).toHaveBeenCalledTimes(4);
 });
 
-test('removing a workspace closes only its sessions; registry disposal closes the remainder', () => {
+test('removing a host closes only its sessions; registry disposal closes the remainder', () => {
   start();
-  selectWorkspace(registry, 'local');
+  selectHost(registry, 'local');
   newTab(registry);
   applyConfig(registry, {
     ...payload,
     config: {
       version: 1,
-      workspaces: payload.config.workspaces.filter((item) => item.id !== 'local'),
+      hosts: payload.config.hosts.filter((item) => item.id !== 'local'),
+      display: payload.config.display,
     },
   });
   expect([...live]).toEqual([1]);
@@ -94,7 +95,7 @@ test('creation errors stay in atom state, never bind a missing ID, and are not c
   start();
   expect(registry.get(sessionViewAtom).terminalId).toBe(0);
   expect(registry.get(sessionViewAtom).terminalError).toContain('PTY failed');
-  selectWorkspace(registry, 'shell');
+  selectHost(registry, 'shell');
   expect(host.createTerminalSession).toHaveBeenCalledOnce();
   closeTab(registry, 1);
   expect(host.closeTerminalSession).not.toHaveBeenCalled();
@@ -127,8 +128,11 @@ test('SFTP tabs have no PTY; closing during connection still releases the late c
   });
   const connectSftp = rstest.fn(() => pending);
   registry.set(terminalHostAtom, { ...host, connectSftp });
-  const profile = { ...payload.config.workspaces[0]!, type: 'ssh' as const, host: 'example' };
-  applyConfig(registry, { ...payload, config: { version: 1, workspaces: [profile] } });
+  const profile = { ...payload.config.hosts[0]!, type: 'ssh' as const, host: 'example' };
+  applyConfig(registry, {
+    ...payload,
+    config: { version: 1, hosts: [profile], display: payload.config.display },
+  });
   newTab(registry, profile.id, 'sftp');
   await Promise.resolve();
   expect(host.createTerminalSession).toHaveBeenCalledOnce();

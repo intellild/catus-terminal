@@ -10,7 +10,7 @@ function actions(ssh = true, defaultKind: 'shell' | 'tmux' | 'sftp' = 'shell') {
   return onAdd;
 }
 
-test('tab actions keep the plus button for the workspace default kind', () => {
+test('tab actions keep the plus button for the host default kind', () => {
   const onAdd = actions();
   const root = elementTree.root!;
   for (const id of ['new-tab', 'new-tmux-tab', 'new-sftp-tab']) {
@@ -25,7 +25,7 @@ test('tab actions keep the plus button for the workspace default kind', () => {
   expect(onAdd).toHaveBeenLastCalledWith('sftp');
 });
 
-test('tab actions expose the other two kinds and omit SFTP for local workspaces', () => {
+test('tab actions expose the other two kinds and omit SFTP for local hosts', () => {
   const tmux = actions(false, 'tmux');
   let root = elementTree.root!;
   expect(root.querySelector('[data-automation-id=new-shell-tab]')).not.toBeNull();

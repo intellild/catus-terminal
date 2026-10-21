@@ -1,5 +1,5 @@
 import { useTranslation } from '../../i18n';
-import type { WorkspaceSettings } from '../../../shared/workspaces';
+import type { HostProfile } from '../../../shared/hosts';
 import { Button } from '../ui/button';
 import { Icon } from '../ui/icon';
 import { Panel, PanelActions, PanelContent, PanelHeader, PanelTitle } from '../ui/panel';
@@ -7,13 +7,13 @@ import { SessionPanelFooter } from './session-panel-footer';
 
 /** Loading, empty and configuration-error states use the same panel shell. */
 export function PanelPlaceholder({
-  workspace,
+  host,
   loading = false,
   error = '',
   onRetry,
   onAdd,
 }: {
-  workspace?: WorkspaceSettings;
+  host?: HostProfile;
   loading?: boolean;
   error?: string;
   onRetry?(): void;
@@ -53,7 +53,7 @@ export function PanelPlaceholder({
             data-automation-id="session-directory"
             className="text-[11px] text-[#76818e] overflow-hidden text-ellipsis whitespace-nowrap"
           >
-            {t('terminal.chooseWorkspace')}
+            {t('terminal.chooseHost')}
           </text>
         </PanelTitle>
         <PanelActions>
@@ -80,7 +80,7 @@ export function PanelPlaceholder({
           </Button>
         ) : null}
       </PanelContent>
-      <SessionPanelFooter workspace={workspace} />
+      <SessionPanelFooter host={host} />
     </Panel>
   );
 }
