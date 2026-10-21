@@ -5,7 +5,16 @@ import { parseWorkspaceConfig } from '../../shared/workspaces';
 import { sessionAtom, tabAtom, workspaceAtom } from '../state/session';
 import { terminalHostAtom } from '../state/terminalSessions';
 import type { TerminalHost } from '../state/terminalSessions';
-import { tmuxActionsAtom, tmuxSessionAtom, tmuxSyncAtom } from '../state/tmux';
+import {
+  tmuxActionsAtom,
+  tmuxSessionAtom,
+  tmuxSessionsSyncAtom,
+  tmuxSessionsViewAtom,
+  tmuxSyncAtom,
+} from '../state/tmux';
+import { closeTmuxSessionAtom, tmuxSessionsAtom } from '../state/tmuxSessions';
+import { sessionActionsAtom } from '../state/sessionActions';
+import { workspaceHostAtom } from '../state/workspaceHost';
 import type { TmuxSessionInfo } from '../../shared/tmux';
 
 const profile = parseWorkspaceConfig(defaults).workspaces[0]!;
@@ -96,4 +105,49 @@ test('resetting the registry cancels tmux polling', async () => {
   registry.reset();
   await wait(450);
   expect(getTmuxSessionInfo).toHaveBeenCalledTimes(calls);
+});
+
+test('session lists drive the badge, attach targets and explicit session close', async () => {
+  const sessions = [
+    { name: 'work', windows: 2, attached: 1, activity: 30 },
+    { name: 'catus-0', windows: 1, attached: 0, activity: 10 },
+  ];
+  const listTmuxSessions = rstest.fn(async () => sessions);
+  const killTmuxSession = rstest.fn(async () => {});
+  registry.set(workspaceHostAtom, {
+    loadWorkspaces: rstest.fn(),
+    saveWorkspaces: rstest.fn(),
+    listTmuxSessions,
+    killTmuxSession,
+  });
+  registry.set(tmuxSessionsSyncAtom, undefined);
+  await rstest.waitFor(() => expect(registry.get(tmuxSessionsAtom('')).sessions).toHaveLength(2));
+  expect(registry.get(tmuxSessionsViewAtom).sessions[0]!.name).toBe('work');
+
+  registry.set(sessionActionsAtom, { type: 'attachTmux', session: 'work' });
+  expect(registry.get(tabAtom(8))).toMatchObject({ kind: 'tmux', tmuxSession: 'work' });
+  const terminal = registry.get(terminalHostAtom)!;
+  expect(terminal.createTerminalSession).toHaveBeenCalledWith(
+    8,
+    profile,
+    undefined,
+    'tmux',
+    'work',
+  );
+
+  // New sessions use the next free prefix index instead of reattaching.
+  registry.set(sessionActionsAtom, { type: 'newTmuxSession' });
+  expect(registry.get(tabAtom(9))).toMatchObject({ kind: 'tmux', tmuxSession: 'catus-1' });
+
+  // A plain tmux tab reuses the most recently active session from the registry.
+  registry.set(sessionActionsAtom, { type: 'addTab', kind: 'tmux' });
+  expect(registry.get(tabAtom(10))).toMatchObject({ kind: 'tmux', tmuxSession: 'work' });
+  // Without a cached list the launcher keeps tmux's own default target.
+  registry.set(tmuxSessionsAtom(''), { sessions: [], loaded: true, pending: false, error: '' });
+  registry.set(sessionActionsAtom, { type: 'addTab', kind: 'tmux' });
+  expect(registry.get(tabAtom(11))?.tmuxSession).toBeUndefined();
+
+  registry.set(closeTmuxSessionAtom, { destination: '', session: 'work' });
+  await rstest.waitFor(() => expect(killTmuxSession).toHaveBeenCalledWith(undefined, 'work'));
+  registry.reset();
 });

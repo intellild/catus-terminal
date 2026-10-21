@@ -3,10 +3,15 @@ import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import type { TmuxSessionInfo } from '../../shared/tmux';
-import { allTabsAtom } from './session';
+import { activeWorkspaceIdAtom, allTabsAtom, workspaceAtom } from './session';
 import { terminalHostAtom, type TerminalHost } from './terminalSessions';
+import { refreshTmuxSessionsAtom, tmuxDestination, tmuxSessionsAtom } from './tmuxSessions';
 
 const POLL_INTERVAL = 400;
+// Machine-level session lists change when other tmux clients connect. SSH probes
+// are relatively expensive, so the timer stays coarse and user actions refresh
+// immediately through subscriptions.
+const SESSIONS_POLL_INTERVAL = 10_000;
 
 export function sameTmuxInfo(
   a: TmuxSessionInfo | undefined,
@@ -131,3 +136,39 @@ function snapshotFrom(registry: AtomRegistry, id: number): TmuxSessionInfo | und
     return undefined;
   }
 }
+
+// The badge and the attach menu follow the active workspace's machine. Listening
+// to the registry instead of React keeps the list stable across mounts.
+export const tmuxSessionsViewAtom = Atom.make((get) => {
+  const id = get(activeWorkspaceIdAtom);
+  const profile = id === null ? undefined : get(workspaceAtom(id))?.profile;
+  const destination = tmuxDestination(profile);
+  const state = get(tmuxSessionsAtom(destination));
+  return {
+    destination,
+    sessions: state.sessions,
+    loaded: state.loaded,
+    error: state.error,
+  };
+});
+
+function destinationFrom(registry: AtomRegistry): string {
+  const id = registry.get(activeWorkspaceIdAtom);
+  return tmuxDestination(id === null ? undefined : registry.get(workspaceAtom(id))?.profile);
+}
+
+// One registry-owned poller for the active machine. Workspace switches and tab
+// changes refresh immediately; the timer only catches external session changes.
+export const tmuxSessionsSyncAtom = Atom.fnSync<void>()((_, get) => {
+  const registry = get.registry;
+  const refresh = () => registry.set(refreshTmuxSessionsAtom, destinationFrom(registry));
+  refresh();
+  const unsubscribeWorkspace = registry.subscribe(activeWorkspaceIdAtom, refresh);
+  const unsubscribeTabs = registry.subscribe(allTabsAtom, refresh);
+  const timer = setInterval(refresh, SESSIONS_POLL_INTERVAL);
+  get.addFinalizer(() => {
+    clearInterval(timer);
+    unsubscribeWorkspace();
+    unsubscribeTabs();
+  });
+}).pipe(Atom.keepAlive);

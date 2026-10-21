@@ -91,26 +91,18 @@ async function changeInput(
   });
 }
 
-async function contextMenu(root: NonNullable<typeof elementTree.root>, id: string) {
-  fireEvent(
-    root.querySelector(`[data-automation-id=workspace-${id}]`)!,
-    Object.assign(new CustomEvent('bindEvent:mousedown'), {
-      button: 0,
-      buttons: 2,
-      pageX: 30,
-      pageY: 120,
-    }),
-  );
+async function openSettings(root: NonNullable<typeof elementTree.root>) {
+  fireEvent.tap(root.querySelector('[data-automation-id=open-settings]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull(),
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).not.toBeNull(),
   );
-  expect(
-    root.querySelector('cover-view > [data-automation-id=workspace-context-menu]'),
-  ).not.toBeNull();
 }
 async function openEditor(root: NonNullable<typeof elementTree.root>, id = 'shell') {
-  await contextMenu(root, id);
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+  await openSettings(root);
+  fireEvent.tap(root.querySelector(`[data-automation-id=settings-host-${id}]`)!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-name]')).not.toBeNull(),
+  );
 }
 
 async function waitForTerminal() {
@@ -347,7 +339,7 @@ test('switching between shell and tmux panels keeps the native terminal element'
   expect(root.querySelector('[data-automation-id=tmux-tabs]')).toBeNull();
 });
 
-test('workspace editor validates fields, switches local/SSH, previews and persists the launch profile', async () => {
+test('workspace editor locks the existing host type and persists local changes', async () => {
   const host = makeHost();
   renderApp(host);
   const root = elementTree.root!;
@@ -373,8 +365,56 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   );
   fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-custom]')!);
   await changeInput(root, '[data-automation-id=profile-command]', 'printf hello');
+  // The type is chosen when the host is created and cannot change afterwards.
+  expect(root.querySelector('[data-automation-id=workspace-type-ssh]')?.className).toContain(
+    'opacity-50',
+  );
+  expect(root.querySelector('[data-automation-id=workspace-editor-form]')?.textContent).toContain(
+    'The host type is fixed after creation.',
+  );
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
-  expect(root.querySelector('[data-automation-id=profile-command]')).not.toBeNull();
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-host]')).toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  const profile = rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!;
+  expect(profile).toMatchObject({
+    type: 'local',
+    command: 'printf hello',
+    shell: 'custom',
+    args: [],
+    defaultTab: 'tmux',
+  });
+  expect(profile).not.toHaveProperty('tmux');
+  expect(profile).not.toHaveProperty('tmuxSessionName');
+  // Already running terminals keep their old profile.
+  expect(root.querySelector('[data-automation-id=session-directory]')?.textContent).toBe('$SHELL');
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=new-tab]')!);
+  await rstest.waitFor(() =>
+    expect(
+      (NativeModules.nodejs.exposed as TerminalHost).createTerminalSession,
+    ).toHaveBeenCalledTimes(2),
+  );
+  const calls = rstest.mocked((NativeModules.nodejs.exposed as TerminalHost).createTerminalSession)
+    .mock.calls;
+  expect(calls[0]![3]).toBe('shell');
+  expect(calls[1]![3]).toBe('tmux');
+});
+
+test('a new host chooses SSH, validates its host and previews the command', async () => {
+  const host = makeHost();
+  renderApp(host);
+  const root = elementTree.root!;
+  await waitForTerminal();
+  await openSettings(root);
+  fireEvent.tap(root.querySelector('[data-automation-id=add-workspace]')!);
+  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=profile-default-tab-tmux]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   expect(host.saveWorkspaces).not.toHaveBeenCalled();
   await rstest.waitFor(() =>
@@ -391,42 +431,15 @@ test('workspace editor validates fields, switches local/SSH, previews and persis
   expect(
     root.querySelector('[data-automation-id=profile-default-tab-sftp]')?.className,
   ).not.toContain('opacity-50');
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-local]')!);
-  expect(
-    (root.querySelector('[data-automation-id=profile-command]') as HTMLInputElement).value,
-  ).toBe('printf hello');
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
-  const profile = rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces[0]!;
-  expect(profile).toMatchObject({
+  const saved = rstest.mocked(host.saveWorkspaces).mock.calls[0]![0].workspaces;
+  expect(saved.at(-1)).toMatchObject({
     type: 'ssh',
     host: 'user@server',
     remoteCommand: 'cd /srv && exec bash -l',
-    command: 'printf hello',
-    shell: 'custom',
-    args: [],
     defaultTab: 'tmux',
   });
-  expect(profile).not.toHaveProperty('tmux');
-  expect(profile).not.toHaveProperty('tmuxSessionName');
-  // Already running terminals keep their old profile.
-  expect(root.querySelector('[data-automation-id=session-directory]')?.textContent).toBe('$SHELL');
-  await openEditor(root);
-  expect(root.querySelector('[data-automation-id=profile-default-tab-tmux]')?.className).toContain(
-    'bg-[#35483f]',
-  );
-  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
-  fireEvent.tap(root.querySelector('[data-automation-id=new-tab]')!);
-  await rstest.waitFor(() =>
-    expect(
-      (NativeModules.nodejs.exposed as TerminalHost).createTerminalSession,
-    ).toHaveBeenCalledTimes(2),
-  );
-  const calls = rstest.mocked((NativeModules.nodejs.exposed as TerminalHost).createTerminalSession)
-    .mock.calls;
-  expect(calls[0]![3]).toBe('shell');
-  expect(calls[1]![3]).toBe('tmux');
 });
 
 test('adding a workspace leaves it stopped until activated, and removing it closes its tabs', async () => {
@@ -435,23 +448,35 @@ test('adding a workspace leaves it stopped until activated, and removing it clos
   const root = elementTree.root!;
   const { findByText } = getQueriesForElement(root);
   await waitForTerminal();
+  await openSettings(root);
   fireEvent.tap(root.querySelector('[data-automation-id=add-workspace]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=workspace-workspace-1]')).not.toBeNull(),
   );
   expect(root.querySelector('[data-automation-id=running-workspace-1]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-workspace-1]')!);
   await findByText('New workspace 2');
   expect(root.querySelector('[data-automation-id=running-workspace-1]')).not.toBeNull();
-  await contextMenu(root, 'workspace-1');
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
-  await findByText('Shell 1');
-  expect(root.querySelector('[data-automation-id=workspace-workspace-1]')).toBeNull();
+  await openSettings(root);
+  hoverHost('workspace-1', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-workspace-1]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-workspace-1]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=workspace-workspace-1]')).toBeNull(),
+  );
   expect(root.querySelector('[data-automation-id=tab-2]')).toBeNull();
   expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces).toHaveLength(
     defaults.workspaces.length,
   );
+  expect(root.querySelector('[data-automation-id=settings-host-workspace-1]')).toBeNull();
 });
 
 test('Hook Form shows Schema field errors, revalidates corrections and resets on reopening', async () => {
@@ -683,7 +708,7 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
 });
 
-test('shell Select loads candidates, saves a selected shell and allows a custom remote command', async () => {
+test('shell Select loads candidates and saves local and remote shell choices', async () => {
   const host = makeHost();
   renderApp(host);
   await waitForTerminal();
@@ -703,18 +728,16 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
     command: '/bin/zsh',
     args: ['-l'],
   });
-  await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=profile-shell]')).toBeNull(),
-  );
-  await openEditor(root);
-  await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull(),
-  );
+  // Saving keeps the settings dialog open on the same host.
+  expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull();
+
+  // Remote candidates need a new SSH host; the type of a saved host is fixed.
+  fireEvent.tap(root.querySelector('[data-automation-id=add-workspace]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-type-ssh]')!);
   await changeInput(root, '[data-automation-id=profile-host]', 'remote-alias');
   await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledWith('remote-alias'));
   expect(root.querySelector('[data-automation-id=ssh-command-preview]')?.textContent).toContain(
-    'exec',
+    "'ssh' '-t' '--' 'remote-alias'",
   );
   fireEvent.tap(root.querySelector('[data-automation-id=profile-shell]')!);
   await rstest.waitFor(() =>
@@ -724,7 +747,7 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
   await changeInput(root, '[data-automation-id=profile-command]', 'exec fish');
   fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
   await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledTimes(2));
-  expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces[0]).toMatchObject({
+  expect(rstest.mocked(host.saveWorkspaces).mock.calls[1]![0].workspaces.at(-1)).toMatchObject({
     type: 'ssh',
     host: 'remote-alias',
     shell: 'custom',
@@ -732,37 +755,58 @@ test('shell Select loads candidates, saves a selected shell and allows a custom 
   });
 });
 
-test('right-click edits an inactive workspace without starting it; failed deletion can retry', async () => {
+test('settings edits an inactive workspace without starting it; failed deletion can retry', async () => {
   const host = makeHost();
   renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
   const terminal = NativeModules.nodejs.exposed as TerminalHost;
-  await contextMenu(root, 'local');
-  expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull();
-  expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+  await openEditor(root, 'local');
   expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
     'Local',
   );
-  expect(root.querySelector('[data-automation-id=delete-workspace]')).toBeNull();
-  expect(root.querySelector('[data-automation-id=edit-profile-shell]')).toBeNull();
+  expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
   fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-local]')!);
   await rstest.waitFor(() => expect(terminal.createTerminalSession).toHaveBeenCalledTimes(2));
   fireEvent.tap(root.querySelector('[data-automation-id=workspace-shell]')!);
-  await contextMenu(root, 'local');
-  rstest.mocked(host.saveWorkspaces).mockRejectedValueOnce(new Error('Permission denied'));
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
+  await rstest.waitFor(() => expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell'));
+
+  // Deleting the displayed host keeps its draft until persistence succeeds.
+  await openSettings(root);
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-host-local]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=workspace-menu-error]')?.textContent).toContain(
+    expect(
+      (root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value,
+    ).toBe('Local'),
+  );
+  hoverHost('local', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-local]')).not.toBeNull(),
+  );
+  rstest.mocked(host.saveWorkspaces).mockRejectedValueOnce(new Error('Permission denied'));
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=editor-error]')?.textContent).toContain(
       'Permission denied',
     ),
   );
   expect(root.querySelector('[data-automation-id=workspace-local]')).not.toBeNull();
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-delete]')!);
+  hoverHost('local', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-local]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=workspace-local]')).toBeNull(),
   );
@@ -798,8 +842,6 @@ test('workspace buttons show details on hover without starting or selecting a wo
   );
   expect(sessionRegistry.get(activeWorkspaceIdAtom)).toBe('shell');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
-  // Informational popovers must not install a screen-wide click interceptor.
-  expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
   hoverWorkspace('local', false);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
@@ -808,11 +850,6 @@ test('workspace buttons show details on hover without starting or selecting a wo
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=workspace-details-local]')).not.toBeNull(),
   );
-  await contextMenu(root, 'local');
-  await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=workspace-details-local]')).toBeNull(),
-  );
-  expect(root.querySelector('[data-automation-id=workspace-context-menu]')).not.toBeNull();
 });
 
 test('hover deduplicates measurements and rejects responses from a previous visit', async () => {
@@ -880,30 +917,157 @@ test('leaving hover preserves styles during the delay and then removes the conte
   }
 });
 
-test('each workspace owns its menu and outside taps close the current instance', async () => {
-  renderApp();
+function hoverHost(id: string, enter: boolean) {
+  const eventName = enter ? 'mouseenter' : 'mouseleave';
+  fireEvent(
+    elementTree.root!.querySelector(`[data-automation-id=settings-host-${id}]`)!.parentElement!,
+    Object.assign(new Event(`bindEvent:${eventName}`), { eventType: 'bindEvent', eventName }),
+  );
+}
+
+test('settings opens from the sidebar with host and display sections', async () => {
+  const host = makeHost();
+  renderApp(host);
   await waitForTerminal();
   const root = elementTree.root!;
-  for (const id of ['local', 'shell', 'local']) {
-    await contextMenu(root, id);
-    fireEvent.tap(root.querySelector('.workspace-menu-dismiss')!);
-    await rstest.waitFor(() =>
-      expect(root.querySelector('[data-automation-id=workspace-context-menu]')).toBeNull(),
-    );
-    expect(root.querySelector('.workspace-menu-dismiss')).toBeNull();
-  }
-  await contextMenu(root, 'local');
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
-  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
-    'Local',
+  await openSettings(root);
+  expect(root.querySelector('[data-automation-id=settings-host-shell]')).not.toBeNull();
+  expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).not.toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-nav-display]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-language]')).not.toBeNull(),
+  );
+  expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).toBeNull();
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-language]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-language-en]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-nav-hosts]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=profile-tmuxPrefix]')).not.toBeNull(),
   );
   fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
   await rstest.waitFor(() =>
-    expect(root.querySelector('[data-automation-id=workspace-context-menu]')).toBeNull(),
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).toBeNull(),
   );
-  await contextMenu(root, 'shell');
-  fireEvent.tap(root.querySelector('[data-automation-id=workspace-menu-edit]')!);
+});
+
+test('deleting a host requires the confirmation popover', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  hoverHost('local', true);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-local]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-popover]')).not.toBeNull(),
+  );
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  fireEvent.tap(root.querySelector('[data-automation-id=cancel-delete-host]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=delete-host-popover]')).toBeNull(),
+  );
+  expect(host.saveWorkspaces).not.toHaveBeenCalled();
+  expect(root.querySelector('[data-automation-id=settings-host-local]')).not.toBeNull();
+
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(root.querySelector('[data-automation-id=settings-host-local]')).toBeNull();
+  expect(root.querySelector('[data-automation-id=settings-host-shell]')).not.toBeNull();
+});
+
+test('the tmux prefix is edited with the host and saved', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  expect(
+    (root.querySelector('[data-automation-id=profile-tmuxPrefix]') as HTMLInputElement).value,
+  ).toBe('catus-');
+  await changeInput(root, '[data-automation-id=profile-tmuxPrefix]', 'dev-');
+  fireEvent.tap(root.querySelector('[data-automation-id=save-workspace]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  expect(
+    rstest
+      .mocked(host.saveWorkspaces)
+      .mock.calls[0]![0].workspaces.find((item) => item.id === 'shell')?.tmuxPrefix,
+  ).toBe('dev-');
+});
+
+test('reopening settings restores shell detection for the retained host', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledTimes(1));
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).toBeNull(),
+  );
+  await openSettings(root);
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledTimes(2));
+  expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull();
+});
+
+test('deleting the displayed host keeps saving disabled and selects a replacement', async () => {
+  const payload = {
+    config: parseWorkspaceConfig(defaults),
+    path: '/tmp/catus/workspaces.json',
+    environment: { shell: '/bin/zsh', home: '/Users/test' },
+  };
+  let finish: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const host: WorkspaceHost = {
+    listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh · /bin/zsh' }]),
+    loadWorkspaces: rstest.fn(async () => payload),
+    saveWorkspaces: rstest.fn(async (config: WorkspaceConfig) => {
+      await pending;
+      return { ...payload, config };
+    }),
+  };
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(
+      (root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value,
+    ).toBe('Local'),
+  );
+  hoverHost('local', true);
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  // While persistence is in flight the deleted draft stays selected and disabled.
+  expect(root.querySelector('[data-automation-id=save-workspace]')?.textContent).toContain(
+    'Saving',
+  );
   expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
-    'Shell',
+    'Local',
+  );
+  finish();
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-host-local]')).toBeNull(),
+  );
+  await rstest.waitFor(() =>
+    expect(
+      (root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value,
+    ).toBe('Shell'),
   );
 });

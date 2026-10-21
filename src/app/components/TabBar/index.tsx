@@ -1,11 +1,5 @@
-import { Button } from '../ui/Button';
-import { ButtonGroup } from '../ui/ButtonGroup';
-import type { IconName } from '../ui/icons';
-import { Icon } from '../ui/Icon';
 import type { ReactNode } from '@lynx-js/react';
 import { useTranslation } from '../../i18n';
-import { tabKinds } from '../../../shared/tabs';
-import type { TabKind } from '../../../shared/tabs';
 
 export function TabBar({ children }: { children?: ReactNode }) {
   return (
@@ -40,57 +34,5 @@ export function TabList({
         </view>
       )}
     </view>
-  );
-}
-
-const kindIcons: Record<TabKind, { icon: IconName; color: string }> = {
-  shell: { icon: 'square-terminal', color: '#a8e6cf' },
-  tmux: { icon: 'panels-top-left', color: '#c9b8ff' },
-  sftp: { icon: 'folder', color: '#a8e6cf' },
-};
-
-export function TabActions({
-  defaultKind = 'shell',
-  ssh = false,
-  onAdd,
-}: {
-  defaultKind?: TabKind;
-  ssh?: boolean;
-  onAdd?(kind: TabKind): void;
-}) {
-  const { t } = useTranslation();
-  const others = tabKinds.filter((kind) => kind !== defaultKind && (kind !== 'sftp' || ssh));
-  return (
-    <ButtonGroup className="h-full items-end pb-[4px] ml-[4px] gap-[1px]">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        data-automation-id="new-tab"
-        accessibility-label={t('tabs.newDefault', { kind: t(`tabs.kind.${defaultKind}`) })}
-        className="w-[24px] h-[24px] rounded-[6px]"
-        bindtap={() => {
-          'background only';
-          onAdd?.(defaultKind);
-        }}
-      >
-        <Icon name="plus" size={16} color="#c1c7d0" />
-      </Button>
-      {others.map((kind) => (
-        <Button
-          key={kind}
-          variant="ghost"
-          size="icon-sm"
-          data-automation-id={`new-${kind}-tab`}
-          accessibility-label={t('tabs.newKind', { kind: t(`tabs.kind.${kind}`) })}
-          className="w-[24px] h-[24px] rounded-[6px]"
-          bindtap={() => {
-            'background only';
-            onAdd?.(kind);
-          }}
-        >
-          <Icon name={kindIcons[kind].icon} size={15} color={kindIcons[kind].color} />
-        </Button>
-      ))}
-    </ButtonGroup>
   );
 }

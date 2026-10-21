@@ -17,6 +17,7 @@ import {
   SessionContent,
   SessionStatus,
 } from './components/SessionViews';
+import { SettingsDialog } from './components/Settings/SettingsDialog';
 import { SessionProvider } from './state/SessionProvider';
 import { useFrameDriver } from './frameDriver';
 import './tailwind.css';
@@ -63,6 +64,9 @@ export function App() {
             </AppLayoutFooter>
           </AppLayoutMain>
         </AppLayoutBody>
+        <background-only>
+          <SettingsDialog />
+        </background-only>
       </AppLayout>
     </SessionProvider>
   );

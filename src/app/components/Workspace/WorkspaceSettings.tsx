@@ -92,6 +92,7 @@ export function WorkspaceSettings({
       : []),
     { value: 'custom', label: t('workspace.customCommand') },
   ];
+  const typeLocked = !draft.isNew;
   const preview =
     draft.type === 'ssh' && draft.host.trim() && environment
       ? launchPreview({ ...draft, args: [] }, environment, draft.defaultTab)
@@ -116,7 +117,7 @@ export function WorkspaceSettings({
             {(['local', 'ssh'] as const).map((type) => (
               <Button
                 variant="ghost"
-                disabled={saving}
+                disabled={saving || typeLocked}
                 data-automation-id={`workspace-type-${type}`}
                 key={type}
                 className={cn(
@@ -135,6 +136,7 @@ export function WorkspaceSettings({
               </Button>
             ))}
           </view>
+          {typeLocked ? <FormDescription>{t('workspace.typeLocked')}</FormDescription> : null}
           {draft.type === 'ssh' ? (
             <Field
               name="host"
@@ -230,6 +232,11 @@ export function WorkspaceSettings({
             </>
           ) : null}
           <Field name="cwd" label={t('workspace.cwd')} />
+          <Field
+            name="tmuxPrefix"
+            label={t('workspace.tmuxPrefix')}
+            description={t('workspace.tmuxPrefixDescription')}
+          />
           <FormField
             name="defaultTab"
             render={({ field }) => (

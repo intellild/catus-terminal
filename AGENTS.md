@@ -46,6 +46,20 @@
 - Store workspace profiles, tab ID lists and active tab IDs in a workspace atom
   family. Global workspace ordering stores IDs only; never infer membership by
   filtering all tabs. Tab data lives in its own family and TabItem subscribes by ID.
+- tmux sessions belong to the machine, not the tab: opening a tmux tab attaches the most
+  recent session (or `<tmuxPrefix>0` on an empty machine) and closing a tab only detaches.
+  Session lists, attach targets, explicit kills and the count badge live in registry atoms
+  (`state/tmuxSessions.ts`); components only subscribe and dispatch.
+- Hosts and display preferences share one settings dialog opened from the sidebar
+  (`components/Settings/`). The host editor reuses the workspace form; new per-host options
+  belong there, as with `tmuxPrefix`.
+- Never import `effect` from a module the main thread renders. Effect's circular
+  initialization leaves `Schema.make` undefined in the MTS bundle, so the MTS script
+  aborts before registering snapshots (`TypeError: not a function` plus
+  `Snapshot not found` in dev). Keep `ui/ContextMenu`, `ui/Dialog`, `ui/Popover` and
+  `ui/Select` in BTS-only modules (`TabBar/TabActions.tsx`); shared modules such as
+  `TabBar/index.tsx` stay Effect-free even when their interactive child only renders
+  in BTS.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
@@ -115,6 +129,9 @@ Use pnpm and the Node.js versions declared in `package.json`.
 - E2E defaults to windowless mode with isolated configuration and a fake PTY.
   Close existing Catus apps first. macOS Metal and an awake display are required;
   locked-screen/displayless CI is not verified.
+- A clean `pnpm dev` start logs no `snapshotPatchApply failed` / `Snapshot not found`.
+  If it does, an MTS-rendered module imports `effect`: move the component that needs
+  it into a BTS-only module and import it only from a `background-only` region.
 - Screenshot baselines remain gitignored until the UI stabilizes. Generate/update
   them explicitly with `pnpm test:e2e:update` and inspect the images; never update
   baselines merely to hide a failure. Artifacts are under `.tmp/e2e/artifacts/`.

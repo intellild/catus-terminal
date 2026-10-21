@@ -12,6 +12,7 @@ export interface TerminalHost extends TmuxHost {
     profile?: WorkspaceSettings,
     environment?: WorkspaceEnvironment,
     kind?: TabKind,
+    tmuxSession?: string,
   ): void;
   closeTerminalSession(id: number): void;
   detachTerminalSession?(id: number): void;
@@ -104,7 +105,13 @@ export const terminalSessionsAtom = Atom.make((get) => {
         }
         try {
           const tab = tabs.find((tab) => tab.id === id)!;
-          nativeHost().createTerminalSession(id, tab.profile, environment, tab.kind);
+          nativeHost().createTerminalSession(
+            id,
+            tab.profile,
+            environment,
+            tab.kind,
+            tab.tmuxSession,
+          );
           sessions.add(id);
         } catch (cause) {
           errors.set(id, String(cause) || 'Could not create terminal session');

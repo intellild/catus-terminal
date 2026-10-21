@@ -37,9 +37,9 @@ impl PtyDelegate for TmuxPtyDelegate {
     async fn resize(&self, size: GridSize, tx: &WriterSender) -> Result<()> {
         self.0.lock().await.resize(size, tx)
     }
-    async fn close(&self, preserve: bool, tx: &WriterSender) -> Duration {
-        self.0.lock().await.close(preserve, tx);
-        // Allow queued session/window and detach commands to reach the server over SSH.
+    async fn close(&self, _preserve: bool, tx: &WriterSender) -> Duration {
+        self.0.lock().await.close(tx);
+        // Allow the queued detach command to reach the server over SSH.
         Duration::from_millis(500)
     }
     async fn tmux_info(&self) -> Option<TmuxSessionInfo> {

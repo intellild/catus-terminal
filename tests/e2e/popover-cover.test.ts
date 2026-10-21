@@ -2,24 +2,14 @@ import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@rstest/core';
 import { LynxApp, waitFor } from '../support/lynx';
 
-test('covered menus and Select keep their layout and dismiss correctly in a native window', async () => {
+test('covered dialogs and Select keep their layout and dismiss correctly in a native window', async () => {
   const app = new LynxApp();
   try {
     // Cover views use native overlay surfaces; exercise the real NSView host.
     await app.start({ windowless: false });
-    await app.automation('workspace-test').rightClick();
-    await app.automation('workspace-menu-edit').visibleTarget();
-    await writeFile(
-      '.tmp/e2e/artifacts/covered-menu.png',
-      await app.automation('workspace-context-menu').screenshot(),
-    );
-    await app.tap('.workspace-menu-dismiss');
-    await waitFor('dismissed covered menu', async () =>
-      !(await app.automation('workspace-context-menu').node()) ? true : undefined,
-    );
-
+    await app.automation('open-settings').tap();
+    await app.automation('settings-dialog').visibleTarget();
     await app.automation('add-workspace').tap();
-    await app.automation('workspace-dialog').visibleTarget();
     interface InspectorNode {
       nodeId: number;
       nodeName: string;
@@ -34,11 +24,11 @@ test('covered menus and Select keep their layout and dismiss correctly in a nati
       }
       return node.children?.some((child) => covered(child, id, inside)) ?? false;
     };
-    expect(covered(root, 'workspace-dialog')).toBe(true);
-    expect(covered(root, 'workspace-dialog-overlay')).toBe(true);
+    expect(covered(root, 'settings-dialog')).toBe(true);
+    expect(covered(root, 'settings-overlay')).toBe(true);
     await writeFile(
       '.tmp/e2e/artifacts/covered-dialog.png',
-      await app.automation('workspace-dialog').screenshot(),
+      await app.automation('settings-dialog').screenshot(),
     );
     await app.automation('profile-shell').tap();
     await app.automation('profile-shell-option-1').visibleTarget();
@@ -76,7 +66,7 @@ test('covered menus and Select keep their layout and dismiss correctly in a nati
     const x = (model.content[0]! + model.content[4]!) / 2;
     const y = (model.content[1]! + model.content[5]!) / 2;
     const hit = await app.cdp<{ nodeId: number }>('DOM.getNodeForLocation', { x, y });
-    expect(hit.nodeId).toBe((await app.automation('workspace-dialog-overlay').node())!.nodeId);
+    expect(hit.nodeId).toBe((await app.automation('settings-overlay').node())!.nodeId);
     for (const type of ['mousePressed', 'mouseReleased']) {
       await app.cdp('Input.emulateTouchFromMouseEvent', {
         type,
@@ -88,7 +78,7 @@ test('covered menus and Select keep their layout and dismiss correctly in a nati
       });
     }
     await waitFor('dismissed covered dialog', async () =>
-      !(await app.automation('workspace-dialog').node()) ? true : undefined,
+      !(await app.automation('settings-dialog').node()) ? true : undefined,
     );
     expect(await app.sessionExists(2)).toBe(false);
     expect(await app.sessionExists(1)).toBe(true);
