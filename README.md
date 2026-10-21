@@ -23,25 +23,25 @@ pnpm build:web
 构建产物位于 `dist/web/main.web.bundle`。
 
 状态管理使用 `effect@4.0.0` 和官方 `@effect/atom-react@4.0.0`。
-构建与测试将 React hooks 映射到 ReactLynx。`components/AppLayout.tsx` 导出
-布局组件，由 `App.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
+构建与测试将 React hooks 映射到 ReactLynx。`components/app-layout.tsx` 导出
+布局组件，由 `app.tsx` 按 shadcn 风格通过 children 嵌套组合，在主线程
 首帧渲染窗口骨架。tab、workspace 列表、内容和状态栏各有独立的
 `<background-only>` 边界及首帧 fallback；设置 Dialog 与新建/编辑按钮一起组合在 workspace 区域内。
-`App.tsx` 在两个线程中都使用同一层
-`state/SessionProvider.tsx`，保持首屏到后台接管时的组件树结构一致。
+`app.tsx` 在两个线程中都使用同一层
+`state/session-provider.tsx`，保持首屏到后台接管时的组件树结构一致。
 Provider 精确导入 `@effect/atom-react/RegistryContext`，各区域继承应用级 registry；
 主线程只创建空 registry，业务 atom、配置加载及 Node 编码器适配只在 BTS 运行。
-`index.tsx` 在 BTS 入口启动 `state/sessionRuntime.ts`，不依赖 React 挂载。
-配置加载、保存、workspace/tab/编辑操作由 `sessionActions.ts` 的 action atoms 执行；
+`index.tsx` 在 BTS 入口启动 `state/session-runtime.ts`，不依赖 React 挂载。
+配置加载、保存、workspace/tab/编辑操作由 `session-actions.ts` 的 action atoms 执行；
 全局状态仅保存 workspace ID 顺序和当前 workspace ID；`workspaceAtom(id)` family
 保存每个 workspace 的配置、`tabIds` 和 `activeTabId`，不通过筛选全局 tabs 推导归属。
 `tabAtom(id)` family 保存 tab 数据，TabItem 只接收 ID 并独立订阅 `tabViewAtom(id)`。
-各区域订阅 `sessionViews.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
+各区域订阅 `session-views.ts` 中对应的视图 atom，并将 UI 事件发送给 action atom。
 Registry 的 reset/dispose 管理异步任务和终端资源，UI 卸载不会停止它们。
 `runtime.ts` 在 Effect 加载前通过 preload 工厂安装 Node.js 原生
 `TextEncoder` / `TextDecoder`，不需要第三方编码 polyfill。
 
-布局组合结构如下，具体区域的 `<background-only>` 边界和业务内容由 `App.tsx`
+布局组合结构如下，具体区域的 `<background-only>` 边界和业务内容由 `app.tsx`
 放入对应组件，布局组件只负责容器与样式：
 
 ```tsx
@@ -68,7 +68,7 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 `components/ui/` 中渲染元素的组件都支持 `className`，使用 `cn` 合并默认样式和自定义样式。
 纯上下文组件（如 Form、FormField、Select、Popover）由可视子组件承接样式。
 
-按钮统一使用 `components/ui/Button.tsx`，提供 shadcn 风格的 `variant` / `size`，
+按钮统一使用 `components/ui/button.tsx`，提供 shadcn 风格的 `variant` / `size`，
 通过 `cva` 和 `cn` 合并 Tailwind 样式。Hover 使用 CSS `:hover`（Tailwind `hover:`）；`disabled` 同时阻止点击和 hover。普通文字 children 自动包进 `<text>`，
 原生 ref 会转发到 `<view>`，供 Select / Popover 定位。
 
@@ -93,7 +93,7 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 </ButtonGroup>
 ```
 
-图标统一使用 `components/ui/Icon.tsx`，数据来自 `lucide-static` 的 SVG 字符串
+图标统一使用 `components/ui/icon.tsx`，数据来自 `lucide-static` 的 SVG 字符串
 （ISC 许可），通过 Lynx 原生 `<svg content>` 渲染，不依赖 DOM SVG 或图标字体。
 `name` 取自 `components/ui/icons.ts` 的按需注册表；默认 `16px`、主文字色
 `#e2e8ed`、`strokeWidth` 2，可按需覆盖。新增图标时只导入用到的 Lucide 图标，
@@ -104,7 +104,7 @@ CSS 变量传给 `bg-[var(--workspace-color)]`、`w-[var(--tab-width)]` 等工�
 <Icon name="x" size={13} strokeWidth={2.5} />
 ```
 
-文件列表统一使用 `components/FileExplorer/`。`FileExplorer` 负责虚拟列表、
+文件列表统一使用 `components/file-explorer/`。`FileExplorer` 负责虚拟列表、
 隐藏文件过滤、加载/错误/空状态和行级 automation ID；`FileItem` 负责单行类型图标、
 文件名与类型标签。组件不感知 SFTP：行首操作通过 `renderLeadingAction` 注入，
 跨目录稳定的虚拟列表 key 通过 `itemKey` 交给调用方。
@@ -142,6 +142,10 @@ macOS 默认还会尝试 Xcode 工具链。
 `pnpm format:check` 检查格式，`pnpm lint` 运行 JavaScript / TypeScript 推荐规则，
 `pnpm lint:fix` 应用自动修复。构建产物、依赖和缓存不参与检查；native 构建
 生成的 `index.d.ts` 会自动格式化。
+
+文件和目录统一使用 kebab-case（如 `state/session-actions.ts`、
+`components/tab-bar/`），`pnpm lint` 通过 `unicorn/filename-case` 检查；
+`__tests__` 目录名例外，其中的测试文件仍会检查。
 
 项目由官方 `@lynx-js/create-lynxtron@0.0.28` 初始化。项目专属的 `@catus/native`
 workspace 使用 Rust/napi-rs 导出终端能力，通过 AutoLink 加载 `<native-terminal>`。
@@ -209,19 +213,19 @@ tab 栏替代，原生红黄绿按钮嵌入同一行。空白 tab 栏可拖动�
 滚动，新建或切换的 tab 自动滚入可见区域。参见[官方自定义窗口文档](https://lynxjs.org/next/lynxtron/learn/Custom-Window-Styles)。
 
 ```text
-App.tsx / components/AppLayout.tsx
+app.tsx / components/app-layout.tsx
   主线程首帧：窗口骨架 + 各区域 fallback
        ↓
-index.tsx → state/sessionRuntime.ts
+index.tsx → state/session-runtime.ts
   BTS 启动独立 registry，每个 registry 只初始化一次
        ↓
-App.tsx → state/SessionProvider.tsx
+app.tsx → state/session-provider.tsx
   两个线程使用一致的 Provider；主线程 registry 为空，BTS 启动业务 atom
        ↓
-state/sessionActions.ts
+state/session-actions.ts
   action atom 加载/保存配置，执行 workspace/tab/编辑操作
        ↓
-state/sessionViews.ts → components/SessionViews.tsx
+state/session-views.ts → components/session-views.tsx
   各区域订阅自己的视图 atom，发送操作指令
        ↓
 TabBar / WorkspaceList / SessionContent / StatusBar / WorkspaceSettings
@@ -307,11 +311,11 @@ owned `GridSnapshot`。`TerminalRenderer` 接收网格和平台提供的 wgpu te
 导入、字体策略和 UI 桥接集中在 `native/src/platform/macos/`。
 
 ```text
-state/session.ts / terminalSessions.ts / preload.ts（BTS）
+state/session.ts / terminal-sessions.ts / preload.ts（BTS）
   新增 tab → JS 分配 number ID → createTerminalSession(id, profile, env, kind)
        → 普通 shell / tmux control mode / SFTP
        ↓
-NativeTerminalView.tsx / native-terminal
+native-terminal-view.tsx / native-terminal
   terminal-id → OnPropertiesChanged → 注册表 session → session renderer
        ↓
 native_terminal_view.rs / on_layout_changed
@@ -320,7 +324,7 @@ native_terminal_view.rs / on_layout_changed
 terminal_core/pty.rs（读线程 + async parser）
   字节流 → terminal_core/grid.rs / Alacritty Processor + Term
        ↓
-frameDriver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs
+frame-driver.ts（MTS RAF）→ preload（BTS）→ frame_driver.rs
   dispatchAnimationFrame() → UI → Rust 全局回调注册对象
        ↓
 native_terminal_view.rs → platform/macos/native_view.rs（同一 UI 线程）
@@ -339,7 +343,7 @@ GPU 完成 → Lynx SwapBack / MarkDirty
 ```
 
 当前使用独立的 JS RAF 适配器绕过 native observer 的 NSRunLoop/libuv 问题：
-`src/app/frameDriver.ts` 由 App 挂载时启动一个 MTS RAF 循环，卸载时取消；
+`src/app/frame-driver.ts` 由 App 挂载时启动一个 MTS RAF 循环，卸载时取消；
 跨线程调用函数在外层 MTS 创建，嵌套 RAF 回调只调用该函数。
 preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_driver.rs`
 使用 native monotonic clock 创建约 16.7ms 的预算并转发到 UI。
@@ -359,13 +363,13 @@ preload 暴露 Rust 的 `dispatchAnimationFrame()`，由 `native/src/frame_drive
 颜色、清屏、光标、宽字符/组合字符和 alternate screen。切换 tab 保留 shell。
 SessionContent 按 active tab 组装面板：TmuxPanel 作为稳定的 terminal 会话外壳，
 内部嵌入 TerminalPanel；tmux tab 时在 header 显示窗口 tabs，shell tab 复用同一外壳。
-SftpPanel 和 PanelPlaceholder 分别承载 SFTP、loading/空 workspace/配置错误。面板基于 `ui/Panel.tsx` 的 Panel、PanelHeader、PanelTitle、
+SftpPanel 和 PanelPlaceholder 分别承载 SFTP、loading/空 workspace/配置错误。面板基于 `ui/panel.tsx` 的 Panel、PanelHeader、PanelTitle、
 PanelActions、PanelContent 和 PanelFooter 组合，布局与 shadcn 的分段结构一致。
 TerminalView 和 NativeTerminalView 在空/错误/SFTP 状态通过隐藏的 TerminalPanel 保持挂载，
 切换回 terminal 时复用同一个 native element 并更新 terminal-id；session 和 renderer 不随面板重建。
 tab ID 就是 session ID；全局 `sessionRegistry` 中的 `sessionAtom` 写入时统一同步 Rust session：
 创建 tab 时创建 session，关闭 tab 或删除 workspace 时调用 `closeTerminalSession(id)`。
-tmux tab 的标题栏由 `components/Terminal/TmuxTabBar.tsx` 组合。窗口快照保存在
+tmux tab 的标题栏由 `components/terminal/tmux-tab-bar.tsx` 组合。窗口快照保存在
 `state/tmux.ts` 的 `tmuxSessionAtom` family 中（按 session ID，`keepAlive` 全局存活）；
 `tmuxSyncAtom` 在应用级 registry 中轮询 `getTmuxSessionInfo(id)`，与 Rust `TmuxClient`
 按 ID 同步，registry reset/dispose 会清理轮询。组件只订阅快照，并通过 `tmuxActionsAtom`
@@ -378,7 +382,7 @@ React 组件只读取 atom 派生的 ID 和错误，卸载或重新挂载不会�
 loading 和配置错误不会卸载 native element。字体逐字符栅格化；尚未实现 IME、
 剪贴板、选择、滚动历史 UI、复杂 shaping、鼠标协议、完整键盘协议和光标闪烁。
 
-`src/app/__tests__/terminalSessions.test.ts` 不挂载 React，验证 atom 分配数字 ID、关闭后台 tab、
+`src/app/__tests__/terminal-sessions.test.ts` 不挂载 React，验证 atom 分配数字 ID、关闭后台 tab、
 删除 workspace、创建失败和 registry 释放；UI 测试验证卸载/重新挂载保留 session。
 
 `native/src/tests/terminal_grid.rs` 验证分片 UTF-8/ANSI、回复、alternate screen；
@@ -614,33 +618,33 @@ Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 ## 代码位置
 
 ```text
-config/workspaces.json                 内置终端类型与默认 shell 配置
-src/shared/workspaces.ts               Effect Schema 校验、启动参数解析与 host 类型
-src/app/App.tsx                         组合静态 layout 和各区域的后台边界
-src/app/components/AppLayout.tsx       主线程首帧布局骨架与窗口 tab 栏
-src/app/components/                    tab、workspace、内容、状态栏、设置的展示组件
-src/app/state/SessionProvider.tsx      两个线程共有的唯一 Effect registry Provider
-src/app/components/SessionViews.tsx    直接渲染的后台区域组件，订阅 atom 并绑定事件
-src/app/state/sessionRuntime.ts        BTS 入口启动的独立 atom runtime
-src/app/state/sessionActions.ts        配置加载、保存与 workspace/tab/设置操作
-src/app/state/sessionViews.ts          各 UI 区域的派生视图 atom
-src/app/runtime.ts                     preload 的 Node 编码器构造函数适配
-src/app/state/session.ts                Effect atoms、tab 生命周期和配置编辑状态
-src/app/state/tmux.ts                   tmux 窗口快照、session 列表视图和 registry 轮询
-src/app/state/tmuxSessions.ts           目标机器 session 列表、刷新、kill 和 attach 数据
-src/app/components/Settings/            设置面板（主机列表/编辑器、删除确认、显示/i18n）
-src/main/desktop/tmux.ts                list-sessions / kill-session（本地与 SSH）
-src/app/components/ui/Panel.tsx         shadcn 风格 Panel/Header/Title/Actions/Content/Footer
-src/app/components/Terminal/TerminalPanel.tsx  terminal 面板，持有 TerminalView
-src/app/components/Terminal/TmuxPanel.tsx      稳定 terminal 外壳，tmux 时嵌入 terminal + 窗口 tabs
-src/app/components/Terminal/PanelPlaceholder.tsx  loading/空/错误状态面板
-src/app/components/Terminal/SessionContent.tsx   按 active tab 组装各面板
-src/app/components/SftpPanel.tsx        SFTP 面板
-src/app/components/Terminal/TmuxTabBar.tsx  订阅 tmux 快照并分发标题栏操作
-src/shared/tmux.ts                     tmux 窗口/session 的 host 类型
-src/main/desktop/workspaceConfig.ts     Node.js JSON 配置读写与账户默认 shell
-src/main/desktop/main.ts                创建 LynxWindow
-rsbuild.config.ts                      pluginLynxtron 启用 AutoLink
+config/workspaces.json                             内置终端类型与默认 shell 配置
+src/shared/workspaces.ts                           Effect Schema 校验、启动参数解析与 host 类型
+src/app/app.tsx                                    组合静态 layout 和各区域的后台边界
+src/app/components/app-layout.tsx                  主线程首帧布局骨架与窗口 tab 栏
+src/app/components/                                tab、workspace、内容、状态栏、设置的展示组件
+src/app/state/session-provider.tsx                 两个线程共有的唯一 Effect registry Provider
+src/app/components/session-views.tsx               直接渲染的后台区域组件，订阅 atom 并绑定事件
+src/app/state/session-runtime.ts                   BTS 入口启动的独立 atom runtime
+src/app/state/session-actions.ts                   配置加载、保存与 workspace/tab/设置操作
+src/app/state/session-views.ts                     各 UI 区域的派生视图 atom
+src/app/runtime.ts                                 preload 的 Node 编码器构造函数适配
+src/app/state/session.ts                           Effect atoms、tab 生命周期和配置编辑状态
+src/app/state/tmux.ts                              tmux 窗口快照、session 列表视图和 registry 轮询
+src/app/state/tmux-sessions.ts                     目标机器 session 列表、刷新、kill 和 attach 数据
+src/app/components/settings/                       设置面板（主机列表/编辑器、删除确认、显示/i18n）
+src/main/desktop/tmux.ts                           list-sessions / kill-session（本地与 SSH）
+src/app/components/ui/panel.tsx                    shadcn 风格 Panel/Header/Title/Actions/Content/Footer
+src/app/components/terminal/terminal-panel.tsx     terminal 面板，持有 TerminalView
+src/app/components/terminal/tmux-panel.tsx         稳定 terminal 外壳，tmux 时嵌入 terminal + 窗口 tabs
+src/app/components/terminal/panel-placeholder.tsx  loading/空/错误状态面板
+src/app/components/terminal/session-content.tsx    按 active tab 组装各面板
+src/app/components/sftp-panel.tsx                  SFTP 面板
+src/app/components/terminal/tmux-tab-bar.tsx       订阅 tmux 快照并分发标题栏操作
+src/shared/tmux.ts                                 tmux 窗口/session 的 host 类型
+src/main/desktop/workspace-config.ts               Node.js JSON 配置读写与账户默认 shell
+src/main/desktop/main.ts                           创建 LynxWindow
+rsbuild.config.ts                                  pluginLynxtron 启用 AutoLink
 native/
   Cargo.toml / Cargo.lock              项目 Rust crate 和依赖
   build.rs                            生成 cxx 桥，构建并链接 C++ 静态库
@@ -702,7 +706,7 @@ pluginLynxtron（rsbuild.config.ts）
 native/index.cjs
   require(.node)，激活 terminal extension 静态注册
        ↓
-TerminalView.tsx 渲染 <native-terminal>
+terminal-view.tsx 渲染 <native-terminal>
   Rust factory 创建 terminal view 并绑定 session
        ↓
 OnPropertiesChanged / OnLayoutChanged

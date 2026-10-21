@@ -2,8 +2,8 @@ import { i18n } from '../i18n';
 import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import { defaultTmuxPrefix, mostRecentTmuxSession } from '../../shared/launch';
-import { terminalSessionsAtom } from './terminalSessions';
-import { tmuxDestination, tmuxSessionsAtom } from './tmuxSessions';
+import { terminalSessionsAtom } from './terminal-sessions';
+import { tmuxDestination, tmuxSessionsAtom } from './tmux-sessions';
 import type { TabKind } from '../../shared/tabs';
 import type {
   WorkspaceSettings,

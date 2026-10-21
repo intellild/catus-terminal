@@ -223,7 +223,7 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 
 `frame_callbacks.rs` 保存弱引用的回调注册，Rust view 用 `Target<T>` 注册 UI 渲染回调，
 持有 registration；销毁 view 时停止并释放注册，最终释放使 target 失效。
-独立的 `src/app/frameDriver.ts` 由 App 挂载时启动 MTS RAF，卸载时取消。
+独立的 `src/app/frame-driver.ts` 由 App 挂载时启动 MTS RAF，卸载时取消。
 外层 MTS 先创建 `runOnBackground` 调用函数，RAF 回调直接调用它；不等待 Promise 回执。
 preload 暴露 napi-rs 的 `dispatchAnimationFrame()`；`frame_driver.rs` 接收 JS 帧信号，
 用 native monotonic clock 生成约 16.7ms 的 deadline，再转发到 UI。
@@ -257,7 +257,7 @@ OSR pointer cancel 使用记忆中的按键、位置和按下时修饰键补发 
 取消坐标无效也会清理状态，重复取消不发送报告，取消本地选择保留选区。
 嵌入模式通过 NSView 接收事件，OSR 通过 Lynx `OnMotionEvent` 接收；逻辑坐标转换及触控板小数滚动累积位于 Rust macOS 适配器，高亮由现有 atlas 渲染。尚不支持拖出视口后的自动滚动、完整键盘协议和复杂文本 shaping。
 
-滚动条是 `src/app/components/ui/ScrollBar.tsx` 渲染的 12px overlay，不改变 terminal viewport 或网格列数。
+滚动条是 `src/app/components/ui/scroll-bar.tsx` 渲染的 12px overlay，不改变 terminal viewport 或网格列数。
 现有 UI-thread RAF 在滚动状态变化时派发 `scrollchange`，detail 为
 `{ sessionId, offset, historyRows, visibleRows }`；位置以距底部的历史行数计，0 表示最新内容。
 拖动通过 `invoke({ method: 'scrollTo', params: { sessionId, offset } })` 绝对定位；native 校验当前绑定 session，

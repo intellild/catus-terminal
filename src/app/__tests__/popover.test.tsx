@@ -7,12 +7,12 @@ import {
   usePopover,
   usePopoverClickTrigger,
   usePopoverHoverTrigger,
-} from '../components/ui/Popover';
+} from '../components/ui/popover';
 import {
   ContextMenu,
   ContextMenuContent,
   useContextMenuTrigger,
-} from '../components/ui/ContextMenu';
+} from '../components/ui/context-menu';
 
 function Toggle() {
   const { open, setOpen } = usePopover();

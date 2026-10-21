@@ -1,6 +1,6 @@
 import { expect, test, rstest } from '@rstest/core';
 import { fireEvent, render } from '@lynx-js/react/testing-library';
-import { Button } from '../components/ui/Button';
+import { Button } from '../components/ui/button';
 
 function mouse(element: Element, type: 'mouseenter' | 'mouseleave') {
   fireEvent(element, new CustomEvent(`bindEvent:${type}`));

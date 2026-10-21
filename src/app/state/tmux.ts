@@ -4,8 +4,8 @@ import * as Atom from 'effect/reactivity/Atom';
 import type { AtomRegistry } from 'effect/reactivity/AtomRegistry';
 import type { TmuxSessionInfo } from '../../shared/tmux';
 import { activeWorkspaceIdAtom, allTabsAtom, workspaceAtom } from './session';
-import { terminalHostAtom, type TerminalHost } from './terminalSessions';
-import { refreshTmuxSessionsAtom, tmuxDestination, tmuxSessionsAtom } from './tmuxSessions';
+import { terminalHostAtom, type TerminalHost } from './terminal-sessions';
+import { refreshTmuxSessionsAtom, tmuxDestination, tmuxSessionsAtom } from './tmux-sessions';
 
 const POLL_INTERVAL = 400;
 // Machine-level session lists change when other tmux clients connect. SSH probes

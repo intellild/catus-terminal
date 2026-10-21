@@ -6,7 +6,7 @@ import * as AsyncResult from 'effect/reactivity/AsyncResult';
 import * as Cause from 'effect/Cause';
 import type { ShellHost, ShellOption } from '../../shared/shells';
 import { editorAtom } from './session';
-import { workspaceHostAtom, nativeWorkspaceHost } from './workspaceHost';
+import { workspaceHostAtom, nativeWorkspaceHost } from './workspace-host';
 
 export const shellHostAtom = Atom.make<ShellHost | undefined>(undefined).pipe(Atom.keepAlive);
 // The standalone session runtime mounts this atom. Dependencies cancel stale

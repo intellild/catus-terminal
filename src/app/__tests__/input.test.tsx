@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import { act, fireEvent, render } from '@lynx-js/react/testing-library';
 import type { ReactElement } from '@lynx-js/react';
-import { Input, InputAfterAddon, InputBeforeAddon, InputGroup } from '../components/ui/Input';
+import { Input, InputAfterAddon, InputBeforeAddon, InputGroup } from '../components/ui/input';
 
 const write = rstest.fn();
 

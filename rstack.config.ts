@@ -39,8 +39,32 @@ define.lint(({ js, ts }) => [
   },
   {
     files: scriptFiles,
+    plugins: ['unicorn'],
     rules: {
       curly: ['error', 'all'],
+      'unicorn/filename-case': [
+        'error',
+        {
+          case: 'kebabCase',
+          checkDirectories: true,
+          multipleFileExtensions: true,
+          ignore: ['^__tests__$'],
+        },
+      ],
+    },
+  },
+  {
+    files: ['**/__tests__/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'],
+    plugins: ['unicorn'],
+    rules: {
+      'unicorn/filename-case': [
+        'error',
+        {
+          case: 'kebabCase',
+          checkDirectories: false,
+          multipleFileExtensions: true,
+        },
+      ],
     },
   },
 ]);

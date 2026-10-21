@@ -1,6 +1,6 @@
-import { SftpClient } from './SftpClient';
-import { SFTP_CHANNEL } from '../../shared/sftpBridge';
-import type { SftpReply } from '../../shared/sftpBridge';
+import { SftpClient } from './sftp-client';
+import { SFTP_CHANNEL } from '../../shared/sftp-bridge';
+import type { SftpReply } from '../../shared/sftp-bridge';
 
 // Access NativeModules only when invoked from background-thread business logic.
 export const sftpClient = new SftpClient(

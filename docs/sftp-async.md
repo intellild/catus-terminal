@@ -6,7 +6,7 @@
 Lynx BTS / 事件处理或 effect
   bridge.call('catus:sftp', request, callback) → Promise
        ↓
-src/main/desktop/main.ts / sftpService.ts
+src/main/desktop/main.ts / sftp-service.ts
   lynxBridge.handle 接收请求，main 持有连接并通过 sftp.ts 调用 native Promise
        ↓
 native/src/sftp_api.rs

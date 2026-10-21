@@ -76,15 +76,15 @@ export default defineConfig({
             rootPath,
             'src/app/web/runtime.ts',
           ),
-          [path.resolve(rootPath, 'src/app/frameDriver.ts')]: path.resolve(
+          [path.resolve(rootPath, 'src/app/frame-driver.ts')]: path.resolve(
             rootPath,
-            'src/app/web/frameDriver.ts',
+            'src/app/web/frame-driver.ts',
           ),
-          [path.resolve(rootPath, 'src/app/components/Terminal/PanelPlaceholder.tsx')]:
-            path.resolve(rootPath, 'src/app/web/SessionContent.tsx'),
-          [path.resolve(rootPath, 'src/app/components/Terminal/SessionContent.tsx')]: path.resolve(
+          [path.resolve(rootPath, 'src/app/components/terminal/panel-placeholder.tsx')]:
+            path.resolve(rootPath, 'src/app/web/session-content.tsx'),
+          [path.resolve(rootPath, 'src/app/components/terminal/session-content.tsx')]: path.resolve(
             rootPath,
-            'src/app/web/SessionContent.tsx',
+            'src/app/web/session-content.tsx',
           ),
         },
       },

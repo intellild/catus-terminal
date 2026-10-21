@@ -5,8 +5,8 @@
 import '@lynx-js/preact-devtools';
 import { root } from '@lynx-js/react';
 
-import { App } from './App';
-import { startSessionRuntime } from './state/sessionRuntime';
+import { App } from './app';
+import { startSessionRuntime } from './state/session-runtime';
 
 if (__BACKGROUND__) {
   startSessionRuntime();
