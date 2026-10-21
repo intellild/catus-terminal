@@ -5,11 +5,11 @@ import {
   nextTmuxSessionName,
   resolveTmuxLaunch,
 } from '../../shared/launch';
-import { parseHostsConfig } from '../../shared/hosts';
-import defaults from '../../../tests/fixtures/hosts.json';
+import { parseConfig } from '../../shared/config';
+import defaults from '../../../tests/fixtures/config.json';
 
 const environment = { shell: '/bin/zsh', home: '/Users/test' };
-const profile = parseHostsConfig(defaults).hosts[0]!;
+const profile = parseConfig(defaults).hosts[0]!;
 
 test('a tmux tab attaches the machine default and only creates a session when none exists', () => {
   const first = resolveTmuxLaunch(
@@ -86,15 +86,17 @@ test('SSH tmux runs on the target host and expands remote home without substitut
 
 test('SFTP can only be the default tab for an SSH host', () => {
   expect(
-    parseHostsConfig({
+    parseConfig({
       version: 1,
       hosts: [{ ...profile, type: 'ssh', host: 'server', defaultTab: 'sftp' }],
+      display: { language: 'en' },
     }).hosts[0]!.defaultTab,
   ).toBe('sftp');
   expect(() =>
-    parseHostsConfig({
+    parseConfig({
       version: 1,
       hosts: [{ ...profile, type: 'local', defaultTab: 'sftp' }],
+      display: { language: 'en' },
     }),
   ).toThrow('validation.sftpDefault');
 });

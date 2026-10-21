@@ -2,15 +2,15 @@ import { expect, test } from '@rstest/core';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolveTmuxLaunch } from '../../../shared/launch';
-import { parseHostsConfig } from '../../../shared/hosts';
-import defaults from '../../../../tests/fixtures/hosts.json';
+import { parseConfig } from '../../../shared/config';
+import defaults from '../../../../tests/fixtures/config.json';
 
 test.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
   'tmux startup attaches the default session, creates a missing one and matches exact names',
   () => {
     const socket = `catus-launch-test-${randomUUID()}`;
     const profile = {
-      ...parseHostsConfig(defaults).hosts[0]!,
+      ...parseConfig(defaults).hosts[0]!,
       shell: 'custom',
       command: '/bin/sh -i',
       args: [],

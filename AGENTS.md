@@ -15,7 +15,7 @@
 
 - `src/app/`: ReactLynx UI, shared UI components and Effect atom state.
 - `src/main/desktop/`: Node.js host, preload and configuration persistence.
-- `src/shared/` and `config/`: Shared schemas and bundled host defaults.
+- `src/shared/` and `config/`: Shared schemas and bundled configuration defaults.
 - `locales/`: TOML translation resources; currently English only.
 - `native/`: Project-specific Rust/napi-rs crate with statically linked C++.
   Terminal computation, text rendering and platform adapters are separate modules;
@@ -74,7 +74,7 @@
   The stylesheet contains only Tailwind directives, without handwritten selectors.
 - Keep native window-control spacing consistent with the tab bar. Interactive
   elements inside draggable regions must use `[-x-app-region:no-drag]`.
-- Validate host configuration and save atomically. Rename an invalid existing
+- Validate configuration and save atomically. Rename an invalid existing
   config to a numbered `.bak` beside it, then write defaults; never discard it
   silently.
 - Put UI copy in `locales/en.toml` and use i18next interpolation/plurals. Resources

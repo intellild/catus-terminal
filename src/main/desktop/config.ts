@@ -2,32 +2,28 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promis
 import { homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import defaults from '../../../config/hosts.json';
-import { parseHostsConfig } from '../../shared/hosts';
-import type {
-  HostsConfig,
-  HostsConfigPayload,
-  HostEnvironment,
-  HostService,
-} from '../../shared/hosts';
+import defaults from '../../../config/catus-terminal/config.json';
+import { parseConfig } from '../../shared/config';
+import type { AppConfig, AppConfigPayload, HostService } from '../../shared/config';
+import type { HostEnvironment } from '../../shared/hosts';
 
 export function createHostService(
-  configPath = process.env.CATUS_HOSTS_FILE ??
-    path.join(homedir(), '.config', 'catus-terminal', 'hosts.json'),
+  configPath = process.env.CATUS_CONFIG_FILE ??
+    path.join(homedir(), '.config', 'catus-terminal', 'config.json'),
   environment: HostEnvironment = {
     shell: userInfo().shell || process.env.SHELL || '/bin/sh',
     home: homedir(),
   },
 ): HostService {
-  const payload = (config: HostsConfig): HostsConfigPayload => ({
+  const payload = (config: AppConfig): AppConfigPayload => ({
     config,
     path: configPath,
     environment,
   });
-  async function readHosts(): Promise<HostsConfig> {
-    return parseHostsConfig(JSON.parse(await readFile(configPath, 'utf8')));
+  async function readConfig(): Promise<AppConfig> {
+    return parseConfig(JSON.parse(await readFile(configPath, 'utf8')));
   }
-  async function writeDefaults(): Promise<HostsConfig> {
+  async function writeDefaults(): Promise<AppConfig> {
     await mkdir(path.dirname(configPath), { recursive: true });
     try {
       await writeFile(configPath, JSON.stringify(defaults, null, 2) + '\n', {
@@ -39,7 +35,7 @@ export function createHostService(
         throw error;
       }
     }
-    return readHosts();
+    return readConfig();
   }
   async function backupPath(): Promise<string> {
     let index = 0;
@@ -56,7 +52,7 @@ export function createHostService(
       index += 1;
     }
   }
-  async function loadHosts(): Promise<HostsConfigPayload> {
+  async function loadConfig(): Promise<AppConfigPayload> {
     let contents: string;
     try {
       contents = await readFile(configPath, 'utf8');
@@ -67,15 +63,15 @@ export function createHostService(
       return payload(await writeDefaults());
     }
     try {
-      return payload(parseHostsConfig(JSON.parse(contents)));
+      return payload(parseConfig(JSON.parse(contents)));
     } catch {
       // Keep the broken file beside the config, then start from defaults.
       await rename(configPath, await backupPath());
       return payload(await writeDefaults());
     }
   }
-  async function saveHosts(value: HostsConfig): Promise<HostsConfigPayload> {
-    const config = parseHostsConfig(value);
+  async function saveConfig(value: AppConfig): Promise<AppConfigPayload> {
+    const config = parseConfig(value);
     await mkdir(path.dirname(configPath), { recursive: true });
     const temporaryPath = `${configPath}.${randomUUID()}.tmp`;
     try {
@@ -89,5 +85,5 @@ export function createHostService(
     }
     return payload(config);
   }
-  return { loadHosts, saveHosts };
+  return { loadConfig, saveConfig };
 }

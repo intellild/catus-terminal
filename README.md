@@ -269,12 +269,15 @@ TabBar / HostList / SessionContent / StatusBar / HostForm
   `%window-close` 等 control-mode 通知保持同步。退出应用同样只断开控制连接。
   例如可以在应用外通过 `tmux -L catus attach -t catus-0` 连接对应 session。
 
-默认配置模板为 `config/hosts.json`，只内置用户默认 Shell 的本地配置；host 类型分为本地和 SSH。
-首次运行复制到 `~/.config/catus-terminal/hosts.json`；也可通过
-`CATUS_HOSTS_FILE=/absolute/path/hosts.json pnpm start` 指定配置位置。
+默认配置模板为 `config/catus-terminal/config.json`，只内置用户默认 Shell 的本地配置；host 类型分为本地和 SSH。
+首次运行复制到 `~/.config/catus-terminal/config.json`；也可通过
+`CATUS_CONFIG_FILE=/absolute/path/config.json pnpm start` 指定配置位置。
 设置面板显示实际路径。保存前通过 Effect Schema 校验，以临时文件和 rename
-写入 JSON；已有配置无法解析或校验失败时，会在同目录备份为 `hosts.json.bak`
+写入 JSON；已有配置无法解析或校验失败时，会在同目录备份为 `config.json.bak`
 （重名时追加序号），然后写入默认配置。
+
+`config.json` 集中保存所有配置：`hosts` 是主机列表，`display` 是显示偏好（目前包含界面语言）。
+保存主机或切换语言都会写回同一个文件。
 
 ```json
 {
@@ -290,7 +293,10 @@ TabBar / HostList / SessionContent / StatusBar / HostForm
       "cwd": "~",
       "defaultTab": "shell"
     }
-  ]
+  ],
+  "display": {
+    "language": "en"
+  }
 }
 ```
 
@@ -618,8 +624,9 @@ Cargo 输出位于 `/tmp/catus-native-<源码路径哈希>`，由
 ## 代码位置
 
 ```text
-config/hosts.json                                  内置终端类型与默认 shell 配置
+config/catus-terminal/config.json                  内置终端类型与默认 shell 配置
 src/shared/hosts.ts                                Effect Schema 校验、启动参数解析与 host 类型
+src/shared/config.ts                               AppConfig Schema：hosts 主机列表与 display 显示偏好
 src/app/app.tsx                                    组合静态 layout 和各区域的后台边界
 src/app/components/app-layout.tsx                  主线程首帧布局骨架与窗口 tab 栏
 src/app/components/                                tab、host、内容、状态栏、设置的展示组件
@@ -642,7 +649,7 @@ src/app/components/terminal/session-content.tsx    按 active tab 组装各面�
 src/app/components/sftp-panel.tsx                  SFTP 面板
 src/app/components/terminal/tmux-tab-bar.tsx       订阅 tmux 快照并分发标题栏操作
 src/shared/tmux.ts                                 tmux 窗口/session 的 host 类型
-src/main/desktop/host-config.ts                    Node.js JSON 配置读写与账户默认 shell
+src/main/desktop/config.ts                         Node.js JSON 配置读写与账户默认 shell
 src/main/desktop/main.ts                           创建 LynxWindow
 rsbuild.config.ts                                  pluginLynxtron 启用 AutoLink
 native/

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/hosts.json';
-import { parseHostsConfig } from '../../shared/hosts';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
 import {
   applyConfig,
   closeTab,
@@ -14,8 +14,8 @@ import {
 import { terminalHostAtom } from '../state/terminal-sessions';
 
 const payload = {
-  config: parseHostsConfig(defaults),
-  path: '/tmp/catus/hosts.json',
+  config: parseConfig(defaults),
+  path: '/tmp/catus/config.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 let registry: AtomRegistry.AtomRegistry;
@@ -78,6 +78,7 @@ test('removing a host closes only its sessions; registry disposal closes the rem
     config: {
       version: 1,
       hosts: payload.config.hosts.filter((item) => item.id !== 'local'),
+      display: payload.config.display,
     },
   });
   expect([...live]).toEqual([1]);
@@ -128,7 +129,10 @@ test('SFTP tabs have no PTY; closing during connection still releases the late c
   const connectSftp = rstest.fn(() => pending);
   registry.set(terminalHostAtom, { ...host, connectSftp });
   const profile = { ...payload.config.hosts[0]!, type: 'ssh' as const, host: 'example' };
-  applyConfig(registry, { ...payload, config: { version: 1, hosts: [profile] } });
+  applyConfig(registry, {
+    ...payload,
+    config: { version: 1, hosts: [profile], display: payload.config.display },
+  });
   newTab(registry, profile.id, 'sftp');
   await Promise.resolve();
   expect(host.createTerminalSession).toHaveBeenCalledOnce();

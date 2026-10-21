@@ -1,7 +1,7 @@
 import 'background-only';
 import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
-import type { HostService } from '../../shared/hosts';
+import type { HostService } from '../../shared/config';
 
 // Configure host dependencies on the registry, independently of React.
 export const hostServiceAtom = Atom.make<HostService | undefined>(undefined).pipe(Atom.keepAlive);

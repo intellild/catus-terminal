@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
 import { terminalHostAtom } from '../state/terminal-sessions';
-import defaults from '../../../tests/fixtures/hosts.json';
-import { parseHostsConfig, resolveLaunch } from '../../shared/hosts';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
+import { resolveLaunch } from '../../shared/launch';
 import {
   applyConfig,
   closeTab,
@@ -19,8 +20,8 @@ import {
 } from '../state/session';
 
 const payload = {
-  config: parseHostsConfig(defaults),
-  path: '/tmp/hosts.json',
+  config: parseConfig(defaults),
+  path: '/tmp/config.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 
@@ -81,6 +82,7 @@ test('profile edits apply to new tabs, while deleting a host removes only its se
       hosts: payload.config.hosts.map((host) =>
         host.id === 'local' ? { ...host, command: '/bin/bash' } : host,
       ),
+      display: payload.config.display,
     },
   };
   applyConfig(registry, updated);
@@ -92,6 +94,7 @@ test('profile edits apply to new tabs, while deleting a host removes only its se
     config: {
       version: 1,
       hosts: updated.config.hosts.filter((host) => host.id !== 'local'),
+      display: payload.config.display,
     },
   });
   expect(registry.get(allTabsAtom)).toHaveLength(1);
@@ -119,15 +122,20 @@ test('configuration validates IDs and commands and resolves the account shell an
     args: ['-l'],
     cwd: '/Users/test',
   });
-  expect(() => parseHostsConfig({ version: 1, hosts: [] })).toThrow();
+  expect(() => parseConfig({ version: 1, hosts: [], display: { language: 'en' } })).toThrow();
   expect(() =>
-    parseHostsConfig({
+    parseConfig({
       version: 1,
       hosts: [defaults.hosts[0], defaults.hosts[0]],
+      display: { language: 'en' },
     }),
   ).toThrow('Duplicate');
   expect(() =>
-    parseHostsConfig({ version: 1, hosts: [{ ...defaults.hosts[0], command: ' ' }] }),
+    parseConfig({
+      version: 1,
+      hosts: [{ ...defaults.hosts[0], command: ' ' }],
+      display: { language: 'en' },
+    }),
   ).toThrow('validation.required');
 });
 
@@ -148,14 +156,14 @@ test('SSH launch uses argv and quotes preview without interpolating a host into 
     "'ssh' '-t' '--' 'user@server' 'printf '\\''hello world'\\''' ".trim(),
   );
   expect(() =>
-    parseHostsConfig({
+    parseConfig({
       ...payload.config,
       hosts: [{ ...profile, host: '-oProxyCommand=bad' }],
     }),
   ).toThrow();
   applyConfig(registry, {
     ...payload,
-    config: { version: 1, hosts: [profile] },
+    config: { version: 1, hosts: [profile], display: payload.config.display },
   });
   newTab(registry, profile.id, 'sftp');
   expect(registry.get(tabAtom(2))?.kind).toBe('sftp');

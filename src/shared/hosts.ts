@@ -1,7 +1,6 @@
 import * as Schema from 'effect/Schema';
 import { tabKinds } from './tabs';
 import type { TabKind } from './tabs';
-import type { TmuxSessionHost } from './tmux';
 
 const NonBlank = Schema.String.check(
   Schema.makeFilter((value) => !!value.trim(), { message: 'validation.required' }),
@@ -67,46 +66,11 @@ export const HostFormSchema = Schema.Struct({
   .check(HostCheck)
   .check(DefaultTabCheck);
 export type HostFormValues = typeof HostFormSchema.Encoded;
-
-export const HostsConfigSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  hosts: Schema.Array(HostProfileSchema).check(Schema.isMinLength(1)),
-}).check(
-  Schema.makeFilter((config) => {
-    const ids = new Set<string>();
-    const issues: Schema.FilterIssue[] = [];
-    config.hosts.forEach((host, index) => {
-      if (ids.has(host.id)) {
-        issues.push({
-          path: ['hosts', index, 'id'],
-          issue: `Duplicate host ID: ${host.id}`,
-        });
-      }
-      ids.add(host.id);
-    });
-    return issues;
-  }),
-);
 export type HostProfile = typeof HostProfileSchema.Type;
-export type HostsConfig = typeof HostsConfigSchema.Type;
-
-export function parseHostsConfig(value: unknown): HostsConfig {
-  return Schema.decodeUnknownSync(HostsConfigSchema)(value);
-}
 
 export interface HostEnvironment {
   readonly shell: string;
   readonly home: string;
-}
-export interface HostsConfigPayload {
-  readonly config: HostsConfig;
-  readonly path: string;
-  readonly environment: HostEnvironment;
-}
-export interface HostService extends TmuxSessionHost {
-  listShells?(destination?: string): Promise<readonly import('./shells').ShellOption[]>;
-  loadHosts(): Promise<HostsConfigPayload>;
-  saveHosts(config: HostsConfig): Promise<HostsConfigPayload>;
 }
 
 export { resolveLaunch, launchPreview, quoteShell } from './launch';

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/hosts.json';
-import { parseHostsConfig } from '../../shared/hosts';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
 import { sessionAtom, tabAtom, hostAtom } from '../state/session';
 import { terminalHostAtom } from '../state/terminal-sessions';
 import type { TerminalHost } from '../state/terminal-sessions';
@@ -17,7 +17,7 @@ import { sessionActionsAtom } from '../state/session-actions';
 import { hostServiceAtom } from '../state/host-service';
 import type { TmuxSessionInfo } from '../../shared/tmux';
 
-const profile = parseHostsConfig(defaults).hosts[0]!;
+const profile = parseConfig(defaults).hosts[0]!;
 const first: TmuxSessionInfo = {
   activeWindowId: '@1',
   windows: [
@@ -115,8 +115,8 @@ test('session lists drive the badge, attach targets and explicit session close',
   const listTmuxSessions = rstest.fn(async () => sessions);
   const killTmuxSession = rstest.fn(async () => {});
   registry.set(hostServiceAtom, {
-    loadHosts: rstest.fn(),
-    saveHosts: rstest.fn(),
+    loadConfig: rstest.fn(),
+    saveConfig: rstest.fn(),
     listTmuxSessions,
     killTmuxSession,
   });

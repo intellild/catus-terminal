@@ -9,5 +9,5 @@
     "rootDir": "../../..",
     "tsBuildInfoFile": "../../../.tmp/typecheck/desktop.tsbuildinfo"
   },
-  "include": ["./**/*.ts", "../../shared/**/*.ts", "../../../config/*.json"]
+  "include": ["./**/*.ts", "../../shared/**/*.ts", "../../../config/**/*.json"]
 }

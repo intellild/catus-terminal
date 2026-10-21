@@ -5,7 +5,9 @@ import { defaultTmuxPrefix, mostRecentTmuxSession } from '../../shared/launch';
 import { terminalSessionsAtom } from './terminal-sessions';
 import { tmuxDestination, tmuxSessionsAtom } from './tmux-sessions';
 import type { TabKind } from '../../shared/tabs';
-import type { HostProfile, HostsConfigPayload, HostFormValues } from '../../shared/hosts';
+import type { HostProfile, HostFormValues } from '../../shared/hosts';
+import type { AppConfigPayload } from '../../shared/config';
+import { languageAtom } from './settings';
 
 export interface TerminalTab {
   readonly id: number;
@@ -23,7 +25,7 @@ export interface HostState {
   readonly activeTabId: number | undefined;
 }
 export interface SessionState {
-  readonly payload: Omit<HostsConfigPayload, 'config'> | null;
+  readonly payload: Omit<AppConfigPayload, 'config'> | null;
   readonly hostIds: readonly string[];
   readonly activeHostId: string | null;
   readonly nextTab: number;
@@ -185,7 +187,7 @@ export function closeTab(store: SessionAccess, id: number): void {
     reconcileSessions(store);
   });
 }
-export function applyConfig(store: SessionAccess, payload: HostsConfigPayload): void {
+export function applyConfig(store: SessionAccess, payload: AppConfigPayload): void {
   const state = store.get(sessionAtom);
   const hostIds = payload.config.hosts.map((host) => host.id);
   Atom.batch(() => {
@@ -221,6 +223,11 @@ export function applyConfig(store: SessionAccess, payload: HostsConfigPayload): 
           : hostIds,
       activeHostId,
     });
+    const language = payload.config.display.language;
+    if (store.get(languageAtom) !== language) {
+      store.set(languageAtom, language);
+      void i18n.changeLanguage(language);
+    }
     if (!state.payload || activeHostId !== state.activeHostId) {
       selectHost(store, activeHostId);
     }

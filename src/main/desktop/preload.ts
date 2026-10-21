@@ -15,7 +15,7 @@ import type { HostProfile, HostEnvironment } from '../../shared/hosts';
 import type { TabKind } from '../../shared/tabs';
 import { resolveLaunch } from '../../shared/hosts';
 import { resolveTmuxLaunch } from '../../shared/launch';
-import { createHostService } from './host-config';
+import { createHostService } from './config';
 import { TextEncoder, TextDecoder } from 'node:util';
 const hosts = createHostService();
 contextBridge.exposeInLynxBTS({
@@ -25,8 +25,8 @@ contextBridge.exposeInLynxBTS({
   listShells,
   listTmuxSessions,
   killTmuxSession,
-  loadHosts: hosts.loadHosts,
-  saveHosts: hosts.saveHosts,
+  loadConfig: hosts.loadConfig,
+  saveConfig: hosts.saveConfig,
   createTerminalSession: (
     id: number,
     profile?: HostProfile,

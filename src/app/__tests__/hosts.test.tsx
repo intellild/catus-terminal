@@ -1,16 +1,17 @@
 import '@testing-library/jest-dom';
 import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
-import defaults from '../../../tests/fixtures/hosts.json';
+import defaults from '../../../tests/fixtures/config.json';
 import { sftpClient } from '../api/sftp';
 import { App } from '../app';
+import { i18n } from '../i18n';
 import { HostForm } from '../components/host/host-form';
-import { parseHostsConfig } from '../../shared/hosts';
+import { parseConfig } from '../../shared/config';
 import { sessionRegistry } from '../state/session-registry';
 import { startSessionRuntime } from '../state/session-runtime';
 import { activeHostIdAtom, closeTab, createDraft } from '../state/session';
 import type { TerminalHost } from '../state/terminal-sessions';
-import type { HostService, HostsConfig } from '../../shared/hosts';
+import type { HostService, AppConfig } from '../../shared/config';
 
 beforeEach(() => {
   sessionRegistry.reset();
@@ -119,14 +120,14 @@ async function waitForTerminal() {
 
 function makeHost() {
   const payload = {
-    config: parseHostsConfig(defaults),
-    path: '/tmp/catus/hosts.json',
+    config: parseConfig(defaults),
+    path: '/tmp/catus/config.json',
     environment: { shell: '/bin/zsh', home: '/Users/test' },
   };
   const host: HostService = {
     listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh · /bin/zsh' }]),
-    loadHosts: rstest.fn(async () => payload),
-    saveHosts: rstest.fn(async (config: HostsConfig) => ({ ...payload, config })),
+    loadConfig: rstest.fn(async () => payload),
+    saveConfig: rstest.fn(async (config: AppConfig) => ({ ...payload, config })),
   };
   return host;
 }
@@ -137,7 +138,7 @@ function renderApp(host = makeHost()) {
 }
 
 test('HostForm renders a standalone form without a dialog shell', async () => {
-  const draft = createDraft(parseHostsConfig(defaults).hosts).draft!;
+  const draft = createDraft(parseConfig(defaults).hosts).draft!;
   const onSave = rstest.fn();
   await act(async () => {
     render(
@@ -183,7 +184,7 @@ test('main-thread first frame renders the layout and region fallbacks without lo
     'Getting things ready.',
   );
   expect(root.querySelector('[data-automation-id=tab-1]')).toBeNull();
-  expect(host.loadHosts).not.toHaveBeenCalled();
+  expect(host.loadConfig).not.toHaveBeenCalled();
 });
 
 test('background hydration preserves the main-thread layout nodes', async () => {
@@ -229,7 +230,7 @@ test('the native view stays mounted through empty/loading/error states with one 
   const invoke = rstest.fn();
   Object.assign(main, { requestAnimationFrame: raf, __InvokeUIMethod: invoke });
   const host = makeHost();
-  rstest.mocked(host.loadHosts).mockRejectedValueOnce(new Error('Temporary config error'));
+  rstest.mocked(host.loadConfig).mockRejectedValueOnce(new Error('Temporary config error'));
   const { unmount } = renderApp(host);
   const root = elementTree.root!;
   await rstest.waitFor(() =>
@@ -377,8 +378,8 @@ test('host editor locks the existing host type and persists local changes', asyn
     expect(root.querySelector('[data-automation-id=profile-host]')).toBeNull(),
   );
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
-  const profile = rstest.mocked(host.saveHosts).mock.calls[0]![0].hosts[0]!;
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
+  const profile = rstest.mocked(host.saveConfig).mock.calls[0]![0].hosts[0]!;
   expect(profile).toMatchObject({
     type: 'local',
     command: 'printf hello',
@@ -414,7 +415,7 @@ test('a new host chooses SSH, validates its host and previews the command', asyn
   );
   fireEvent.tap(root.querySelector('[data-automation-id=profile-default-tab-tmux]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  expect(host.saveHosts).not.toHaveBeenCalled();
+  expect(host.saveConfig).not.toHaveBeenCalled();
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=editor-error]')).not.toBeNull(),
   );
@@ -430,8 +431,8 @@ test('a new host chooses SSH, validates its host and previews the command', asyn
     root.querySelector('[data-automation-id=profile-default-tab-sftp]')?.className,
   ).not.toContain('opacity-50');
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
-  const saved = rstest.mocked(host.saveHosts).mock.calls[0]![0].hosts;
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
+  const saved = rstest.mocked(host.saveConfig).mock.calls[0]![0].hosts;
   expect(saved.at(-1)).toMatchObject({
     type: 'ssh',
     host: 'user@server',
@@ -471,7 +472,9 @@ test('adding a host leaves it stopped until activated, and removing it closes it
     expect(root.querySelector('[data-automation-id=host-host-1]')).toBeNull(),
   );
   expect(root.querySelector('[data-automation-id=tab-2]')).toBeNull();
-  expect(rstest.mocked(host.saveHosts).mock.calls[1]![0].hosts).toHaveLength(defaults.hosts.length);
+  expect(rstest.mocked(host.saveConfig).mock.calls[1]![0].hosts).toHaveLength(
+    defaults.hosts.length,
+  );
   expect(root.querySelector('[data-automation-id=settings-host-host-1]')).toBeNull();
 });
 
@@ -493,7 +496,7 @@ test('Hook Form shows Schema field errors, revalidates corrections and resets on
   expect(root.querySelector('[data-automation-id=host-editor-form]')?.textContent).toContain(
     'Required',
   );
-  expect(host.saveHosts).not.toHaveBeenCalled();
+  expect(host.saveConfig).not.toHaveBeenCalled();
   await changeInput(root, '[data-automation-id=profile-name]', ' Updated shell ');
   await changeInput(root, '[data-automation-id=profile-cwd]', ' ~/work ');
   await changeInput(root, '[data-automation-id=profile-color]', '#aabbcc');
@@ -501,8 +504,8 @@ test('Hook Form shows Schema field errors, revalidates corrections and resets on
     expect(root.querySelector('[data-automation-id=editor-error]')).toBeNull(),
   );
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
-  expect(rstest.mocked(host.saveHosts).mock.calls[0]![0].hosts[0]).toMatchObject({
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
+  expect(rstest.mocked(host.saveConfig).mock.calls[0]![0].hosts[0]).toMatchObject({
     name: 'Updated shell',
     cwd: '~/work',
     color: '#aabbcc',
@@ -604,12 +607,13 @@ test('SSH has separate terminal and SFTP buttons; directory navigation preserves
   };
   terminal.connectSftp = rstest.fn(async () => fs);
   const host = makeHost();
-  const payload = await host.loadHosts();
-  rstest.mocked(host.loadHosts).mockResolvedValue({
+  const payload = await host.loadConfig();
+  rstest.mocked(host.loadConfig).mockResolvedValue({
     ...payload,
     config: {
       version: 1,
       hosts: [{ ...payload.config.hosts[0]!, type: 'ssh', host: 'test-alias' }],
+      display: payload.config.display,
     },
   });
   renderApp(host);
@@ -718,8 +722,8 @@ test('shell Select loads candidates and saves local and remote shell choices', a
   );
   fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-1]')!);
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
-  expect(rstest.mocked(host.saveHosts).mock.calls[0]![0].hosts[0]).toMatchObject({
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
+  expect(rstest.mocked(host.saveConfig).mock.calls[0]![0].hosts[0]).toMatchObject({
     shell: '/bin/zsh',
     command: '/bin/zsh',
     args: ['-l'],
@@ -742,8 +746,8 @@ test('shell Select loads candidates and saves local and remote shell choices', a
   fireEvent.tap(root.querySelector('[data-automation-id=profile-shell-option-custom]')!);
   await changeInput(root, '[data-automation-id=profile-command]', 'exec fish');
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledTimes(2));
-  expect(rstest.mocked(host.saveHosts).mock.calls[1]![0].hosts.at(-1)).toMatchObject({
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledTimes(2));
+  expect(rstest.mocked(host.saveConfig).mock.calls[1]![0].hosts.at(-1)).toMatchObject({
     type: 'ssh',
     host: 'remote-alias',
     shell: 'custom',
@@ -781,7 +785,7 @@ test('settings edits an inactive host without starting it; failed deletion can r
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=delete-host-local]')).not.toBeNull(),
   );
-  rstest.mocked(host.saveHosts).mockRejectedValueOnce(new Error('Permission denied'));
+  rstest.mocked(host.saveConfig).mockRejectedValueOnce(new Error('Permission denied'));
   fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
@@ -919,6 +923,33 @@ function hoverHost(id: string, enter: boolean) {
   );
 }
 
+test('changing the language persists display preferences in the config file', async () => {
+  i18n.addResourceBundle('de', 'translation', { status: { ready: 'Bereit' } });
+  try {
+    const host = makeHost();
+    renderApp(host);
+    await waitForTerminal();
+    const root = elementTree.root!;
+    await openSettings(root);
+    fireEvent.tap(root.querySelector('[data-automation-id=settings-nav-display]')!);
+    await rstest.waitFor(() =>
+      expect(root.querySelector('[data-automation-id=settings-language]')).not.toBeNull(),
+    );
+    fireEvent.tap(root.querySelector('[data-automation-id=settings-language]')!);
+    await rstest.waitFor(() =>
+      expect(root.querySelector('[data-automation-id=settings-language-de]')).not.toBeNull(),
+    );
+    fireEvent.tap(root.querySelector('[data-automation-id=settings-language-de]')!);
+    await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalled());
+    const saved = rstest.mocked(host.saveConfig).mock.calls[0]![0];
+    expect(saved.display).toEqual({ language: 'de' });
+    expect(saved.hosts).toEqual(parseConfig(defaults).hosts);
+  } finally {
+    i18n.removeResourceBundle('de', 'translation');
+    await i18n.changeLanguage('en');
+  }
+});
+
 test('settings opens from the sidebar with host and display sections', async () => {
   const host = makeHost();
   renderApp(host);
@@ -960,12 +991,12 @@ test('deleting a host requires the confirmation popover', async () => {
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=delete-host-popover]')).not.toBeNull(),
   );
-  expect(host.saveHosts).not.toHaveBeenCalled();
+  expect(host.saveConfig).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('[data-automation-id=cancel-delete-host]')!);
   await rstest.waitFor(() =>
     expect(root.querySelector('[data-automation-id=delete-host-popover]')).toBeNull(),
   );
-  expect(host.saveHosts).not.toHaveBeenCalled();
+  expect(host.saveConfig).not.toHaveBeenCalled();
   expect(root.querySelector('[data-automation-id=settings-host-local]')).not.toBeNull();
 
   fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
@@ -973,7 +1004,7 @@ test('deleting a host requires the confirmation popover', async () => {
     expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
   );
   fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
   expect(root.querySelector('[data-automation-id=settings-host-local]')).toBeNull();
   expect(root.querySelector('[data-automation-id=settings-host-shell]')).not.toBeNull();
 });
@@ -989,9 +1020,9 @@ test('the tmux prefix is edited with the host and saved', async () => {
   ).toBe('catus-');
   await changeInput(root, '[data-automation-id=profile-tmuxPrefix]', 'dev-');
   fireEvent.tap(root.querySelector('[data-automation-id=save-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
   expect(
-    rstest.mocked(host.saveHosts).mock.calls[0]![0].hosts.find((item) => item.id === 'shell')
+    rstest.mocked(host.saveConfig).mock.calls[0]![0].hosts.find((item) => item.id === 'shell')
       ?.tmuxPrefix,
   ).toBe('dev-');
 });
@@ -1014,8 +1045,8 @@ test('reopening settings restores shell detection for the retained host', async 
 
 test('deleting the displayed host keeps saving disabled and selects a replacement', async () => {
   const payload = {
-    config: parseHostsConfig(defaults),
-    path: '/tmp/catus/hosts.json',
+    config: parseConfig(defaults),
+    path: '/tmp/catus/config.json',
     environment: { shell: '/bin/zsh', home: '/Users/test' },
   };
   let finish: () => void = () => {};
@@ -1024,8 +1055,8 @@ test('deleting the displayed host keeps saving disabled and selects a replacemen
   });
   const host: HostService = {
     listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh · /bin/zsh' }]),
-    loadHosts: rstest.fn(async () => payload),
-    saveHosts: rstest.fn(async (config: HostsConfig) => {
+    loadConfig: rstest.fn(async () => payload),
+    saveConfig: rstest.fn(async (config: AppConfig) => {
       await pending;
       return { ...payload, config };
     }),
@@ -1046,7 +1077,7 @@ test('deleting the displayed host keeps saving disabled and selects a replacemen
     expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
   );
   fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
   // While persistence is in flight the deleted draft stays selected and disabled.
   expect(root.querySelector('[data-automation-id=save-host]')?.textContent).toContain('Saving');
   expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(

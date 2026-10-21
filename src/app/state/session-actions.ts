@@ -3,9 +3,10 @@ import '../runtime';
 import * as Atom from 'effect/reactivity/Atom';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
-import { parseHostsConfig, HostFormSchema } from '../../shared/hosts';
+import { HostFormSchema } from '../../shared/hosts';
+import { parseConfig } from '../../shared/config';
 import { defaultTmuxPrefix, nextTmuxSessionName } from '../../shared/launch';
-import type { HostsConfig } from '../../shared/hosts';
+import type { AppConfig, DisplayPreferences } from '../../shared/config';
 import {
   applyConfig,
   closeTab,
@@ -29,7 +30,7 @@ import type { SettingsSection } from './settings';
 import { i18n } from '../i18n';
 import { tmuxDestination, tmuxSessionsAtom } from './tmux-sessions';
 
-export const loadHostsAtom = Atom.fn<void>()((_, get) =>
+export const loadConfigAtom = Atom.fn<void>()((_, get) =>
   Effect.gen(function* () {
     get.set(loadAtom, { loading: true, error: '' });
     const host = yield* Effect.try({
@@ -37,10 +38,10 @@ export const loadHostsAtom = Atom.fn<void>()((_, get) =>
       catch: (error) => error,
     });
     const payload = yield* Effect.tryPromise({
-      try: () => host.loadHosts(),
+      try: () => host.loadConfig(),
       catch: (error) => error,
     });
-    yield* Effect.try({ try: () => parseHostsConfig(payload.config), catch: (error) => error });
+    yield* Effect.try({ try: () => parseConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
     get.set(loadAtom, { loading: false, error: '' });
   }).pipe(
@@ -50,14 +51,14 @@ export const loadHostsAtom = Atom.fn<void>()((_, get) =>
   ),
 ).pipe(Atom.keepAlive);
 
-const persistHostsAtom = Atom.fn<HostsConfig>()((config, get) =>
+const persistConfigAtom = Atom.fn<AppConfig>()((config, get) =>
   Effect.gen(function* () {
     if (get(editorAtom).saving) {
       return;
     }
     get.set(editorAtom, { ...get(editorAtom), saving: true, error: '' });
     const checked = yield* Effect.try({
-      try: () => parseHostsConfig(config),
+      try: () => parseConfig(config),
       catch: (error) => error,
     });
     const host = yield* Effect.try({
@@ -65,10 +66,10 @@ const persistHostsAtom = Atom.fn<HostsConfig>()((config, get) =>
       catch: (error) => error,
     });
     const payload = yield* Effect.tryPromise({
-      try: () => host.saveHosts(checked),
+      try: () => host.saveConfig(checked),
       catch: (error) => error,
     });
-    yield* Effect.try({ try: () => parseHostsConfig(payload.config), catch: (error) => error });
+    yield* Effect.try({ try: () => parseConfig(payload.config), catch: (error) => error });
     applyConfig(get.registry, payload);
     const draft = get(editorAtom).draft;
     const saved = draft && payload.config.hosts.find((item) => item.id === draft.id);
@@ -81,6 +82,34 @@ const persistHostsAtom = Atom.fn<HostsConfig>()((config, get) =>
         get.set(editorAtom, { ...get(editorAtom), saving: false, error: String(error) }),
       ),
     ),
+  ),
+).pipe(Atom.keepAlive);
+
+export const saveDisplayPreferencesAtom = Atom.fn<DisplayPreferences>()((display, get) =>
+  Effect.gen(function* () {
+    if (!get(sessionAtom).payload) {
+      return;
+    }
+    const checked = yield* Effect.try({
+      try: () =>
+        parseConfig({
+          version: 1,
+          hosts: get(hostProfilesAtom),
+          display,
+        }),
+      catch: (error) => error,
+    });
+    const host = yield* Effect.try({
+      try: () => get(hostServiceAtom) ?? nativeHostService(),
+      catch: (error) => error,
+    });
+    const payload = yield* Effect.tryPromise({
+      try: () => host.saveConfig(checked),
+      catch: (error) => error,
+    });
+    applyConfig(get.registry, payload);
+  }).pipe(
+    Effect.catch((error) => Effect.sync(() => console.error('Save display preferences', error))),
   ),
 ).pipe(Atom.keepAlive);
 
@@ -108,7 +137,7 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
   const editor = get(editorAtom);
   switch (action.type) {
     case 'reload':
-      get.set(loadHostsAtom, undefined);
+      get.set(loadConfigAtom, undefined);
       return;
     case 'addTab':
       if ('kind' in action) {
@@ -170,6 +199,9 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
     case 'changeLanguage':
       get.set(languageAtom, action.language);
       void i18n.changeLanguage(action.language);
+      if (state.payload) {
+        get.set(saveDisplayPreferencesAtom, { language: action.language });
+      }
       return;
     case 'openHost':
       selectHost(store, action.id);
@@ -239,9 +271,10 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       if (editor.saving || hosts.length <= 1 || !hosts.some((item) => item.id === action.id)) {
         return;
       }
-      get.set(persistHostsAtom, {
+      get.set(persistConfigAtom, {
         version: 1,
         hosts: hosts.filter((item) => item.id !== action.id),
+        display: { language: get(languageAtom) },
       });
       return;
     }
@@ -251,11 +284,12 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       }
       try {
         const { isNew, ...profile } = Schema.decodeUnknownSync(HostFormSchema)(editor.draft);
-        get.set(persistHostsAtom, {
+        get.set(persistConfigAtom, {
           version: 1,
           hosts: isNew
             ? [...hosts, profile]
             : hosts.map((item) => (item.id === profile.id ? profile : item)),
+          display: { language: get(languageAtom) },
         });
       } catch (error) {
         get.set(editorAtom, { ...editor, error: String(error) });

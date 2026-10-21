@@ -167,7 +167,7 @@ grace 的 Close；writer 在 grace 内保持 fd 打开，让 shell 消费已排�
 不访问 PTY 或 OS 指针。macOS 回调在 `platform/macos/surface.rs` 导入 IOSurface。
 native view 不独立持有或创建 renderer。
 
-配置数据在 TypeScript 中使用 `HostProfile` / `HostProfileSchema`，配置文件字段为 `hosts`。
+配置数据在 TypeScript 中使用 `HostProfile` / `HostProfileSchema`，配置文件包含 `hosts` 与 `display` 字段。
 Rust `Host` 统一管理会话创建、查找、关闭、detach 和成员清理；
 `HostFactory` 根据启动参数选择普通或 tmux delegate，传给 `Host::new(delegate)`。
 `Hosts` 持有 factory；已有 host 的后端更新也由 factory 注入，

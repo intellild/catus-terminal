@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, rstest, test } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import defaults from '../../../tests/fixtures/hosts.json';
-import { parseHostsConfig } from '../../shared/hosts';
-import type { HostsConfig, HostsConfigPayload } from '../../shared/hosts';
+import defaults from '../../../tests/fixtures/config.json';
+import { parseConfig } from '../../shared/config';
+import type { AppConfig, AppConfigPayload } from '../../shared/config';
 import {
   editorAtom,
   loadAtom,
@@ -25,15 +25,15 @@ import {
 } from '../state/session-views';
 
 let registry: AtomRegistry.AtomRegistry;
-const payload: HostsConfigPayload = {
-  config: parseHostsConfig(defaults),
-  path: '/tmp/catus/hosts.json',
+const payload: AppConfigPayload = {
+  config: parseConfig(defaults),
+  path: '/tmp/catus/config.json',
   environment: { shell: '/bin/zsh', home: '/Users/test' },
 };
 function makeHost() {
   return {
-    loadHosts: rstest.fn(async () => payload),
-    saveHosts: rstest.fn(async (config: HostsConfig) => ({ ...payload, config })),
+    loadConfig: rstest.fn(async () => payload),
+    saveConfig: rstest.fn(async (config: AppConfig) => ({ ...payload, config })),
     listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh' }]),
   };
 }
@@ -59,7 +59,7 @@ test('startup, shell detection and host actions run without React or UI subscrip
   startSessionRuntime(registry, host);
   startSessionRuntime(registry, host);
   await loaded();
-  expect(host.loadHosts).toHaveBeenCalledOnce();
+  expect(host.loadConfig).toHaveBeenCalledOnce();
   expect(terminal.createTerminalSession).toHaveBeenCalledExactlyOnceWith(
     1,
     payload.config.hosts[0],
@@ -86,10 +86,10 @@ test('startup, shell detection and host actions run without React or UI subscrip
   stopStatus();
   dispatch({ type: 'saveDraft' });
   // Saving keeps the settings dialog open on the updated host.
-  await rstest.waitFor(() => expect(host.saveHosts).toHaveBeenCalledOnce());
+  await rstest.waitFor(() => expect(host.saveConfig).toHaveBeenCalledOnce());
   expect(registry.get(editorAtom).open).toBe(true);
   expect(registry.get(editorAtom).draft?.name).toBe('Renamed local');
-  expect(host.saveHosts.mock.calls[0]![0].hosts.find((host) => host.id === 'local')?.name).toBe(
+  expect(host.saveConfig.mock.calls[0]![0].hosts.find((host) => host.id === 'local')?.name).toBe(
     'Renamed local',
   );
   dispatch({ type: 'addTab' });
@@ -102,22 +102,25 @@ test('startup, shell detection and host actions run without React or UI subscrip
 
 test('configuration retry cancels stale responses; disposed runtimes never create sessions', async () => {
   const host = makeHost();
-  let finishOld!: (value: HostsConfigPayload) => void;
-  const old = new Promise<HostsConfigPayload>((resolve) => {
+  let finishOld!: (value: AppConfigPayload) => void;
+  const old = new Promise<AppConfigPayload>((resolve) => {
     finishOld = resolve;
   });
-  host.loadHosts.mockReturnValueOnce(old);
+  host.loadConfig.mockReturnValueOnce(old);
   startSessionRuntime(registry, host);
   dispatch({ type: 'reload' });
   await loaded();
-  finishOld({ ...payload, config: { version: 1, hosts: [payload.config.hosts[1]!] } });
+  finishOld({
+    ...payload,
+    config: { version: 1, hosts: [payload.config.hosts[1]!], display: payload.config.display },
+  });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(registry.get(sessionAtom).activeHostId).toBe('shell');
   expect(terminal.createTerminalSession).toHaveBeenCalledOnce();
-  host.loadHosts.mockReturnValueOnce(
+  host.loadConfig.mockReturnValueOnce(
     old.then(
       () =>
-        new Promise<HostsConfigPayload>((resolve) => {
+        new Promise<AppConfigPayload>((resolve) => {
           finishOld = resolve;
         }),
     ),
@@ -136,12 +139,12 @@ test('failed deletion preserves sessions and retries; saving blocks duplicate co
   startSessionRuntime(registry, host);
   await loaded();
   dispatch({ type: 'openHost', id: 'local' });
-  host.saveHosts.mockRejectedValueOnce(new Error('Permission denied'));
+  host.saveConfig.mockRejectedValueOnce(new Error('Permission denied'));
   dispatch({ type: 'deleteHost', id: 'local' });
   await rstest.waitFor(() => expect(registry.get(editorAtom).error).toContain('Permission denied'));
   expect(terminal.closeTerminalSession).not.toHaveBeenCalled();
-  let finishSave!: (value: HostsConfigPayload) => void;
-  host.saveHosts.mockImplementationOnce(
+  let finishSave!: (value: AppConfigPayload) => void;
+  host.saveConfig.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finishSave = resolve;
@@ -151,8 +154,8 @@ test('failed deletion preserves sessions and retries; saving blocks duplicate co
   await rstest.waitFor(() => expect(registry.get(editorAtom).saving).toBe(true));
   dispatch({ type: 'deleteHost', id: 'local' });
   dispatch({ type: 'addHost' });
-  expect(host.saveHosts).toHaveBeenCalledTimes(2);
-  finishSave({ ...payload, config: host.saveHosts.mock.calls[1]![0] });
+  expect(host.saveConfig).toHaveBeenCalledTimes(2);
+  finishSave({ ...payload, config: host.saveConfig.mock.calls[1]![0] });
   await rstest.waitFor(() =>
     expect(terminal.closeTerminalSession).toHaveBeenCalledExactlyOnceWith(2),
   );

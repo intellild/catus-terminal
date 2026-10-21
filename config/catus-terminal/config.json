@@ -13,17 +13,9 @@
       "cwd": "~",
       "type": "local",
       "defaultTab": "shell"
-    },
-    {
-      "id": "local",
-      "name": "Local",
-      "icon": ">_",
-      "color": "#a8e6cf",
-      "command": "/bin/sh",
-      "args": [],
-      "cwd": "~",
-      "type": "local",
-      "defaultTab": "shell"
     }
-  ]
+  ],
+  "display": {
+    "language": "en"
+  }
 }
