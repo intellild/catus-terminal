@@ -1,6 +1,6 @@
 import { expect, rstest, test } from '@rstest/core';
 import { fireEvent, render } from '@lynx-js/react/testing-library';
-import { TabActions } from '../components/TabBar';
+import { TabActions } from '../components/TabBar/TabActions';
 
 function actions(ssh = true, defaultKind: 'shell' | 'tmux' | 'sftp' = 'shell') {
   const onAdd = rstest.fn();

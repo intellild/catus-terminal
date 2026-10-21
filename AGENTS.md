@@ -53,6 +53,11 @@
 - Hosts and display preferences share one settings dialog opened from the sidebar
   (`components/Settings/`). The host editor reuses the workspace form; new per-host options
   belong there, as with `tmuxPrefix`.
+- Keep Effect-backed UI primitives (`ui/ContextMenu`, `ui/Dialog`, `ui/Popover`, `ui/Select`)
+  out of modules rendered on the main thread. Their `effect` imports execute in the MTS
+  bundle, fail with `TypeError: not a function` in dev and break snapshot registration.
+  Shared modules such as `TabBar/index.tsx` stay Effect-free; interactive menus live in
+  BTS-only components such as `TabBar/TabActions.tsx`.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
