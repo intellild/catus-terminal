@@ -3,13 +3,13 @@ import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import { act, fireEvent, getQueriesForElement, render } from '@lynx-js/react/testing-library';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { sftpClient } from '../api/sftp';
-import { App } from '../App';
-import { WorkspaceSettings } from '../components/Workspace/WorkspaceSettings';
+import { App } from '../app';
+import { WorkspaceSettings } from '../components/workspace/workspace-settings';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
-import { sessionRegistry } from '../state/sessionRegistry';
-import { startSessionRuntime } from '../state/sessionRuntime';
+import { sessionRegistry } from '../state/session-registry';
+import { startSessionRuntime } from '../state/session-runtime';
 import { activeWorkspaceIdAtom, closeTab, createDraft } from '../state/session';
-import type { TerminalHost } from '../state/terminalSessions';
+import type { TerminalHost } from '../state/terminal-sessions';
 import type { WorkspaceHost, WorkspaceConfig } from '../../shared/workspaces';
 
 beforeEach(() => {

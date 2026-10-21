@@ -129,7 +129,7 @@ NSRunLoop”这一具体问题。检索到的
 按用户要求暂时改由 JS 请求 RAF，再调用 Rust 的 napi-rs 导出函数：
 
 ```text
-App / frameDriver.ts
+App / frame-driver.ts
   MTS requestAnimationFrame → runOnBackground 调用 preload
        ↓
 frame_driver.rs / dispatchAnimationFrame()

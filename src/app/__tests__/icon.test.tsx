@@ -1,6 +1,6 @@
 import { expect, test } from '@rstest/core';
 import { render } from '@lynx-js/react/testing-library';
-import { Icon } from '../components/ui/Icon';
+import { Icon } from '../components/ui/icon';
 
 test('Icon renders a Lucide SVG string with the requested color and size', () => {
   render(

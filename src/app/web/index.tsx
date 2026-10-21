@@ -1,8 +1,8 @@
 import { root } from '@lynx-js/react';
-import { App } from '../App';
-import { sessionRegistry } from '../state/sessionRegistry';
-import { startSessionRuntime } from '../state/sessionRuntime';
-import { terminalHostAtom } from '../state/terminalSessions';
+import { App } from '../app';
+import { sessionRegistry } from '../state/session-registry';
+import { startSessionRuntime } from '../state/session-runtime';
+import { terminalHostAtom } from '../state/terminal-sessions';
 import { createWebHost } from './host';
 
 if (__BACKGROUND__) {

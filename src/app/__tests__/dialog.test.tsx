@@ -9,7 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
-} from '../components/ui/Dialog';
+} from '../components/ui/dialog';
 
 function Fixture({
   open,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, rstest } from '@rstest/core';
 import * as AtomRegistry from 'effect/reactivity/AtomRegistry';
-import { terminalHostAtom } from '../state/terminalSessions';
+import { terminalHostAtom } from '../state/terminal-sessions';
 import defaults from '../../../tests/fixtures/workspaces.json';
 import { parseWorkspaceConfig, resolveLaunch } from '../../shared/workspaces';
 import {

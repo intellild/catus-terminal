@@ -1,8 +1,8 @@
 import { expect, test, rstest } from '@rstest/core';
 import { act, render } from '@lynx-js/react/testing-library';
-import { ScrollBar } from '../components/ui/ScrollBar';
-import { TerminalView } from '../components/Terminal/TerminalView';
-import { scrollbarGeometry, scrollbarOffset } from '../components/ui/scrollbarGeometry';
+import { ScrollBar } from '../components/ui/scroll-bar';
+import { TerminalView } from '../components/terminal/terminal-view';
+import { scrollbarGeometry, scrollbarOffset } from '../components/ui/scrollbar-geometry';
 
 async function send(target: Element, event: Event) {
   await act(async () => {

@@ -1,12 +1,12 @@
 import { app, dialog, LynxWindow, lynxBridge } from '@lynx-js/lynxtron';
-import { LYNX_BUNDLE_PATH } from './vendorPaths';
+import { LYNX_BUNDLE_PATH } from './vendor-paths';
 import path from 'node:path';
 
 import { connectSftp } from './sftp';
-import { createFileUploader, createFileDownloader } from './fileTransfers';
-import { createSftpService } from './sftpService';
-import { SFTP_CHANNEL } from '../../shared/sftpBridge';
-import type { SftpRequest } from '../../shared/sftpBridge';
+import { createFileUploader, createFileDownloader } from './file-transfers';
+import { createSftpService } from './sftp-service';
+import { SFTP_CHANNEL } from '../../shared/sftp-bridge';
+import type { SftpRequest } from '../../shared/sftp-bridge';
 
 // TODO(Lynxtron 0.0.28/macOS): calling native async SFTP from preload/BTS aborts
 // with `Environment::GetCurrent(isolate) == env` before the JS callback runs.

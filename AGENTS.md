@@ -27,6 +27,9 @@
 
 - Use Conventional Commits for every commit: `<type>(<optional scope>): <description>`
   (for example, `feat(sftp): add file downloads` or `fix(ui): align tab controls`).
+- Name TypeScript files and their directories in kebab-case (`session-actions.ts`,
+  `components/tab-bar/`). `pnpm lint` enforces it with `unicorn/filename-case`;
+  `__tests__` directories are exempt, but their files are still checked.
 
 ### UI and State
 
@@ -49,16 +52,16 @@
 - tmux sessions belong to the machine, not the tab: opening a tmux tab attaches the most
   recent session (or `<tmuxPrefix>0` on an empty machine) and closing a tab only detaches.
   Session lists, attach targets, explicit kills and the count badge live in registry atoms
-  (`state/tmuxSessions.ts`); components only subscribe and dispatch.
+  (`state/tmux-sessions.ts`); components only subscribe and dispatch.
 - Hosts and display preferences share one settings dialog opened from the sidebar
-  (`components/Settings/`). The host editor reuses the workspace form; new per-host options
+  (`components/settings/`). The host editor reuses the workspace form; new per-host options
   belong there, as with `tmuxPrefix`.
 - Never import `effect` from a module the main thread renders. Effect's circular
   initialization leaves `Schema.make` undefined in the MTS bundle, so the MTS script
   aborts before registering snapshots (`TypeError: not a function` plus
   `Snapshot not found` in dev). Keep `ui/ContextMenu`, `ui/Dialog`, `ui/Popover` and
-  `ui/Select` in BTS-only modules (`TabBar/TabActions.tsx`); shared modules such as
-  `TabBar/index.tsx` stay Effect-free even when their interactive child only renders
+  `ui/Select` in BTS-only modules (`tab-bar/tab-actions.tsx`); shared modules such as
+  `tab-bar/index.tsx` stay Effect-free even when their interactive child only renders
   in BTS.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the

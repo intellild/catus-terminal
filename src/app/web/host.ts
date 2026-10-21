@@ -1,7 +1,7 @@
 import defaults from '../../../config/workspaces.json';
 import { parseWorkspaceConfig } from '../../shared/workspaces';
 import type { WorkspaceHost, WorkspaceConfigPayload } from '../../shared/workspaces';
-import type { TerminalHost } from '../state/terminalSessions';
+import type { TerminalHost } from '../state/terminal-sessions';
 import type { SftpHost } from '../../shared/sftp';
 
 // Preview configuration belongs to this browser runtime, never the desktop config file.

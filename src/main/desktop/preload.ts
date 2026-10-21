@@ -15,7 +15,7 @@ import type { WorkspaceSettings, WorkspaceEnvironment } from '../../shared/works
 import type { TabKind } from '../../shared/tabs';
 import { resolveLaunch } from '../../shared/workspaces';
 import { resolveTmuxLaunch } from '../../shared/launch';
-import { createWorkspaceHost } from './workspaceConfig';
+import { createWorkspaceHost } from './workspace-config';
 import { TextEncoder, TextDecoder } from 'node:util';
 const workspaces = createWorkspaceHost();
 contextBridge.exposeInLynxBTS({

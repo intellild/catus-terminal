@@ -1,7 +1,7 @@
 import { expect, rstest, test } from '@rstest/core';
 import { act, render } from '@lynx-js/react/testing-library';
 import { i18n } from '../i18n';
-import { StatusBar } from '../components/StatusBar';
+import { StatusBar } from '../components/status-bar';
 import english from '../../../locales/en.toml';
 
 // These imports go through the same TOML rule as the production Lynx bundle.
