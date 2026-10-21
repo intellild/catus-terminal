@@ -53,11 +53,13 @@
 - Hosts and display preferences share one settings dialog opened from the sidebar
   (`components/Settings/`). The host editor reuses the workspace form; new per-host options
   belong there, as with `tmuxPrefix`.
-- Keep Effect-backed UI primitives (`ui/ContextMenu`, `ui/Dialog`, `ui/Popover`, `ui/Select`)
-  out of modules rendered on the main thread. Their `effect` imports execute in the MTS
-  bundle, fail with `TypeError: not a function` in dev and break snapshot registration.
-  Shared modules such as `TabBar/index.tsx` stay Effect-free; interactive menus live in
-  BTS-only components such as `TabBar/TabActions.tsx`.
+- Never import `effect` from a module the main thread renders. Effect's circular
+  initialization leaves `Schema.make` undefined in the MTS bundle, so the MTS script
+  aborts before registering snapshots (`TypeError: not a function` plus
+  `Snapshot not found` in dev). Keep `ui/ContextMenu`, `ui/Dialog`, `ui/Popover` and
+  `ui/Select` in BTS-only modules (`TabBar/TabActions.tsx`); shared modules such as
+  `TabBar/index.tsx` stay Effect-free even when their interactive child only renders
+  in BTS.
 - Compose layout and UI primitives through children, following shadcn conventions.
   Business components use wrappers in `src/app/components/ui/`, including the
   official Lynx UI Input and Popover, rather than importing Lynx UI directly.
@@ -127,6 +129,9 @@ Use pnpm and the Node.js versions declared in `package.json`.
 - E2E defaults to windowless mode with isolated configuration and a fake PTY.
   Close existing Catus apps first. macOS Metal and an awake display are required;
   locked-screen/displayless CI is not verified.
+- A clean `pnpm dev` start logs no `snapshotPatchApply failed` / `Snapshot not found`.
+  If it does, an MTS-rendered module imports `effect`: move the component that needs
+  it into a BTS-only module and import it only from a `background-only` region.
 - Screenshot baselines remain gitignored until the UI stabilizes. Generate/update
   them explicitly with `pnpm test:e2e:update` and inspect the images; never update
   baselines merely to hide a failure. Artifacts are under `.tmp/e2e/artifacts/`.
