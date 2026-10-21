@@ -1003,3 +1003,72 @@ test('the tmux prefix is edited with the host and saved', async () => {
       .mock.calls[0]![0].workspaces.find((item) => item.id === 'shell')?.tmuxPrefix,
   ).toBe('dev-');
 });
+
+test('reopening settings restores shell detection for the retained host', async () => {
+  const host = makeHost();
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledTimes(1));
+  fireEvent.tap(root.querySelector('[data-automation-id=close-settings]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-dialog]')).toBeNull(),
+  );
+  await openSettings(root);
+  await rstest.waitFor(() => expect(host.listShells).toHaveBeenCalledTimes(2));
+  expect(root.querySelector('[data-automation-id=profile-shell]')).not.toBeNull();
+});
+
+test('deleting the displayed host keeps saving disabled and selects a replacement', async () => {
+  const payload = {
+    config: parseWorkspaceConfig(defaults),
+    path: '/tmp/catus/workspaces.json',
+    environment: { shell: '/bin/zsh', home: '/Users/test' },
+  };
+  let finish: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const host: WorkspaceHost = {
+    listShells: rstest.fn(async () => [{ value: '/bin/zsh', label: 'zsh · /bin/zsh' }]),
+    loadWorkspaces: rstest.fn(async () => payload),
+    saveWorkspaces: rstest.fn(async (config: WorkspaceConfig) => {
+      await pending;
+      return { ...payload, config };
+    }),
+  };
+  renderApp(host);
+  await waitForTerminal();
+  const root = elementTree.root!;
+  await openSettings(root);
+  fireEvent.tap(root.querySelector('[data-automation-id=settings-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(
+      (root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value,
+    ).toBe('Local'),
+  );
+  hoverHost('local', true);
+  fireEvent.tap(root.querySelector('[data-automation-id=delete-host-local]')!);
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=confirm-delete-host]')).not.toBeNull(),
+  );
+  fireEvent.tap(root.querySelector('[data-automation-id=confirm-delete-host]')!);
+  await rstest.waitFor(() => expect(host.saveWorkspaces).toHaveBeenCalledOnce());
+  // While persistence is in flight the deleted draft stays selected and disabled.
+  expect(root.querySelector('[data-automation-id=save-workspace]')?.textContent).toContain(
+    'Saving',
+  );
+  expect((root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value).toBe(
+    'Local',
+  );
+  finish();
+  await rstest.waitFor(() =>
+    expect(root.querySelector('[data-automation-id=settings-host-local]')).toBeNull(),
+  );
+  await rstest.waitFor(() =>
+    expect(
+      (root.querySelector('[data-automation-id=profile-name]') as HTMLInputElement).value,
+    ).toBe('Shell'),
+  );
+});

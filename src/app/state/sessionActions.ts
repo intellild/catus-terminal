@@ -72,10 +72,9 @@ const persistWorkspacesAtom = Atom.fn<WorkspaceConfig>()((config, get) =>
     applyConfig(get.registry, payload);
     const draft = get(editorAtom).draft;
     const saved = draft && payload.config.workspaces.find((item) => item.id === draft.id);
-    get.set(
-      editorAtom,
-      saved ? editWorkspace(saved) : { ...get(editorAtom), saving: false, error: '' },
-    );
+    // Deleting the displayed host leaves a draft that no longer exists; select the
+    // replacement only now, after persistence cleared the saving state.
+    get.set(editorAtom, editWorkspace(saved ?? payload.config.workspaces[0]!));
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() =>
@@ -140,9 +139,15 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       );
       return;
     }
-    case 'openSettings':
+    case 'openSettings': {
       get.set(settingsAtom, { open: true, section: action.section ?? 'hosts' });
-      if (!editor.draft) {
+      if (editor.draft) {
+        // closeSettings keeps the draft but clears open; shell detection only runs
+        // for an open editor, so reopening must restore that flag.
+        if (!editor.open) {
+          get.set(editorAtom, { ...editor, open: true });
+        }
+      } else {
         const target =
           workspaces.find((item) => item.id === state.activeWorkspaceId) ?? workspaces[0];
         if (target) {
@@ -150,6 +155,7 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
         }
       }
       return;
+    }
     case 'selectSettingsSection':
       get.set(settingsAtom, { ...get(settingsAtom), section: action.section });
       return;
@@ -235,12 +241,10 @@ export const sessionActionsAtom = Atom.fnSync<SessionAction>()((action, get) => 
       ) {
         return;
       }
-      const remaining = workspaces.filter((item) => item.id !== action.id);
-      get.set(persistWorkspacesAtom, { version: 1, workspaces: remaining });
-      // The deleted host may have been the one shown in the settings content.
-      if (editor.draft?.id === action.id && remaining[0]) {
-        get.set(editorAtom, editWorkspace(remaining[0]));
-      }
+      get.set(persistWorkspacesAtom, {
+        version: 1,
+        workspaces: workspaces.filter((item) => item.id !== action.id),
+      });
       return;
     }
     case 'saveDraft': {
