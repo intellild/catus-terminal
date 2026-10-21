@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-cn.md)
 
-A desktop terminal built on [Lynxtron](https://lynxjs.org/lynxtron/). The UI is written with Lynx, while terminal computation and rendering run in Rust: Alacritty parses VT sequences and wgpu draws the character grid.
+A desktop terminal built on [Lynxtron](https://lynxjs.org/lynxtron/). The UI is built with Lynx, while terminal computation and rendering are implemented natively in Rust with wgpu for high performance and low memory use: Alacritty parses VT sequences and wgpu draws the character grid directly.
 
 ## Features
 
@@ -11,15 +11,6 @@ A desktop terminal built on [Lynxtron](https://lynxjs.org/lynxtron/). The UI is 
 - **Native terminal**: Rust drives processes through portable-pty, Alacritty handles VT/ANSI parsing, wgpu renders glyphs, cursor and selection, and Lynxtron owns the window and asset loading.
 - **SFTP**: SSH hosts can open an SFTP panel to browse, upload and download remote files.
 - **Single config**: hosts, tmux prefixes and display preferences live in `~/.config/catus-terminal/config.json`.
-
-## Stack
-
-| Layer | Implementation |
-| --- | --- |
-| Shell / UI | Lynxtron, Lynx, ReactLynx, Effect Atom |
-| Terminal | Rust, portable-pty, Alacritty VT, napi-rs |
-| Rendering | wgpu, Metal, crossfont glyph atlas |
-| Remote | OpenSSH, tmux control mode, SFTP |
 
 ## Development
 

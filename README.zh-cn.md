@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-基于 [Lynxtron](https://lynxjs.org/lynxtron/) 的桌面终端。界面使用 Lynx，终端计算与渲染由 Rust 完成：Alacritty 解析 VT 序列，wgpu 绘制字符网格。
+基于 [Lynxtron](https://lynxjs.org/lynxtron/) 的桌面终端。界面使用 Lynx，终端计算与渲染由 Rust 和原生 wgpu 实现，注重高性能与低内存占用：Alacritty 解析 VT 序列，wgpu 直接绘制字符网格。
 
 ## 特性
 
@@ -11,15 +11,6 @@
 - **原生终端**：Rust 通过 portable-pty 管理进程，Alacritty 解析 VT/ANSI，wgpu 负责字符、光标和选区渲染，Lynxtron 负责窗口与资源加载。
 - **SFTP**：SSH host 可以打开 SFTP 面板，浏览、上传和下载远程文件。
 - **集中配置**：host、tmux 前缀和显示偏好保存在 `~/.config/catus-terminal/config.json`。
-
-## 技术栈
-
-| 层 | 实现 |
-| --- | --- |
-| 桌面壳 / UI | Lynxtron、Lynx、ReactLynx、Effect Atom |
-| 终端计算 | Rust、portable-pty、Alacritty VT、napi-rs |
-| 渲染 | wgpu、Metal、crossfont glyph atlas |
-| 远程 | OpenSSH、tmux control mode、SFTP |
 
 ## 开发
 
