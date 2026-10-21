@@ -174,9 +174,9 @@ SFTP 只能用于 SSH workspace；Effect registry 保留草稿、Shell 检测及
 `DialogFooter` 和 `DialogClose` 组合组件，支持 `open` / `defaultOpen` / `onOpenChange`。
 `DialogContent` 自动把遮罩和内容放进共享的 `CoverView`，点击遮罩或关闭按钮关闭；
 `overlayProps.closeOnPress` 和 `showCloseButton` 可关闭对应的默认行为。
-`WorkspaceAdd` 和 `WorkspaceContextMenu` 分别与触发按钮一起组合 Dialog；
-`WorkspaceSettingsDialog` 连接当前草稿、Shell 检测与保存命令，并提供共享的弹窗内容。
-`WorkspaceSettings` 只渲染表单，不依赖 Dialog 或开关/关闭逻辑；App 不再单独挂载设置弹窗。
+`SettingsDialog` 只挂载一次，连接设置入口、主机列表、删除确认、Shell 检测和保存命令；
+`WorkspaceSettings` 只渲染表单，不依赖 Dialog 或开关/关闭逻辑。
+主机类型在创建时选择，编辑已有主机时只读。
 Dialog 内的 Select / Popover 保持更高的浮层层级。
 目前封装显示状态、布局和点击交互，不提供 Escape / Tab 焦点陷阱。
 Popover 的 Anchor / Positioner 负责定位，点击外部区域关闭浮层。
