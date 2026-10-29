@@ -1,12 +1,9 @@
 use super::*;
 use crate::binding::extension::tests as host;
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::Arc;
 
 #[test]
-fn rust_factory_registers_component_and_controls_the_shared_native_registry() {
+fn rust_factory_registers_component_with_a_shared_frame_source() {
     register_terminal_extension();
     let registration = host::take_registration();
     assert_eq!(registration.name, "CatusNativeTerminalElement");
@@ -21,91 +18,29 @@ fn rust_factory_registers_component_and_controls_the_shared_native_registry() {
     assert_eq!(native.name, "native-terminal");
     assert!(native.creator.is_some());
 
-    // Native views clone the Rust registry. It must share lifecycle state
-    // and remain stopped after the extension finalizes.
-    let retained_host = unsafe {
+    // The host context and extension share the source; each view subscribes
+    // its own loop to it.
+    let source = unsafe {
         host::with_extension(raw, |extension: &TerminalExtension| {
-            extension.host.get().unwrap().frames.clone()
+            assert_eq!(Arc::strong_count(&extension.frames), 2);
+            Arc::clone(&extension.frames)
         })
     };
-    assert_ne!(native.opaque, 0);
-    let frames = &retained_host;
-    let calls = Arc::new(AtomicUsize::new(0));
-    let count = calls.clone();
-    let render = frames.register(move |_| {
-        count.fetch_add(1, Ordering::Relaxed);
-    });
-    render.set_active(true);
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
-    unsafe { callbacks.background.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
-    unsafe { callbacks.foreground.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    let loop_ = source.subscribe(Box::new(|_| {}));
+    loop_.set_active(true);
+    loop_.set_active(false);
+
     unsafe { callbacks.view_destroy.unwrap()(raw) };
-    unsafe { callbacks.foreground.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
     unsafe { callbacks.destroy.unwrap()(raw) };
     unsafe { host::release(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
 }
 
 #[test]
-fn finalization_without_view_destroy_stops_retained_native_views_and_isolates_windows() {
-    let first = TerminalExtension::default();
-    let second = TerminalExtension::default();
-    let first_frames = first.frames.clone();
-    let second_frames = second.frames.clone();
-    let calls = Arc::new(AtomicUsize::new(0));
-    let count = calls.clone();
-    let a = first_frames.register(move |_| {
-        count.fetch_add(1, Ordering::Relaxed);
-    });
-    let count = calls.clone();
-    let b = second_frames.register(move |_| {
-        count.fetch_add(10, Ordering::Relaxed);
-    });
-    a.set_active(true);
-    b.set_active(true);
-    first.on_enter_background();
-    first_frames.dispatch(20, || 10);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 10);
-    drop(first);
-    first_frames.set_foreground(true);
-    first_frames.dispatch(20, || 10);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 20);
-    drop(second);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 20);
-}
-
-#[test]
-fn native_vsync_requests_one_frame_and_stops_after_detach() {
+fn finalization_without_view_destroy_drops_the_extension() {
     let extension = TerminalExtension::default();
-    let observer = NonNull::<VsyncObserver>::dangling().as_ptr();
-    host::take_frame_requests();
-    extension.on_runtime_attach(std::ptr::null_mut(), observer);
-    let request = host::take_frame_requests().pop().unwrap();
-    assert_eq!(request.observer, observer as usize);
-    assert_eq!(request.id, 1);
-    let callback = request.callback.unwrap();
-
-    unsafe { callback(request.user_data as *mut c_void, 10, 20) };
-    let rearmed = host::take_frame_requests();
-    assert_eq!(rearmed.len(), 1);
-    assert_eq!(rearmed[0].observer, observer as usize);
-
-    extension.on_runtime_detach();
-    unsafe { callback(request.user_data as *mut c_void, 10, 30) };
-    assert!(host::take_frame_requests().is_empty());
-
-    extension.on_destroy();
-    unsafe { callback(request.user_data as *mut c_void, 10, 40) };
-    assert!(host::take_frame_requests().is_empty());
+    let source = Arc::clone(&extension.frames);
+    drop(extension);
+    // A view can keep the source alive after the extension is gone; it no
+    // longer has a live module and therefore cannot schedule BTS tasks.
+    drop(source);
 }

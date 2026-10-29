@@ -5,7 +5,7 @@ use crate::{
         protocol::{Event, Method, Property},
     },
     frame::Viewport,
-    frame_callbacks::{FrameCallbacks, FrameRegistration, expired},
+    frame_source::{NativeFrameSource, ViewFrameLoop, expired},
     platform::{TerminalPlatform, create_terminal_platform},
     terminal_session::{TerminalHandle, acquire_terminal},
     terminal_view::NativeScrollState,
@@ -13,12 +13,13 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use std::{
     cell::RefCell,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 pub(crate) struct TerminalHost {
     pub(crate) view: usize,
-    pub(crate) frames: FrameCallbacks,
+    pub(crate) frames: Arc<NativeFrameSource>,
 }
 
 struct State {
@@ -55,18 +56,18 @@ impl Default for State {
 pub(crate) struct NativeTerminalView {
     handle: Handle,
     platform: Box<TerminalPlatform>,
-    frames: Box<FrameRegistration>,
+    frames: Arc<ViewFrameLoop>,
     state: RefCell<State>,
 }
 impl ViewFactory for NativeTerminalView {
     type Context = TerminalHost;
     fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
         let platform = create_terminal_platform(host.view, &handle)?;
-        let frames = host.frames.register(move |deadline| {
+        let frames = host.frames.subscribe(Box::new(move |deadline| {
             if let Err(error) = target.dispatch(|view| view.frame(deadline)) {
                 eprintln!("Terminal frame: {error:#}");
             }
-        });
+        }));
         Ok(Self {
             handle,
             platform,

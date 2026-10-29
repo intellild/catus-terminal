@@ -131,27 +131,26 @@ NSRunLoop”这一具体问题。检索到的
 
 ## 当前 native VSync 帧源
 
-Lynxtron 0.0.31 恢复 macOS RAF 后，终端不再依赖 JS RAF 或 main 进程桥：
+Lynxtron 0.0.31 恢复 macOS RAF 后，终端不再依赖 JS RAF 或 main 进程桥。每个
+native terminal view 拥有自己的帧循环：
 
 ```text
-terminal_extension.rs / on_runtime_attach
-  保存 Lynx 提供的 lynx_vsync_observer_t
-       ↓
-frame_source.rs
-  lynx_vsync_observer_request_animation_frame(observer, 1, callback, source)
+NativeTerminalView (UI)
+  attach / terminal-id / layout → ViewFrameLoop::set_active(true)
+       ↓ post_task_to_runtime
+BTS
+  lynx_vsync_observer_request_animation_frame(observer, view_id, callback, request)
        ↓ callback（BTS，target deadline）
-  post_frame_to_ui(target) + 立即请求下一帧
-       ↓
-frame_callbacks.rs / dispatch_frame_callbacks(deadline)
-  全局 LazyLock → 有效的窗口注册对象 → 有效的 native view 回调
-       ↓
-native view → session renderer → IOSurface → wgpu → SwapBack
+  post_task_to_ui(boxed render) + 立即为这个 view 请求下一帧
+       ↓ UI
+  view.frame(target) → session renderer → IOSurface → wgpu → SwapBack
 ```
 
-没有 JS 帧驱动、帧 ID、broadcast 或应用维护的帧队列。全局注册只保存弱引用，
-不延长窗口/view 生命周期；过期、锁忙、解绑、后台和已销毁的注册跳过。
-`on_runtime_detach`、`on_destroy` 和最终 Drop 停止请求；Lynx 以 0 target 取消
-未完成的请求，callback 不会重新启动已停止的帧源。`renderFrame` 保留为显式入口。
+`frame_source.rs` 只共享 module 和 observer；每个 view 自己订阅、自己请求、自己渲染。
+同一 view 同时只有一个请求，generation 丢弃 stop/start 之间返回的旧回调。
+没有全局帧回调注册、JS 帧驱动、帧 ID、broadcast 或应用维护的帧队列。
+`on_runtime_detach`、view/extension 销毁会取消请求；后台保留循环但跳过 UI 渲染；Lynx 以 0 target
+取消未完成请求，旧循环不会重新启动。`renderFrame` 保留为显式入口。
 deadline 直接使用 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 
 ## 历史：JS RAF 适配器（0.0.28）

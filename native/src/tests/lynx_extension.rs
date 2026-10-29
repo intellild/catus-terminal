@@ -122,6 +122,17 @@ unsafe extern "C" fn lynx_vsync_observer_request_animation_frame(
 }
 
 #[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_extension_module_post_task_to_runtime(
+    _module: *mut RawModule,
+    task: ffi::lynx_extension_module_post_task_func,
+    data: *mut c_void,
+) {
+    if let Some(task) = task {
+        unsafe { task(data) };
+    }
+}
+
+#[unsafe(no_mangle)]
 unsafe extern "C" fn lynx_extension_module_create_with_finalizer(
     data: *mut c_void,
     finalizer: Option<unsafe extern "C" fn(*mut RawModule, *mut c_void)>,

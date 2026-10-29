@@ -18,6 +18,22 @@ use napi::sys::{napi_env, napi_value};
 
 pub use ffi::{LynxView, RawModule, VsyncObserver, vsync_observer_callback};
 
+/// Post one task to the runtime (BTS) thread. `data` is passed through to
+/// `task`; the caller owns it until the task runs or the runtime is detached.
+///
+/// # Safety
+/// `module` must be the live module passed to `on_module_created`.
+pub unsafe fn post_task_to_runtime(
+    module: *mut RawModule,
+    task: unsafe extern "C" fn(*mut c_void),
+    data: *mut c_void,
+) {
+    // SAFETY: The caller keeps the module alive until the runtime drains tasks.
+    unsafe {
+        ffi::lynx_extension_module_post_task_to_runtime(module, Some(task), data);
+    }
+}
+
 /// Request one callback on the runtime's next VSync. The observer is borrowed
 /// from the host and is valid only between runtime attach and detach.
 ///
@@ -65,6 +81,9 @@ unsafe extern "C" fn create<T: Extension + Default>(_opaque: *mut c_void) -> *mu
 /// must only be used on their owning thread while valid. Foreground/background
 /// refer to application visibility, not the JavaScript thread model.
 pub trait Extension: Send + Sync + 'static {
+    /// Called once after the C module is created and before any host callback.
+    /// The pointer remains valid until the module finalizer runs.
+    fn on_module_created(&self, _module: *mut RawModule) {}
     fn on_view_create(&self, _view: NonNull<LynxView>) {}
     fn on_view_destroy(&self) {}
     fn on_runtime_init(&self) {}
@@ -100,6 +119,7 @@ impl Module {
             bail!("Create Lynx extension module");
         };
         // SAFETY: The handle is live, owns Box<T>, and every callback uses T.
+        contain_panic(|| unsafe { (*data).on_module_created(raw.as_ptr()) });
         unsafe { bind::<T>(raw.as_ptr()) };
         Ok(Self {
             raw,

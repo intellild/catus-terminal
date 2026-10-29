@@ -26,8 +26,7 @@ native/
   src/terminal_view.rs         layout resize、revision 和网格快照编排
   src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
   src/frame.rs                 平台无关的 cxx Viewport
-  src/frame_source.rs          native VSync observer → UI deadline 适配器
-  src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
+  src/frame_source.rs          per-view native VSync 帧循环
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
   src/native_terminal_view.rs  Rust terminal element、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
@@ -221,14 +220,15 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-`frame_callbacks.rs` 保存弱引用的回调注册，Rust view 用 `Target<T>` 注册 UI 渲染回调，
-持有 registration；销毁 view 时停止并释放注册，最终释放使 target 失效。
-`terminal_extension.rs` 在 `on_runtime_attach` 保存 Lynx 提供的 VSync observer，
-`frame_source.rs` 每次只请求下一帧；回调在 BTS 收到 target deadline 后投递到 UI
-主队列，并立即请求下一帧。`on_runtime_detach`、`on_destroy` 和最终 Drop 停止请求；
-Lynx 以 0 target 取消未完成的请求，callback 不会重新启动已停止的帧源。
-`frame_callbacks.rs` 的全局 `LazyLock` 保存弱引用的窗口回调注册对象，UI 每次接到信号
-遍历有效注册并同步渲染；背景窗口、解绑和销毁的 view 不执行。
+`frame_source.rs` 为每个 native view 创建一个 `ViewFrameLoop`。extension 只在
+`on_module_created` / `on_runtime_attach` 保存 module 和 Lynx VSync observer；
+view 在 attach、绑定 session 和布局有效后激活自己的循环：
+UI 通过 `post_task_to_runtime` 让 BTS 请求下一帧，VSync 回调只把这个 view 的
+target deadline 投递到 UI，然后该 view 调用自己的 `frame(deadline)` 渲染并重新请求。
+每个循环同时只有一个请求，generation 丢弃 stop/start 之间返回的旧回调；
+`on_runtime_detach`、view/extension 销毁会停止或取消请求；后台只跳过 UI 渲染，
+保留每 view 的循环，避免丢失 foreground 恢复回调。
+Lynx 以 0 target 取消未完成的请求，旧循环不会重新启动。
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 `renderFrame` 保留为显式入口。
 原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。
@@ -238,7 +238,7 @@ deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或
 async parser 只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
-Rust 测试在 `src/tests/frame_callbacks.rs`，覆盖同步执行、同线程、过期帧、注销和生命周期。
+Rust 测试在 `src/tests/frame_source.rs`，覆盖每 view 单请求、重新挂帧、stop 和 runtime detach。
 `src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
 `../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。

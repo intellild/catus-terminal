@@ -14,7 +14,7 @@ pub(crate) use view::MacTerminalView as TerminalPlatform;
 
 pub(crate) const GPU_BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
 pub(crate) use font::load_font_size;
-pub(crate) use frame::{monotonic_now_ns, post_frame_to_ui};
+pub(crate) use frame::{monotonic_now_ns, post_task_to_ui};
 #[cfg(feature = "native-input-tests")]
 pub(crate) fn run_native_input_tests() {
     input_view::run_native_input_tests();
