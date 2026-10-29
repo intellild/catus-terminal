@@ -41,7 +41,7 @@ native/
       native_view.rs           Lynx 宿主、鼠标事件和 surface 的 macOS 适配
       view.rs                  Rust NSView、CAMetalLayer、嵌入 / OSR 生命周期
       input_view.rs            objc2 NSResponder、NSTextInputClient 和组合文本
-      frame.rs                 native 回调、时钟和 UI 调度桥
+      frame.rs                 native 回调、monotonic clock 和 libdispatch 主队列调度
       font.rs                  Menlo / CoreText 字体策略
       build.rs                 macOS CMake 和 framework 链接
   src/text/
@@ -59,7 +59,7 @@ native/
     platform/
       UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
       macos/
-        UiThread.h              主队列调度与 UI 线程检查
+        UiThread.h              monotonic clock 与 UI 线程检查
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型
