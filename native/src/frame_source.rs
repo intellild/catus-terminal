@@ -1,9 +1,9 @@
 //! Per-view native VSync frame loops.
 //!
 //! The runtime exposes one borrowed VSync observer on BTS; native views live on
-//! UI. Each view subscribes its own loop, and the start/stop transitions are
-//! posted to BTS. A loop keeps at most one request outstanding, and each VSync
-//! callback posts only that view's render to the UI queue.
+//! UI. Each view keeps at most one VSync request and at most one UI render
+//! outstanding. When UI is still busy at the next refresh, that callback is
+//! discarded instead of queued.
 use crate::{
     binding::extension::{RawModule, VsyncObserver, post_task_to_runtime, request_animation_frame},
     platform::post_task_to_ui,
@@ -14,7 +14,7 @@ use std::{
     ptr,
     sync::{
         Arc, Mutex, Weak,
-        atomic::{AtomicBool, AtomicPtr, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
     },
 };
 
@@ -50,17 +50,13 @@ impl NativeFrameSource {
 
     pub(crate) fn set_observer(&self, observer: *mut VsyncObserver) {
         self.observer.store(observer, Ordering::Release);
-        if observer.is_null() {
-            self.cancel_all();
-        } else {
+        if !observer.is_null() {
             self.start_all();
         }
     }
 
     pub(crate) fn set_foreground(&self, foreground: bool) {
-        // Keep each view's loop alive while the app is in background; the UI
-        // task skips rendering, so a missing foreground callback cannot strand
-        // the renderer permanently.
+        // Keep each loop alive in background; the UI task skips rendering.
         self.foreground.store(foreground, Ordering::Release);
     }
 
@@ -69,8 +65,8 @@ impl NativeFrameSource {
             source: Arc::downgrade(self),
             render,
             active: AtomicBool::new(false),
-            generation: AtomicU64::new(0),
-            in_flight: AtomicU64::new(0),
+            requested: AtomicBool::new(false),
+            ui_pending: AtomicBool::new(false),
             request_id: self.next_id.fetch_add(1, Ordering::Relaxed),
         });
         self.loops
@@ -80,27 +76,19 @@ impl NativeFrameSource {
         loop_
     }
 
-    /// Cancel pending work and drop the loop list. Called once when the window
-    /// and its module are going away.
     pub(crate) fn stop_all(&self) {
-        self.cancel_all();
+        for loop_ in self.live_loops() {
+            loop_.deactivate();
+        }
         self.loops
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
     }
 
-    fn cancel_all(&self) {
-        for loop_ in self.live_loops() {
-            loop_.cancel();
-        }
-    }
-
     fn start_all(&self) {
         for loop_ in self.live_loops() {
-            if loop_.active.load(Ordering::Acquire) {
-                self.schedule_start(&loop_);
-            }
+            loop_.request();
         }
     }
 
@@ -115,8 +103,7 @@ impl NativeFrameSource {
 
     fn schedule_start(&self, loop_: &Arc<ViewFrameLoop>) {
         let module = self.module.load(Ordering::Acquire);
-        let observer = self.observer.load(Ordering::Acquire);
-        if module.is_null() || observer.is_null() {
+        if module.is_null() || self.observer.load(Ordering::Acquire).is_null() {
             return;
         }
         let data = Arc::into_raw(Arc::clone(loop_)) as *mut c_void;
@@ -132,17 +119,12 @@ pub(crate) struct ViewFrameLoop {
     source: Weak<NativeFrameSource>,
     render: Render,
     active: AtomicBool,
-    /// Incremented on every start/stop transition. Callbacks from older
-    /// generations bail out instead of re-arming a stopped loop.
-    generation: AtomicU64,
-    /// Generation of the outstanding VSync request, or 0 when none is pending.
-    in_flight: AtomicU64,
+    /// One VSync request is outstanding.
+    requested: AtomicBool,
+    /// One UI render is outstanding. VSync callbacks that arrive while this is
+    /// true are dropped rather than queued.
+    ui_pending: AtomicBool,
     request_id: usize,
-}
-
-struct FrameRequest {
-    loop_: Arc<ViewFrameLoop>,
-    generation: u64,
 }
 
 impl ViewFrameLoop {
@@ -150,65 +132,53 @@ impl ViewFrameLoop {
         if self.active.swap(active, Ordering::AcqRel) == active {
             return;
         }
-        self.generation.fetch_add(1, Ordering::AcqRel);
-        self.in_flight.store(0, Ordering::Release);
         if active && let Some(source) = self.source.upgrade() {
             source.schedule_start(self);
         }
     }
 
-    fn cancel(&self) {
-        self.generation.fetch_add(1, Ordering::AcqRel);
-        self.in_flight.store(0, Ordering::Release);
+    fn deactivate(&self) {
+        self.active.store(false, Ordering::Release);
+        self.requested.store(false, Ordering::Release);
     }
 
-    fn start_on_bts(self: &Arc<Self>) {
-        if !self.active.load(Ordering::Acquire) {
+    fn request(self: &Arc<Self>) {
+        if !self.active.load(Ordering::Acquire) || self.requested.swap(true, Ordering::AcqRel) {
             return;
         }
         let Some(source) = self.source.upgrade() else {
+            self.requested.store(false, Ordering::Release);
             return;
         };
         let observer = source.observer.load(Ordering::Acquire);
         if observer.is_null() {
+            self.requested.store(false, Ordering::Release);
             return;
         }
-        let generation = self.generation.load(Ordering::Acquire);
-        if self.in_flight.load(Ordering::Acquire) == generation {
-            return;
-        }
-        self.in_flight.store(generation, Ordering::Release);
-        let request = Box::new(FrameRequest {
-            loop_: Arc::clone(self),
-            generation,
-        });
-        let data = Box::into_raw(request) as *mut c_void;
+        let data = Arc::into_raw(Arc::clone(self)) as *mut c_void;
         // SAFETY: The observer is live for this runtime, and the callback owns
-        // the boxed request passed through user_data.
+        // one Arc reference passed through user_data.
         unsafe {
             request_animation_frame(observer, self.request_id, Some(on_animation_frame), data);
         }
     }
 
-    fn handle_frame(self: &Arc<Self>, generation: u64, target: i64) {
-        if self.generation.load(Ordering::Acquire) != generation {
+    fn on_frame(self: &Arc<Self>, target: i64) {
+        self.requested.store(false, Ordering::Release);
+        if !self.active.load(Ordering::Acquire) || target <= 0 {
+            // A stopped or cancelled loop must not re-arm; a later attach or
+            // observer change starts it again.
             return;
         }
-        if self
-            .in_flight
-            .compare_exchange(generation, 0, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return;
-        }
-        if target <= 0 || !self.active.load(Ordering::Acquire) {
+        // Drop this refresh if the UI has not consumed the previous one.
+        if self.ui_pending.swap(true, Ordering::AcqRel) {
+            self.request();
             return;
         }
         let loop_ = Arc::clone(self);
         let task: Box<dyn FnOnce() + Send> = Box::new(move || {
-            if !loop_.active.load(Ordering::Acquire)
-                || loop_.generation.load(Ordering::Acquire) != generation
-            {
+            loop_.ui_pending.store(false, Ordering::Release);
+            if !loop_.active.load(Ordering::Acquire) || expired(target) {
                 return;
             }
             if let Some(source) = loop_.source.upgrade()
@@ -219,7 +189,7 @@ impl ViewFrameLoop {
             (loop_.render)(target);
         });
         post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
-        self.start_on_bts();
+        self.request();
     }
 }
 
@@ -230,7 +200,7 @@ unsafe extern "C" fn start_task(user_data: *mut c_void) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: schedule_start transfers exactly one Arc reference.
         let loop_ = unsafe { Arc::from_raw(user_data.cast::<ViewFrameLoop>()) };
-        loop_.start_on_bts();
+        loop_.request();
     }));
 }
 
@@ -239,9 +209,9 @@ unsafe extern "C" fn on_animation_frame(user_data: *mut c_void, _start: i64, tar
         return;
     }
     let _ = catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: start_on_bts transfers exactly one boxed request per RAF.
-        let request = unsafe { Box::from_raw(user_data.cast::<FrameRequest>()) };
-        request.loop_.handle_frame(request.generation, target);
+        // SAFETY: request transfers exactly one Arc reference per VSync request.
+        let loop_ = unsafe { Arc::from_raw(user_data.cast::<ViewFrameLoop>()) };
+        loop_.on_frame(target);
     }));
 }
 

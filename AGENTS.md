@@ -96,9 +96,10 @@
   the view through React keys.
 - Portable-pty read/write threads bridge to an async parser through channels;
   only the parser updates grids. Each native terminal view owns its own VSync
-  frame loop: it requests one frame at a time on BTS and posts only its own
-  target deadline to the UI thread. Do not add JS RAF drivers, global frame
-  dispatch, frame queues, broadcasts or frame IDs.
+  frame loop: it requests one frame at a time on BTS, keeps at most one pending
+  UI render, and discards callbacks while UI is busy or the deadline expired.
+  Do not add JS RAF drivers, global frame dispatch, frame queues, broadcasts or
+  frame IDs.
 - Drop expired or contended frames. Wait for submitted GPU work before returning
   borrowed Lynx buffers, and present only completed frames within their deadline.
 - Share the GPU device and glyph atlas globally. Hold the shared glyph lock

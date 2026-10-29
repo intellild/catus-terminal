@@ -225,8 +225,9 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 view 在 attach、绑定 session 和布局有效后激活自己的循环：
 UI 通过 `post_task_to_runtime` 让 BTS 请求下一帧，VSync 回调只把这个 view 的
 target deadline 投递到 UI，然后该 view 调用自己的 `frame(deadline)` 渲染并重新请求。
-每个循环同时只有一个请求，generation 丢弃 stop/start 之间返回的旧回调；
-`on_runtime_detach`、view/extension 销毁会停止或取消请求；后台只跳过 UI 渲染，
+每个循环同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 还没消费上一帧时，
+新的 VSync 回调直接丢弃并继续请求下一帧，不补帧、不排队。过期 deadline 同样丢弃。
+`on_runtime_detach`、view/extension 销毁会取消请求；后台只跳过 UI 渲染，
 保留每 view 的循环，避免丢失 foreground 恢复回调。
 Lynx 以 0 target 取消未完成的请求，旧循环不会重新启动。
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。

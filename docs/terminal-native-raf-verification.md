@@ -147,8 +147,9 @@ BTS
 ```
 
 `frame_source.rs` 只共享 module 和 observer；每个 view 自己订阅、自己请求、自己渲染。
-同一 view 同时只有一个请求，generation 丢弃 stop/start 之间返回的旧回调。
-没有全局帧回调注册、JS 帧驱动、帧 ID、broadcast 或应用维护的帧队列。
+同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 忙时新回调直接丢弃并继续
+请求下一帧，过期 deadline 也直接丢弃。没有全局帧回调注册、JS 帧驱动、帧 ID、broadcast
+或应用维护的帧队列。
 `on_runtime_detach`、view/extension 销毁会取消请求；后台保留循环但跳过 UI 渲染；Lynx 以 0 target
 取消未完成请求，旧循环不会重新启动。`renderFrame` 保留为显式入口。
 deadline 直接使用 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
