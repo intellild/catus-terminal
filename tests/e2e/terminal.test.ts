@@ -36,7 +36,7 @@ async function updateTerminal() {
   await app.terminalFrame(blue);
 }
 
-test('starts the first host and presents the fake PTY through JS RAF', async () => {
+test('starts the first host and presents the fake PTY through native VSync', async () => {
   expect(firstId).toBeGreaterThan(0);
   expect(await app.automation('running-test').node()).toBeDefined();
   await expectScreenshot('initial-host', await app.screenshot());

@@ -1,3 +1,5 @@
+import { beforeEach } from '@rstest/core';
+
 export {};
 
 // The Lynx test shim writes dataset keys directly into jsdom's DOMStringMap.
@@ -21,3 +23,15 @@ Reflect.set(globalThis, 'onInjectMainThreadGlobals', (target: object) => {
 if (typeof lynxTestingEnv !== 'undefined') {
   Object.assign(lynxTestingEnv.mainThread.globalThis, methods);
 }
+
+// Lynx UI Presence schedules transitions through BTS RAF. The test shim has no
+// frame clock, so execute those callbacks synchronously.
+beforeEach(() => {
+  Object.assign(lynx, {
+    requestAnimationFrame: (callback: () => void) => {
+      callback();
+      return 0;
+    },
+    cancelAnimationFrame: () => {},
+  });
+});

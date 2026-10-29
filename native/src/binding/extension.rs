@@ -16,7 +16,25 @@ use std::{
 use anyhow::{Result, bail};
 use napi::sys::{napi_env, napi_value};
 
-pub use ffi::{LynxView, RawModule, VsyncObserver};
+pub use ffi::{LynxView, RawModule, VsyncObserver, vsync_observer_callback};
+
+/// Request one callback on the runtime's next VSync. The observer is borrowed
+/// from the host and is valid only between runtime attach and detach.
+///
+/// # Safety
+/// The observer must belong to the current runtime and `user_data` must stay
+/// valid until the host cancels or delivers the callback.
+pub unsafe fn request_animation_frame(
+    observer: *mut VsyncObserver,
+    id: usize,
+    callback: vsync_observer_callback,
+    user_data: *mut c_void,
+) {
+    // SAFETY: The caller upholds the observer and user_data lifetime contract.
+    unsafe {
+        ffi::lynx_vsync_observer_request_animation_frame(observer, id, callback, user_data);
+    }
+}
 
 /// Register a concrete extension factory using a protocol name with static
 /// storage. Each created module owns a fresh `T::default()`.

@@ -32,6 +32,18 @@ thread_local! {
     static FAIL_CREATE: Cell<bool> = const { Cell::new(false) };
     static REGISTRATION: RefCell<Option<Registration>> = const { RefCell::new(None) };
     static NATIVE_REGISTRATIONS: RefCell<Vec<NativeRegistration>> = const { RefCell::new(Vec::new()) };
+    static FRAME_REQUESTS: RefCell<Vec<FrameRequest>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct FrameRequest {
+    pub(crate) observer: usize,
+    pub(crate) id: usize,
+    pub(crate) callback: ffi::vsync_observer_callback,
+    pub(crate) user_data: usize,
+}
+
+pub(crate) fn take_frame_requests() -> Vec<FrameRequest> {
+    FRAME_REQUESTS.with(|value| std::mem::take(&mut *value.borrow_mut()))
 }
 
 pub(crate) struct Registration {
@@ -88,6 +100,23 @@ unsafe extern "C" fn lynx_view_register_native_view(
                 .into_owned(),
             creator,
             opaque: opaque as usize,
+        });
+    });
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_vsync_observer_request_animation_frame(
+    observer: *mut VsyncObserver,
+    id: usize,
+    callback: ffi::vsync_observer_callback,
+    user_data: *mut c_void,
+) {
+    FRAME_REQUESTS.with(|value| {
+        value.borrow_mut().push(FrameRequest {
+            observer: observer as usize,
+            id,
+            callback,
+            user_data: user_data as usize,
         });
     });
 }

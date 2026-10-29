@@ -38,9 +38,11 @@ export const terminalSessionsAtom = Atom.make((get) => {
     entry.released = true;
     remote.delete(id);
     // A late connection still closes if the tab disappeared during authentication.
-    void entry.connection
-      .then((fs) => fs.close())
-      .catch((error) => console.error('Close SFTP', error));
+    // Setup failures are already surfaced by the SFTP content observer.
+    void entry.connection.then(
+      (fs) => fs.close().catch((error) => console.error('Close SFTP', error)),
+      () => {},
+    );
   };
   const errors = new Map<number, string>();
   get.addFinalizer(() => {

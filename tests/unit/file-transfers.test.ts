@@ -5,26 +5,26 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { createFileUploader, createFileDownloader } from '../../src/main/desktop/file-transfers';
-import { SftpClient } from '../../src/app/api/sftp-client';
-import { createSftpService } from '../../src/main/desktop/sftp-service';
+import { createFileTransferService } from '../../src/main/desktop/file-transfer-service';
 
 const execFileAsync = promisify(execFile);
 
-test('upload cancellation does not launch scp; upload failures cross the bridge', async () => {
+test('upload cancellation does not launch scp; transfer failures return a reply', async () => {
   const scp = rstest.fn(async () => ({ stdout: '', stderr: '' }));
   const upload = createFileUploader(async () => ({ canceled: true, filePaths: [] }), scp);
   expect(await upload('test-host', '/remote')).toBe(false);
   expect(scp).not.toHaveBeenCalled();
-  const service = createSftpService(
-    async () => {
-      throw new Error('unused');
-    },
+  const service = createFileTransferService(
     async () => {
       throw new Error('scp failed');
     },
+    async () => {
+      throw new Error('unused');
+    },
   );
-  const client = new SftpClient((request) => service.handle(request));
-  await expect(client.uploadFiles('test-host', '/remote')).rejects.toThrow('scp failed');
+  expect(await service({ operation: 'upload', destination: 'test-host', path: '/remote' })).toEqual(
+    { ok: false, error: 'scp failed' },
+  );
 });
 
 test('scp uploads multiple files with literal names to the current directory', async () => {
@@ -42,11 +42,10 @@ test('scp uploads multiple files with literal names to the current directory', a
       execFileAsync('/usr/bin/scp', ['-D', '/usr/libexec/sftp-server', ...args]),
     );
     const upload = createFileUploader(async () => ({ canceled: false, filePaths: files }), run);
-    const service = createSftpService(async () => {
-      throw new Error('unused');
-    }, upload);
-    const client = new SftpClient((request) => service.handle(request));
-    expect(await client.uploadFiles('test-host', directory)).toBe(true);
+    const service = createFileTransferService(upload, async () => false);
+    expect(
+      await service({ operation: 'upload', destination: 'test-host', path: directory }),
+    ).toEqual({ ok: true, value: true });
     expect(run).toHaveBeenCalledWith([
       '-o',
       'BatchMode=yes',
@@ -64,26 +63,22 @@ test('scp uploads multiple files with literal names to the current directory', a
   }
 });
 
-test('download cancellation does not launch scp and errors cross the bridge', async () => {
+test('download cancellation does not launch scp and errors return a reply', async () => {
   const run = rstest.fn(async () => {});
   const select = rstest.fn(async () => ({ canceled: true }));
   const download = createFileDownloader(select, run);
   expect(await download('test-host', '/remote/file.txt')).toBe(false);
   expect(select).toHaveBeenCalledWith('file.txt');
   expect(run).not.toHaveBeenCalled();
-  const service = createSftpService(
-    async () => {
-      throw new Error('unused');
-    },
-    undefined,
+  const service = createFileTransferService(
+    async () => false,
     async () => {
       throw new Error('download failed');
     },
   );
-  const client = new SftpClient((request) => service.handle(request));
-  await expect(client.downloadFile('test-host', '/remote/file.txt')).rejects.toThrow(
-    'download failed',
-  );
+  expect(
+    await service({ operation: 'download', destination: 'test-host', path: '/remote/file.txt' }),
+  ).toEqual({ ok: false, error: 'download failed' });
 });
 
 test('scp downloads exactly one literal filename into the chosen save path', async () => {
@@ -101,15 +96,10 @@ test('scp downloads exactly one literal filename into the chosen save path', asy
     const download = createFileDownloader(select, (args) =>
       execFileAsync('/usr/bin/scp', ['-D', '/usr/libexec/sftp-server', ...args]),
     );
-    const service = createSftpService(
-      async () => {
-        throw new Error('unused');
-      },
-      undefined,
-      download,
-    );
-    const client = new SftpClient((request) => service.handle(request));
-    expect(await client.downloadFile('test-host', remotePath)).toBe(true);
+    const service = createFileTransferService(async () => false, download);
+    expect(
+      await service({ operation: 'download', destination: 'test-host', path: remotePath }),
+    ).toEqual({ ok: true, value: true });
     expect(select).toHaveBeenCalledWith(filename);
     expect(await readFile(target, 'utf8')).toBe('Downloaded content');
   } finally {

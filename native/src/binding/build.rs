@@ -26,7 +26,7 @@ pub(crate) fn generate(package_root: &Path, out_dir: &Path) -> Result<()> {
         .clang_arg(format!("-I{}", include.display()))
         // Include C API families rather than maintaining individual functions;
         // referenced callback/argument types are generated recursively.
-        .allowlist_function("lynx_(extension_module|env|view|native_view|value)_.*")
+        .allowlist_function("lynx_(extension_module|env|view|vsync_observer|native_view|value)_.*")
         .prepend_enum_name(false)
         // These constant enums are not referenced by a function signature.
         .allowlist_type("lynx_native_mouse_button|catus_invoke_status")

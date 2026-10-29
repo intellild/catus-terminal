@@ -1,5 +1,6 @@
 //! Global callback registry, independent of the frame signal source.
-//! Registration and rendering happen on UI; the JS/N-API entry only posts a tick.
+//! Registration and rendering happen on UI; the native VSync callback only
+//! posts a deadline.
 use std::sync::{
     Arc, LazyLock, Mutex, Weak,
     atomic::{AtomicBool, Ordering},

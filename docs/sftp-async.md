@@ -4,10 +4,11 @@
 
 ```text
 Lynx BTS / 事件处理或 effect
-  bridge.call('catus:sftp', request, callback) → Promise
+  NativeModules.nodejs.exposed.sftpConnect / sftpReaddir / sftpRealpath /
+  sftpStat / sftpClose → Promise
        ↓
-src/main/desktop/main.ts / sftp-service.ts
-  lynxBridge.handle 接收请求，main 持有连接并通过 sftp.ts 调用 native Promise
+src/main/desktop/preload.ts / sftp.ts
+  preload 保存连接表，直接调用 napi-rs 并返回可序列化数据
        ↓
 native/src/sftp_api.rs
   N-API async fn → napi-rs 管理的 Tokio runtime → native Promise
@@ -20,28 +21,24 @@ native/src/sftp/mod.rs / transport.rs
   结构化目录/元数据与二进制文件操作
 ```
 
-## 官方异步建议与运行时选择
+## 官方通信方式与运行时选择
 
 [Lynxtron 官方通信文档](https://lynxjs.org/next/lynxtron/learn/Communication-Between-Node-And-Lynx.html)
-提供 `lynxBridge.handle` / `NativeModules.bridge.call` 请求与回调通道。
-本项目将 SFTP N-API 对象和 Promise 完成处理保留在 Node main 环境；BTS 只发送 JSON 请求。
-`bridge.call` 返回 void，`src/app/api/sftp.ts` 将回调包装为 Promise，`SftpClient` 封装文件接口。
-连接 ID、字符串化的 bigint 元数据和文件类型跨线程传递，UI 再还原 `RemoteFs` 接口。
-main 捕获错误并返回明确的成功/错误数据，因为当前 `lynxBridge.handle` 不会自动回复
-handler 拒绝的 Promise。所有窗口关闭时释放连接，尚在连接中的请求完成后也会关闭。
+明确 preload 可以直接使用 Node.js 能力，并通过 `contextBridge.exposeInLynxBTS()`
+把方法暴露给 `NativeModules.nodejs.exposed`。SFTP 使用这条路径：preload 创建 napi-rs
+连接，BTS 调用暴露的操作，不经过 main 进程的 JSON 请求/回复桥。
+
+不能在返回值里直接携带 napi 连接对象及其方法：ContextBridge 会在 BTS 调用这些
+方法时抛出 `TypeError: no access`。因此 preload 保存数字连接 ID，只暴露
+`sftpConnect`、`sftpReaddir`、`sftpRealpath`、`sftpStat` 和 `sftpClose`；
+bigint 尺寸以字符串传递。`src/shared/sftp-host.ts` 在 BTS 把这些操作适配成
+与 `node:fs/promises` 接近的 `RemoteFs`。
 
 [napi-rs async fn](https://napi.rs/docs/concepts/async-fn) 的 `async` feature
 提供 Tokio runtime，自动将异步结果转换为 Promise。
-[napi-rs 自定义运行时](https://napi.rs/docs/concepts/async-runtime) 支持
-`async-runtime` feature + `AsyncRuntime` 注册接口，允许完全不依赖 Tokio；
-因此理论上可接入 smol 生态，但需要实现或采用满足关闭生命周期约束的 backend。
-这不是 Lynx 提供的 Rust executor。
-
-本次不采用 smol：russh-sftp 发布版本的原生
-[runtime.rs](https://docs.rs/crate/russh-sftp/3.0.1/source/src/client/runtime.rs)
-直接调用 `tokio::spawn`、`tokio::time::timeout_at`。它的 IO trait 也是 Tokio 的
-AsyncRead/AsyncWrite。仅转换 IO trait 或换 N-API executor 无法移除其 Tokio
-执行器和计时器要求。保留 russh-sftp 时，统一使用 napi-rs 的 Tokio 更直接。
+[russh-sftp 3.0.1](https://docs.rs/crate/russh-sftp/3.0.1/source/src/client/runtime.rs)
+直接使用 `tokio::spawn`、`tokio::time::timeout_at` 和 Tokio IO trait，因此保留
+napi-rs 的 Tokio runtime，不引入 smol 等其他 executor。
 
 ## 调用方式
 
@@ -61,6 +58,16 @@ try {
 }
 ```
 
+BTS 实际调用的是 `NativeModules.nodejs.exposed.sftp*`；连接对象和 Promise
+完成处理都留在 preload/BTS，不进入 main。
+
+## 上传与下载
+
+上传/下载仍由 main 处理，因为原生文件对话框和 scp 是 main 进程能力：
+BTS 通过 `lynxBridge` 的 `catus:file-transfer` 通道发送目的地和远端路径，main 调用
+`dialog.showOpenDialog` / `dialog.showSaveDialog` 后执行 scp。这个通道只承载
+文件选择与传输请求，不创建或转发 SFTP N-API 对象。
+
 ## 当前行为与验证范围
 
 - SSH 使用普通二进制管道，不分配 PTY。stderr 独立继承到 host 日志。
@@ -75,25 +82,16 @@ try {
   二进制/Unicode 文件、覆盖截断、目录、元数据、重命名、删除、隔离、错误和关闭。
 - `pnpm run test:napi` 中的 `tests/native/sftp.mjs` 使用临时 SSH shim，验证 SSH 参数、
   N-API Promise、256 KiB 二进制数据、字节复制和连接回收。不会连接远端服务器。
-- 已验证的是本地协议与 Node-API。真实远程 SSH 认证尚未实测。windowless E2E 使用 SSH shim 和真实 sftp-server 验证主线程桥接。
+- windowless E2E 使用 SSH shim 和真实 sftp-server 验证 BTS 直接调用 N-API 的浏览、
+  上传和下载流程。真实远程 SSH 认证尚未实测。
 
-## BTS 崩溃记录与 async 接口
+## 历史问题与 0.0.31 修复
 
-此前为排除 native Promise 路径，曾将所有 N-API 操作改成同步 callback 入口，
-Tokio 完成后通过 TSFN 返回，JS 使用 `util.promisify` 包装。普通 Node 测试通过，
-但 Lynxtron 0.0.28 的 windowless/macOS 和最小 CommonJS preload 仍复现
-`Environment::GetCurrent(isolate) == env` 断言。日志确认 TSFN 排队返回 `Ok`，
-JS callback 的第一条语句尚未执行。native Promise 路径同样崩溃，同步 noop 正常。
+Lynxtron 0.0.28 的 BTS 在 TSFN 排队后、进入 JS callback 前触发
+`Environment::GetCurrent(isolate) == env` 断言。napi-rs Promise 和 TSFN + promisify
+均能复现，同步 noop 正常。当时的临时方案是把 native 对象与异步完成移到 Node main，
+再由 `lynxBridge` 转发 JSON；该方案和 `sftp-service.ts`/`sftp-bridge.ts` 已移除。
 
-现在恢复 napi-rs `async fn` → native Promise，不再使用 TSFN 或 promisify 包装。
-`writeFile` 在 JS 调用线程先复制 Uint8Array，再用 `Env::spawn_future` 返回 Promise，
-保证调用后立即修改输入数组不会影响写入数据。所有内部错误在 N-API 边界转换。
-崩溃 TODO 位于 `src/main/desktop/main.ts` 的服务注册处；native 对象与异步完成
-保留在 main，BTS 通过 JSON 消息操作连接，避免重新进入有问题的 BTS Node 环境。
-
-## Main 环境对照验证
-
-SFTP 不再由 preload 调用。`main.ts` 注册服务，native 连接和文件操作均在 main 的
-Node Environment 中创建与完成，UI 通过消息桥接读取目录。原来会崩溃的 windowless
-SFTP E2E 已恢复运行并通过，覆盖读取、进入子目录、返回、刷新和关闭 tab。
-这验证了 main 路径可绕过已复现的 BTS 回调断言，不代表上游内部根因已确定。
+Lynxtron 0.0.31 在 TSFN dispatch/finalizer 构造 `CallbackScope` 前进入所属 V8 context，
+修复了 preload/BTS 中的 native Promise 与 callback。现在恢复直接在 preload 调用
+napi-rs 导出的方法；上传/下载的 main 通道仅用于文件对话框和 scp。

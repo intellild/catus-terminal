@@ -10,6 +10,7 @@
 import { contextBridge } from '@lynx-js/lynxtron/context-bridge';
 import nativeBinding from '@catus/native/lynxtron';
 import { listShells } from './shells';
+import { sftp } from './sftp';
 import { killTmuxSession, listTmuxSessions } from './tmux';
 import type { HostProfile, HostEnvironment } from '../../shared/hosts';
 import type { TabKind } from '../../shared/tabs';
@@ -25,6 +26,7 @@ contextBridge.exposeInLynxBTS({
   listShells,
   listTmuxSessions,
   killTmuxSession,
+  ...sftp,
   loadConfig: hosts.loadConfig,
   saveConfig: hosts.saveConfig,
   createTerminalSession: (
@@ -66,7 +68,6 @@ contextBridge.exposeInLynxBTS({
             })()
           : undefined,
     ),
-  dispatchAnimationFrame: () => nativeBinding.dispatchAnimationFrame(),
   closeTerminalSession: (id: number) => nativeBinding.closeTerminalSession(id),
   detachTerminalSession: (id: number) => nativeBinding.detachTerminalSession(id),
   getTmuxSessionInfo: (id: number) => nativeBinding.getTmuxSessionInfo(id) ?? undefined,

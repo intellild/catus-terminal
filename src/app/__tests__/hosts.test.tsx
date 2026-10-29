@@ -19,8 +19,6 @@ beforeEach(() => {
     requestAnimationFrame: rstest.fn(() => 1),
     cancelAnimationFrame: rstest.fn(),
   });
-  // Lynx UI Presence schedules its visibility transitions through BTS RAF.
-  Object.assign(lynx, { requestAnimationFrame: (callback: () => void) => setTimeout(callback, 0) });
   // Testing-library resolves selectors but does not implement native UI methods.
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   const prototype = Object.getPrototypeOf(query.selectUniqueID(0));
@@ -224,11 +222,10 @@ test('background hydration preserves the main-thread layout nodes', async () => 
   }
 });
 
-test('the native view stays mounted through empty/loading/error states with one app RAF driver', async () => {
+test('the native view stays mounted through empty/loading/error states', async () => {
   const main = lynxTestingEnv.mainThread.globalThis;
-  const raf = rstest.fn();
   const invoke = rstest.fn();
-  Object.assign(main, { requestAnimationFrame: raf, __InvokeUIMethod: invoke });
+  Object.assign(main, { __InvokeUIMethod: invoke });
   const host = makeHost();
   rstest.mocked(host.loadConfig).mockRejectedValueOnce(new Error('Temporary config error'));
   const { unmount } = renderApp(host);
@@ -238,12 +235,10 @@ test('the native view stays mounted through empty/loading/error states with one 
   );
   const surface = root.querySelector('[data-automation-id=terminal-surface]')!;
   expect(Number(surface.getAttribute('terminal-id'))).toBe(0);
-  expect(raf).toHaveBeenCalledOnce();
   expect(invoke).not.toHaveBeenCalled();
   fireEvent.tap(root.querySelector('[data-automation-id=retry-config]')!);
   await waitForTerminal();
   expect(root.querySelector('[data-automation-id=terminal-surface]')).toBe(surface);
-  expect(raf).toHaveBeenCalledOnce();
   const terminalHost = NativeModules.nodejs.exposed as TerminalHost;
   expect(terminalHost.createTerminalSession).toHaveBeenCalledOnce();
   expect(terminalHost.closeTerminalSession).not.toHaveBeenCalled();
@@ -903,15 +898,15 @@ test('leaving hover preserves styles during the delay and then removes the conte
       expect(root.querySelector('[data-automation-id=host-details-local]')).not.toBeNull(),
     );
     const details = root.querySelector('[data-automation-id=host-details-local]')!;
-    const classes = details.className;
-    expect(classes).toContain('bg-[#20262d]');
+    expect(details.className).toContain('bg-[#20262d]');
     hoverSidebarHost('local', false);
     expect(root.querySelector('[data-automation-id=host-details-local]')).toBe(details);
-    expect(details.className).toBe(classes);
+    // Presence may add its leaving class, but the visual style stays until removal.
+    expect(details.className).toContain('bg-[#20262d]');
     await rstest.waitFor(() =>
       expect(root.querySelector('[data-automation-id=host-details-local]')).toBeNull(),
     );
-    expect(details.className).toBe(classes);
+    expect(details.className).toContain('bg-[#20262d]');
   }
 });
 

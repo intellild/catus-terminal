@@ -66,7 +66,6 @@ function Fixture({
 
 beforeEach(() => {
   rstest.useFakeTimers();
-  Object.assign(lynx, { requestAnimationFrame: (callback: () => void) => setTimeout(callback, 0) });
   const query = lynx.createSelectorQuery() as unknown as { selectUniqueID(id: number): object };
   rstest
     .spyOn(Object.getPrototypeOf(query.selectUniqueID(0)), 'invoke')

@@ -84,3 +84,28 @@ fn finalization_without_view_destroy_stops_retained_native_views_and_isolates_wi
     second_frames.dispatch(20, || 10);
     assert_eq!(calls.load(Ordering::Relaxed), 20);
 }
+
+#[test]
+fn native_vsync_requests_one_frame_and_stops_after_detach() {
+    let extension = TerminalExtension::default();
+    let observer = NonNull::<VsyncObserver>::dangling().as_ptr();
+    host::take_frame_requests();
+    extension.on_runtime_attach(std::ptr::null_mut(), observer);
+    let request = host::take_frame_requests().pop().unwrap();
+    assert_eq!(request.observer, observer as usize);
+    assert_eq!(request.id, 1);
+    let callback = request.callback.unwrap();
+
+    unsafe { callback(request.user_data as *mut c_void, 10, 20) };
+    let rearmed = host::take_frame_requests();
+    assert_eq!(rearmed.len(), 1);
+    assert_eq!(rearmed[0].observer, observer as usize);
+
+    extension.on_runtime_detach();
+    unsafe { callback(request.user_data as *mut c_void, 10, 30) };
+    assert!(host::take_frame_requests().is_empty());
+
+    extension.on_destroy();
+    unsafe { callback(request.user_data as *mut c_void, 10, 40) };
+    assert!(host::take_frame_requests().is_empty());
+}

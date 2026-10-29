@@ -31,13 +31,6 @@ export declare function createTmuxWindow(id: number): boolean;
 
 export declare function detachTerminalSession(id: number): void;
 
-/**
- * Temporary JS RAF adapter. The JS timestamp has a different clock origin;
- * start a 60 Hz rendering budget on the native monotonic clock at receipt.
- * UI dispatch checks this deadline, so a delayed tick is discarded.
- */
-export declare function dispatchAnimationFrame(): void;
-
 export declare function getTerminalSessionInfo(id: number): TerminalSessionInfo;
 
 export declare function getTmuxSessionInfo(id: number): TmuxSessionInfo | null;
