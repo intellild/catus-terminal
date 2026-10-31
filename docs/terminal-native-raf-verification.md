@@ -3,7 +3,7 @@
 2026-10-04，macOS arm64，Lynxtron 0.0.28。
 
 > 历史记录。Lynxtron 0.0.31 修复了 macOS RAF 回调；项目已移除 JS RAF 适配器和
-> `delayFrames` 替换，改为 `native/src/frame_source.rs` 使用 native VSync observer
+> `delayFrames` 替换，改为 `native/src/binding/vsync.rs` 的安全封装使用 native VSync observer
 > 驱动终端帧。下方 0.0.28 的探针与 JS 适配器内容保留用于追溯问题，不再是当前实现。
 
 本文前半部分记录当时的单次 native RAF 探针；探针现已移除，当前采用文末的 native
@@ -136,8 +136,8 @@ native terminal view 拥有自己的帧循环：
 
 ```text
 NativeTerminalView (UI)
-  attach / terminal-id / layout → ViewFrameLoop::set_active(true)
-       ↓ post_task_to_runtime
+  attach / terminal-id / layout → 自己的帧循环 set_active(true)
+       ↓ binding::VsyncObserver 安全封装（内部 post_task_to_runtime）
 BTS
   lynx_vsync_observer_request_animation_frame(observer, view_id, callback, request)
        ↓ callback（BTS，target deadline）
@@ -146,7 +146,7 @@ BTS
   view.frame(target) → session renderer → IOSurface → wgpu → SwapBack
 ```
 
-`frame_source.rs` 只共享 module 和 observer；每个 view 自己订阅、自己请求、自己渲染。
+`binding/vsync.rs` 只在内部共享 module 和 observer；每个 view 自己请求、自己渲染。
 同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 忙时新回调直接丢弃并继续
 请求下一帧，过期 deadline 也直接丢弃。没有全局帧回调注册、JS 帧驱动、帧 ID、broadcast
 或应用维护的帧队列。

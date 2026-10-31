@@ -12,4 +12,3 @@ include!(concat!(env!("OUT_DIR"), "/lynx_bindings.rs"));
 
 pub use lynx_extension_module_t as RawModule;
 pub use lynx_view_t as LynxView;
-pub use lynx_vsync_observer_t as VsyncObserver;

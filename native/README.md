@@ -26,7 +26,7 @@ native/
   src/terminal_view.rs         layout resize、revision 和网格快照编排
   src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
   src/frame.rs                 平台无关的 cxx Viewport
-  src/frame_source.rs          per-view native VSync 帧循环
+  src/binding/vsync.rs         VSyncObserver 的安全 Rust 封装
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
   src/native_terminal_view.rs  Rust terminal element、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
@@ -220,9 +220,9 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-`frame_source.rs` 为每个 native view 创建一个 `ViewFrameLoop`。extension 只在
-`on_module_created` / `on_runtime_attach` 保存 module 和 Lynx VSync observer；
-view 在 attach、绑定 session 和布局有效后激活自己的循环：
+`binding/vsync.rs` 保存 module 和 Lynx VSync observer，对外只暴露安全的
+`VsyncObserver` 句柄；raw pointer、BTS task 和 N-API callback 都留在 binding 内。
+每个 `NativeTerminalView` 在 attach、绑定 session 和布局有效后激活自己的帧循环：
 UI 通过 `post_task_to_runtime` 让 BTS 请求下一帧，VSync 回调只把这个 view 的
 target deadline 投递到 UI，然后该 view 调用自己的 `frame(deadline)` 渲染并重新请求。
 每个循环同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 还没消费上一帧时，
@@ -239,7 +239,7 @@ deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或
 async parser 只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
-Rust 测试在 `src/tests/frame_source.rs`，覆盖每 view 单请求、重新挂帧、stop 和 runtime detach。
+Rust 测试在 `src/tests/vsync.rs`，覆盖安全封装下的请求、回调、detach 和重复请求拒绝。
 `src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
 `../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。

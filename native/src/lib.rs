@@ -4,8 +4,6 @@ pub mod binding;
 #[cfg(feature = "native-view")]
 mod frame;
 #[cfg(feature = "native-view")]
-mod frame_source;
-#[cfg(feature = "native-view")]
 mod native_terminal_view;
 mod platform;
 mod sftp;

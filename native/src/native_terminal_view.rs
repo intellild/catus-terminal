@@ -1,25 +1,102 @@
 //! Platform-independent Lynx terminal element lifecycle and session binding.
 use crate::{
     binding::{
+        VsyncObserver,
         native_view::{Handle, Layout, MotionEvent, NativeView, Reply, Target, Value, ViewFactory},
         protocol::{Event, Method, Property},
     },
-    frame::Viewport,
-    frame_source::{NativeFrameSource, ViewFrameLoop, expired},
-    platform::{TerminalPlatform, create_terminal_platform},
+    frame::{Viewport, expired},
+    platform::{TerminalPlatform, create_terminal_platform, post_task_to_ui},
     terminal_session::{TerminalHandle, acquire_terminal},
     terminal_view::NativeScrollState,
 };
 use anyhow::{Context, Result, ensure};
 use std::{
     cell::RefCell,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 pub(crate) struct TerminalHost {
     pub(crate) view: usize,
-    pub(crate) frames: Arc<NativeFrameSource>,
+    pub(crate) vsync: VsyncObserver,
+    pub(crate) foreground: Arc<AtomicBool>,
+}
+
+struct ViewFrameLoop {
+    vsync: VsyncObserver,
+    foreground: Arc<AtomicBool>,
+    render: Box<dyn Fn(i64) + Send + Sync>,
+    active: AtomicBool,
+    requested: AtomicBool,
+    ui_pending: AtomicBool,
+}
+
+impl ViewFrameLoop {
+    fn new(
+        vsync: VsyncObserver,
+        foreground: Arc<AtomicBool>,
+        render: Box<dyn Fn(i64) + Send + Sync>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            vsync,
+            foreground,
+            render,
+            active: AtomicBool::new(false),
+            requested: AtomicBool::new(false),
+            ui_pending: AtomicBool::new(false),
+        })
+    }
+
+    fn set_active(self: &Arc<Self>, active: bool) {
+        if self.active.swap(active, Ordering::AcqRel) == active {
+            return;
+        }
+        if active {
+            self.request();
+        }
+    }
+
+    fn request(self: &Arc<Self>) {
+        if !self.active.load(Ordering::Acquire) || self.requested.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let loop_ = Arc::clone(self);
+        if !self
+            .vsync
+            .request_animation_frame(move |target| loop_.on_frame(target))
+        {
+            self.requested.store(false, Ordering::Release);
+        }
+    }
+
+    fn on_frame(self: &Arc<Self>, target: i64) {
+        self.requested.store(false, Ordering::Release);
+        if !self.active.load(Ordering::Acquire) || target <= 0 {
+            return;
+        }
+        // Drop this refresh if UI has not consumed the previous one.
+        if self.ui_pending.swap(true, Ordering::AcqRel) {
+            self.request();
+            return;
+        }
+        let loop_ = Arc::clone(self);
+        let task: Box<dyn FnOnce() + Send> = Box::new(move || {
+            loop_.ui_pending.store(false, Ordering::Release);
+            if !loop_.active.load(Ordering::Acquire) || expired(target) {
+                return;
+            }
+            if !loop_.foreground.load(Ordering::Acquire) {
+                return;
+            }
+            (loop_.render)(target);
+        });
+        post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
+        self.request();
+    }
 }
 
 struct State {
@@ -63,11 +140,15 @@ impl ViewFactory for NativeTerminalView {
     type Context = TerminalHost;
     fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
         let platform = create_terminal_platform(host.view, &handle)?;
-        let frames = host.frames.subscribe(Box::new(move |deadline| {
-            if let Err(error) = target.dispatch(|view| view.frame(deadline)) {
-                eprintln!("Terminal frame: {error:#}");
-            }
-        }));
+        let frames = ViewFrameLoop::new(
+            host.vsync.clone(),
+            Arc::clone(&host.foreground),
+            Box::new(move |deadline| {
+                if let Err(error) = target.dispatch(|view| view.frame(deadline)) {
+                    eprintln!("Terminal frame: {error:#}");
+                }
+            }),
+        );
         Ok(Self {
             handle,
             platform,

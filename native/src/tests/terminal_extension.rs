@@ -1,9 +1,8 @@
 use super::*;
 use crate::binding::extension::tests as host;
-use std::sync::Arc;
 
 #[test]
-fn rust_factory_registers_component_with_a_shared_frame_source() {
+fn rust_factory_registers_component_with_a_shared_vsync_handle() {
     register_terminal_extension();
     let registration = host::take_registration();
     assert_eq!(registration.name, "CatusNativeTerminalElement");
@@ -18,17 +17,11 @@ fn rust_factory_registers_component_with_a_shared_frame_source() {
     assert_eq!(native.name, "native-terminal");
     assert!(native.creator.is_some());
 
-    // The host context and extension share the source; each view subscribes
-    // its own loop to it.
-    let source = unsafe {
-        host::with_extension(raw, |extension: &TerminalExtension| {
-            assert_eq!(Arc::strong_count(&extension.frames), 2);
-            Arc::clone(&extension.frames)
-        })
+    let vsync = unsafe {
+        host::with_extension(raw, |extension: &TerminalExtension| extension.vsync.clone())
     };
-    let loop_ = source.subscribe(Box::new(|_| {}));
-    loop_.set_active(true);
-    loop_.set_active(false);
+    // The view host and extension share the same safe handle.
+    assert!(!vsync.request_animation_frame(|_| {}));
 
     unsafe { callbacks.view_destroy.unwrap()(raw) };
     unsafe { callbacks.destroy.unwrap()(raw) };
@@ -38,9 +31,7 @@ fn rust_factory_registers_component_with_a_shared_frame_source() {
 #[test]
 fn finalization_without_view_destroy_drops_the_extension() {
     let extension = TerminalExtension::default();
-    let source = Arc::clone(&extension.frames);
+    let vsync = extension.vsync.clone();
     drop(extension);
-    // A view can keep the source alive after the extension is gone; it no
-    // longer has a live module and therefore cannot schedule BTS tasks.
-    drop(source);
+    drop(vsync);
 }
