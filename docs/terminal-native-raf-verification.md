@@ -2,9 +2,14 @@
 
 2026-10-04，macOS arm64，Lynxtron 0.0.28。
 
-本文前半部分记录当时的单次 native RAF 探针；探针现已移除，当前采用文末的 JS RAF 适配器。
+> 历史记录。Lynxtron 0.0.31 修复了 macOS RAF 回调；项目已移除 JS RAF 适配器和
+> `delayFrames` 替换，改为 `native/src/binding/vsync.rs` 的安全封装使用 native VSync observer
+> 驱动终端帧。下方 0.0.28 的探针与 JS 适配器内容保留用于追溯问题，不再是当前实现。
 
-入口：`native/cxx/NativeTerminalRegistration.mm`。
+本文前半部分记录当时的单次 native RAF 探针；探针现已移除，当前采用文末的 native
+VSync 帧源。
+
+入口：`native/cxx/NativeTerminalRegistration.cc`。
 
 ```text
 runtime_attach（BTS）
@@ -124,9 +129,37 @@ NSRunLoop”这一具体问题。检索到的
 锁定版本源码与显示器唤醒后的对照实验；它尚不是由官方 issue 确认的已知缺陷。
 
 
-## 当前 JS RAF 适配器
+## 当前 native VSync 帧源
 
-按用户要求暂时改由 JS 请求 RAF，再调用 Rust 的 napi-rs 导出函数：
+Lynxtron 0.0.31 恢复 macOS RAF 后，终端不再依赖 JS RAF 或 main 进程桥。每个
+native terminal view 按需 schedule 一帧：
+
+```text
+NativeTerminalView (UI)
+  网格更新 / terminal-id 切换 / resize / attach / foreground
+       → schedule_render → binding::VsyncObserver 安全封装
+       ↓ 内部 post_task_to_runtime
+BTS
+  lynx_vsync_observer_request_animation_frame(observer, view_id, callback, request)
+       ↓ callback（BTS，target deadline）
+  post_task_to_ui(boxed render)
+       ↓ UI
+  view.frame(target) → session renderer → IOSurface → wgpu → SwapBack
+```
+
+`binding/vsync.rs` 只在内部共享 module 和 observer；每个 view 在内容变化时
+`schedule_render`，不会常驻请求 RAF。同一 view 最多只有一个 VSync 请求和一个待处理
+UI 渲染；UI 忙或过期 deadline 直接丢弃，不补帧、不排队。没有全局帧回调注册、
+JS 帧驱动、帧 ID、broadcast 或应用维护的帧队列。
+`on_runtime_detach`、view/extension 销毁会取消请求；后台保留 dirty 状态但跳过 UI 渲染，
+foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成请求。
+`renderFrame` 保留为显式入口。
+deadline 直接使用 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
+
+## 历史：JS RAF 适配器（0.0.28）
+
+0.0.28 中 native VSync observer 的 DisplayLink 挂在 BTS 的 NSRunLoop，而 Lynxtron
+的后台循环运行 libuv，因此回调不触发。当时临时改为：
 
 ```text
 App / frame-driver.ts
@@ -136,25 +169,9 @@ frame_driver.rs / dispatchAnimationFrame()
   native monotonic clock + 16.7ms 预算 → main queue / UI
        ↓
 frame_callbacks.rs / dispatch_frame_callbacks(deadline)
-  全局 LazyLock → 有效的窗口注册对象 → 有效的 native view 回调
-       ↓
-native view → session renderer → IOSurface → wgpu → SwapBack
 ```
 
-注册表与 JS 帧源分离；未来 native 帧源可直接调用 Rust 的
-`dispatch_frame_callbacks(deadline)`。没有帧 ID、broadcast 或应用维护的帧队列。
-全局注册只保存弱引用，不延长窗口/view 生命周期；过期、锁忙、解绑、后台和已销毁的注册跳过。
-JS timestamp 未用于 native deadline；临时预算从 N-API 收到信号时开始，
-包含其后 UI 投递的延迟，但不是显示器提供的精确目标时间。
-
-21:00 后显示器唤醒，直接 MTS RAF 探针收到一次回调。首次集成的运行时错误为
-`runOnBackground is not defined`：驱动仅由 background-only 模块引入，主线程 bundle
-缺少该函数实现。改由 App 直接引入驱动，且在外层 MTS 绑定跨线程调用函数后，
-自动首帧和既有 `initial-workspace` 截图对比通过。没有新增计时器、手动驱动 NSRunLoop，
-也没有通过显式 renderFrame 帮助 E2E 呈现。
-
-最终验证（2026-10-04 21:05 Asia/Shanghai）：构建、TypeScript、lint、format、
-29 个 Rust 测试、clippy、20 个 ReactLynx 单测和 1 个 PNG 比较器测试通过。
-完整 windowless E2E 5/5 通过，覆盖自动首帧、输入更新、tab 切换保持 native element、
-workspace 首次激活和关闭后删除对应 Rust session。既有截图基准未更新，
-5 个截图名称的差异像素均为 0。测试进程已关闭。
+该适配器、preload 的 `dispatchAnimationFrame` 导出和 `delayFrames` 替换均已删除。
+21:00 后显示器唤醒，直接 MTS RAF 探针收到一次回调；当时最终验证为构建、TypeScript、
+lint、format、29 个 Rust 测试、clippy、20 个 ReactLynx 单测和 1 个 PNG 比较器测试通过，
+windowless E2E 5/5 通过，截图差异像素为 0。这些结果只对应 0.0.28 的临时实现。

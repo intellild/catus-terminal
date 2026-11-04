@@ -46,3 +46,27 @@ fn terminal_replies_and_application_cursor_keys() {
     assert_eq!(grid.key("ArrowUp", false, false).unwrap(), b"\x1bOA");
     assert_eq!(grid.key("c", true, false).unwrap(), [3]);
 }
+
+#[test]
+fn grid_changes_notify_the_render_scheduler() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    let mut grid = grid(8, 3);
+    let changes = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&changes);
+    grid.set_on_change(Some(Arc::new(move || {
+        count.fetch_add(1, Ordering::Relaxed);
+    })));
+
+    grid.advance(b"content");
+    assert_eq!(changes.load(Ordering::Relaxed), 1);
+    grid.resize(GridSize::new(12, 4));
+    assert_eq!(changes.load(Ordering::Relaxed), 2);
+
+    grid.set_on_change(None);
+    grid.advance(b"ignored");
+    assert_eq!(changes.load(Ordering::Relaxed), 2);
+}

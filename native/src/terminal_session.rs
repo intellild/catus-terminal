@@ -138,6 +138,9 @@ impl TerminalHandle {
     pub fn key(&self, key: &str, control: bool, alt: bool) -> Result<()> {
         self.session.core.key(key, control, alt)
     }
+    pub fn set_on_change(&self, callback: Option<Arc<dyn Fn() + Send + Sync>>) {
+        self.session.core.set_on_change(callback);
+    }
 }
 
 #[cfg(test)]

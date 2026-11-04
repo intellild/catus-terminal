@@ -26,8 +26,7 @@ native/
   src/terminal_view.rs         layout resize、revision 和网格快照编排
   src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
   src/frame.rs                 平台无关的 cxx Viewport
-  src/frame_driver.rs          napi-rs JS RAF 适配器
-  src/frame_callbacks.rs       全局回调注册与 UI 分发 / 过期帧丢弃
+  src/binding/vsync.rs         VSyncObserver 的安全 Rust 封装
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
   src/native_terminal_view.rs  Rust terminal element、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
@@ -42,7 +41,7 @@ native/
       native_view.rs           Lynx 宿主、鼠标事件和 surface 的 macOS 适配
       view.rs                  Rust NSView、CAMetalLayer、嵌入 / OSR 生命周期
       input_view.rs            objc2 NSResponder、NSTextInputClient 和组合文本
-      frame.rs                 native 回调、时钟和 UI 调度桥
+      frame.rs                 native 回调、monotonic clock 和 libdispatch 主队列调度
       font.rs                  Menlo / CoreText 字体策略
       build.rs                 macOS CMake 和 framework 链接
   src/text/
@@ -60,7 +59,7 @@ native/
     platform/
       UiThread.h / RustBridge.h  按平台选择 UI 与 Rust 桥接适配
       macos/
-        UiThread.h              主队列调度与 UI 线程检查
+        UiThread.h              monotonic clock 与 UI 线程检查
   package.json / build.mjs      napi-rs 构建入口
   lynx.lib.json / index.cjs     AutoLink 产物描述与加载
   index.d.ts                   napi-rs 自动生成的 Rust API 类型
@@ -99,7 +98,7 @@ layout、props、motion、focus 和 invoke 回调，按具体 Rust 类型单态�
 由 extension 持有到窗口销毁。`on_destroy` 仅通知组件清理，最后一次
 `lynx_native_view_release` 才释放 Rust 对象。创建失败和初始化 panic 同样释放初始引用。
 Native View 限定在创建/UI 线程，允许直接持有 AppKit 和 RefCell 状态；不要求 Send/Sync。
-`Handle` 在释放后失效；`Target<T>` 可保存在共享 RAF registry 中，但仅在创建线程
+`Handle` 在释放后失效；`Target<T>` 可保存在共享 frame registry 中，但仅在创建线程
 借用组件，释放后的回调直接跳过。回调执行期间 retain host，防止事件/焦点重入释放对象。
 `binding/value.rs` 管理属性读写、UTF-8、引用计数和事件/invoke 值的所有权转移；
 内部错误保留 anyhow 原因链，在 invoke 边界转换为 Lynx 状态码。
@@ -221,18 +220,17 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
 
-`frame_callbacks.rs` 保存弱引用的回调注册，Rust view 用 `Target<T>` 注册 UI 渲染回调，
-持有 registration；销毁 view 时停止并释放注册，最终释放使 target 失效。
-独立的 `src/app/frame-driver.ts` 由 App 挂载时启动 MTS RAF，卸载时取消。
-外层 MTS 先创建 `runOnBackground` 调用函数，RAF 回调直接调用它；不等待 Promise 回执。
-preload 暴露 napi-rs 的 `dispatchAnimationFrame()`；`frame_driver.rs` 接收 JS 帧信号，
-用 native monotonic clock 生成约 16.7ms 的 deadline，再转发到 UI。
-`frame_callbacks.rs` 的全局 `LazyLock` 保存弱引用的窗口回调注册对象，UI 每次接到信号
-遍历有效注册并同步渲染；背景窗口、解绑和销毁的 view 不执行。
-JS timestamp 与 native clock 起点不同，因此不将 JS timestamp 当成 native deadline。
-该预算从 N-API 收到信号时开始，包含其后到 UI 的延迟；当前不是显示器的精确 target 时间。
-后续 native 帧源可以直接调用 `dispatch_frame_callbacks(deadline)`，替换 JS 适配器。
-项目自建的 CADisplayLink、timer 和单次 native RAF 探针已移除；`renderFrame` 保留为显式入口。
+`binding/vsync.rs` 保存 module 和 Lynx VSync observer，对外只暴露安全的
+`VsyncObserver` 句柄；raw pointer、BTS task 和 N-API callback 都留在 binding 内。
+渲染是事件驱动的：terminal 网格更新、terminal-id 切换、layout/resize、attach 和
+foreground 恢复时调用 `schedule_render`。它通过绑定层请求一次与 VSync 同步的渲染，
+VSync 回调只把这个 view 的 target deadline 投递到 UI，再由该 view 调用自己的
+`frame(deadline)`。同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；
+UI 忙或 deadline 过期时直接丢弃，不补帧、不排队，也不维持常驻 RAF 循环。
+`on_runtime_detach`、view/extension 销毁会取消 pending 请求；后台保留 dirty 状态，
+foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成的请求。
+deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
+`renderFrame` 保留为显式入口。
 原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。
 每个回调都检查本次 VSync 的 monotonic deadline；view/session/grid/atlas 锁忙则直接丢帧。
 提交前过期丢弃 encoder 并撤销未上传的 atlas handles；提交后过期先等待 GPU 完成，
@@ -240,7 +238,8 @@ JS timestamp 与 native clock 起点不同，因此不将 JS timestamp 当成 na
 async parser 只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
-Rust 测试在 `src/tests/frame_callbacks.rs`，覆盖同步执行、同线程、过期帧、注销和生命周期。
+Rust 测试在 `src/tests/vsync.rs`，覆盖安全封装下的请求、回调、detach 和重复请求拒绝。
+网格变更通知通过 `TerminalGrid::set_on_change` 传递到 view 的 `schedule_render`。
 `src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
 `../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
@@ -393,8 +392,11 @@ release profile 显式使用 `strip = "none"`，避免当前 Rust 1.95 / LLVM �
 ## SFTP
 
 `connectSftp({ destination, port?, identityFile?, configFile? })` 返回 Promise。
-Rust 使用 napi-rs async fn 在 Tokio 中执行，Node main 持有连接并接收 Promise 结果；
-Lynx BTS 通过 `lynxBridge` 请求文件操作。
+Rust 使用 napi-rs async fn 在 Tokio 中执行；preload 保存连接表并暴露
+`sftpConnect`、`sftpReaddir`、`sftpRealpath`、`sftpStat`、`sftpClose`，
+Lynx BTS 直接调用这些 N-API 操作，不再经过 main 的 JSON bridge。
+ContextBridge 不能返回带 native 方法闭包的连接对象（会抛 `TypeError: no access`），
+因此连接 ID 和连接对象都留在 preload，数据以普通对象/字符串跨越边界。
 连接提供 `readDir`、`metadata`、`readFile`、`writeFile`、`createDir`、`rename`、
 `removeFile`、`removeDir` 和 `close`，均返回 Promise。
 `writeFile` 在 JS 调用线程复制输入，再通过 `Env::spawn_future` 执行异步写入。
@@ -403,6 +405,6 @@ Lynx BTS 通过 `lynxBridge` 请求文件操作。
 
 调用链、运行时选择及限制见 [SFTP 异步实现](../docs/sftp-async.md)。
 
-当前普通 Node 的 Promise/文件操作测试通过；Lynxtron 0.0.28 BTS 中仍会在
-TSFN 排队后、进入 JS callback 前触发 Node Environment 断言。改为 Node main
-创建 native 对象并接收异步结果后，windowless SFTP E2E 已通过；上游 BTS 根因仍待确认。
+Lynxtron 0.0.31 在 TSFN 回调前进入所属 V8 context，修复了 preload/BTS 中
+native Promise 与 callback 的 abort。普通 Node 测试、windowless SFTP E2E 和上传/
+下载均通过；原生文件对话框和 scp 仍在 main，SFTP 数据路径直接调用 N-API。

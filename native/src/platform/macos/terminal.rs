@@ -86,7 +86,7 @@ impl TerminalHandle {
             unsafe { super::surface::import_texture(device, texture, viewport) }
         })?;
         if rendered {
-            if crate::frame_callbacks::expired(deadline) {
+            if crate::frame::expired(deadline) {
                 self.invalidate_frame();
                 return Ok(false);
             }

@@ -1,24 +1,174 @@
 //! Platform-independent Lynx terminal element lifecycle and session binding.
 use crate::{
     binding::{
+        VsyncObserver,
         native_view::{Handle, Layout, MotionEvent, NativeView, Reply, Target, Value, ViewFactory},
         protocol::{Event, Method, Property},
     },
-    frame::Viewport,
-    frame_callbacks::{FrameCallbacks, FrameRegistration, expired},
-    platform::{TerminalPlatform, create_terminal_platform},
+    frame::{Viewport, expired},
+    platform::{TerminalPlatform, create_terminal_platform, post_task_to_ui},
     terminal_session::{TerminalHandle, acquire_terminal},
     terminal_view::NativeScrollState,
 };
 use anyhow::{Context, Result, ensure};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 pub(crate) struct TerminalHost {
     pub(crate) view: usize,
-    pub(crate) frames: FrameCallbacks,
+    pub(crate) vsync: VsyncObserver,
+    pub(crate) foreground: Arc<AtomicBool>,
+    schedulers: Mutex<Vec<Weak<RenderScheduler>>>,
+}
+
+impl TerminalHost {
+    pub(crate) fn new(view: usize, vsync: VsyncObserver, foreground: Arc<AtomicBool>) -> Self {
+        Self {
+            view,
+            vsync,
+            foreground,
+            schedulers: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn register(&self, scheduler: &Arc<RenderScheduler>) {
+        self.schedulers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(Arc::downgrade(scheduler));
+    }
+
+    pub(crate) fn schedule_all(&self) {
+        let schedulers: Vec<_> = {
+            let mut schedulers = self
+                .schedulers
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            schedulers.retain(|scheduler| scheduler.strong_count() > 0);
+            schedulers.iter().filter_map(Weak::upgrade).collect()
+        };
+        for scheduler in schedulers {
+            scheduler.schedule();
+        }
+    }
+}
+
+/// Coalesces grid/state changes into one VSync-synchronized render.
+struct RenderScheduler {
+    vsync: VsyncObserver,
+    foreground: Arc<AtomicBool>,
+    render: Box<dyn Fn(i64) -> bool + Send + Sync>,
+    active: AtomicBool,
+    dirty: AtomicBool,
+    /// One render is in flight: waiting for VSync or for the UI task to run.
+    scheduled: AtomicBool,
+    /// Invalidates callbacks from a previous active/inactive transition.
+    generation: AtomicU64,
+}
+
+impl RenderScheduler {
+    fn new(
+        vsync: VsyncObserver,
+        foreground: Arc<AtomicBool>,
+        render: Box<dyn Fn(i64) -> bool + Send + Sync>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            vsync,
+            foreground,
+            render,
+            active: AtomicBool::new(false),
+            dirty: AtomicBool::new(false),
+            scheduled: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+        })
+    }
+
+    fn set_active(self: &Arc<Self>, active: bool) {
+        if self.active.swap(active, Ordering::AcqRel) == active {
+            return;
+        }
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        self.dirty.store(false, Ordering::Release);
+        self.scheduled.store(false, Ordering::Release);
+        if active {
+            self.schedule();
+        }
+    }
+
+    fn schedule(self: &Arc<Self>) {
+        self.dirty.store(true, Ordering::Release);
+        if !self.active.load(Ordering::Acquire) || self.scheduled.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let generation = self.generation.load(Ordering::Acquire);
+        let scheduler = Arc::clone(self);
+        if !self
+            .vsync
+            .request_animation_frame(move |target| scheduler.on_vsync(generation, target))
+            && self.generation.load(Ordering::Acquire) == generation
+        {
+            self.scheduled.store(false, Ordering::Release);
+        }
+    }
+
+    fn on_vsync(self: &Arc<Self>, generation: u64, target: i64) {
+        if self.generation.load(Ordering::Acquire) != generation {
+            return;
+        }
+        if !self.active.load(Ordering::Acquire)
+            || target <= 0
+            || !self.dirty.swap(false, Ordering::AcqRel)
+        {
+            self.scheduled.store(false, Ordering::Release);
+            self.schedule_if_dirty();
+            return;
+        }
+        // Keep `scheduled` set while the UI task is pending, so another grid
+        // update cannot queue a second render.
+        let scheduler = Arc::clone(self);
+        let task: Box<dyn FnOnce() + Send> =
+            Box::new(move || scheduler.render_scheduled(generation, target));
+        post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
+    }
+
+    fn render_scheduled(self: &Arc<Self>, generation: u64, target: i64) {
+        if self.generation.load(Ordering::Acquire) != generation {
+            return;
+        }
+        if !self.active.load(Ordering::Acquire) {
+            self.scheduled.store(false, Ordering::Release);
+            return;
+        }
+        if expired(target) {
+            self.scheduled.store(false, Ordering::Release);
+            self.dirty.store(true, Ordering::Release);
+            self.schedule();
+            return;
+        }
+        if !self.foreground.load(Ordering::Acquire) {
+            self.scheduled.store(false, Ordering::Release);
+            self.dirty.store(true, Ordering::Release);
+            return;
+        }
+        let presented = (self.render)(target);
+        self.scheduled.store(false, Ordering::Release);
+        if !presented {
+            self.dirty.store(true, Ordering::Release);
+        }
+        self.schedule_if_dirty();
+    }
+
+    fn schedule_if_dirty(self: &Arc<Self>) {
+        if self.dirty.load(Ordering::Acquire) {
+            self.schedule();
+        }
+    }
 }
 
 struct State {
@@ -55,22 +205,41 @@ impl Default for State {
 pub(crate) struct NativeTerminalView {
     handle: Handle,
     platform: Box<TerminalPlatform>,
-    frames: Box<FrameRegistration>,
+    frames: Arc<RenderScheduler>,
+    notify: Arc<dyn Fn() + Send + Sync>,
     state: RefCell<State>,
 }
 impl ViewFactory for NativeTerminalView {
     type Context = TerminalHost;
     fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
         let platform = create_terminal_platform(host.view, &handle)?;
-        let frames = host.frames.register(move |deadline| {
-            if let Err(error) = target.dispatch(|view| view.frame(deadline)) {
-                eprintln!("Terminal frame: {error:#}");
-            }
-        });
+        let frames = RenderScheduler::new(
+            host.vsync.clone(),
+            Arc::clone(&host.foreground),
+            Box::new(move |deadline| {
+                let presented = Cell::new(false);
+                let result = target.dispatch(|view| {
+                    let shown = view.frame(deadline)?;
+                    presented.set(shown);
+                    Ok(())
+                });
+                if let Err(error) = result {
+                    eprintln!("Terminal frame: {error:#}");
+                    return false;
+                }
+                presented.get()
+            }),
+        );
+        host.register(&frames);
+        let notify: Arc<dyn Fn() + Send + Sync> = {
+            let frames = Arc::clone(&frames);
+            Arc::new(move || frames.schedule())
+        };
         Ok(Self {
             handle,
             platform,
             frames,
+            notify,
             state: RefCell::new(State::default()),
         })
     }
@@ -86,14 +255,17 @@ impl NativeTerminalView {
                 && state.viewport.height != 0,
         );
     }
+    fn schedule_render(&self) {
+        self.frames.schedule();
+    }
     fn focus(&self) -> Result<()> {
         self.handle.request_focus()?;
         self.platform.focus();
         Ok(())
     }
-    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<()> {
+    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<bool> {
         if expired(deadline) || state.id == 0 {
-            return Ok(());
+            return Ok(true);
         }
         ensure!(
             state.attached && state.viewport.width != 0 && state.viewport.height != 0,
@@ -114,7 +286,7 @@ impl NativeTerminalView {
                 .renderer_retry
                 .is_some_and(|retry| now.duration_since(retry) < Duration::from_secs(1))
             {
-                return Ok(());
+                return Ok(false);
             }
             state.renderer_retry = Some(now);
             terminal.resize_viewport(&state.viewport)?;
@@ -123,11 +295,11 @@ impl NativeTerminalView {
             .platform
             .render(&self.handle, &state.viewport, deadline, force)?
         {
-            return Ok(());
+            return Ok(false);
         }
         if expired(deadline) {
             terminal.invalidate_frame();
-            return Ok(());
+            return Ok(true);
         }
         if self.platform.uses_osr()
             && let Err(error) = self.handle.swap_back()
@@ -140,18 +312,22 @@ impl NativeTerminalView {
             state.needs_focus = false;
             state.focus_pending = true;
         }
-        Ok(())
+        Ok(true)
     }
-    fn frame(&self, deadline: i64) -> Result<()> {
+    fn frame(&self, deadline: i64) -> Result<bool> {
         if expired(deadline) {
-            return Ok(());
+            return Ok(true);
         }
         let Ok(mut state) = self.state.try_borrow_mut() else {
-            return Ok(());
+            return Ok(false);
         };
-        if let Err(error) = self.render(&mut state, deadline, false) {
-            state.error = format!("{error:#}");
-        }
+        let presented = match self.render(&mut state, deadline, false) {
+            Ok(presented) => presented,
+            Err(error) => {
+                state.error = format!("{error:#}");
+                false
+            }
+        };
         // A busy grid simply retries next RAF. Emit only scalar changes.
         let scroll = state
             .terminal
@@ -174,7 +350,7 @@ impl NativeTerminalView {
         if focus {
             self.focus()?;
         }
-        Ok(())
+        Ok(presented)
     }
 }
 fn scroll_value(id: u32, scroll: NativeScrollState) -> Result<Value> {
@@ -202,6 +378,7 @@ impl NativeView for NativeTerminalView {
             terminal.invalidate_frame();
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_detach(&self) -> Result<()> {
@@ -215,6 +392,9 @@ impl NativeView for NativeTerminalView {
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
+        if let Some(terminal) = &state.terminal {
+            terminal.set_on_change(None);
+        }
         state.terminal = None;
         state.id = 0;
         self.update_frames(&state);
@@ -254,6 +434,7 @@ impl NativeView for NativeTerminalView {
             state.error = format!("{error:#}");
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_properties_changed(&self, attrs: &Value, _events: &Value) -> Result<()> {
@@ -274,6 +455,9 @@ impl NativeView for NativeTerminalView {
         }
         state.last_scroll = None;
         state.renderer_retry = None;
+        if let Some(terminal) = &state.terminal {
+            terminal.set_on_change(None);
+        }
         if id == 0 {
             self.platform.clear_terminal();
             state.terminal = None;
@@ -291,6 +475,7 @@ impl NativeView for NativeTerminalView {
             })();
             match binding {
                 Ok(terminal) => {
+                    terminal.set_on_change(Some(Arc::clone(&self.notify)));
                     state.terminal = Some(terminal);
                     state.id = id;
                 }
@@ -300,6 +485,7 @@ impl NativeView for NativeTerminalView {
             }
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_focus_changed(&self, focused: bool, leaf: bool) -> Result<()> {
@@ -373,6 +559,11 @@ impl NativeView for NativeTerminalView {
 }
 impl Drop for NativeTerminalView {
     fn drop(&mut self) {
+        if let Ok(state) = self.state.try_borrow()
+            && let Some(terminal) = &state.terminal
+        {
+            terminal.set_on_change(None);
+        }
         self.frames.set_active(false);
     }
 }

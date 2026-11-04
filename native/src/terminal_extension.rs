@@ -1,37 +1,52 @@
 //! Terminal component registration and window lifecycle, through Lynx's C ABI.
-use std::{ptr::NonNull, sync::OnceLock};
+use std::{
+    ptr::NonNull,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use napi::sys::napi_env;
 
 use crate::{
     binding::{
+        VsyncObserver,
         extension::{self, Extension, LynxView},
         native_view,
         protocol::{ElementName, ExtensionName},
     },
-    frame_callbacks::{FrameCallbacks, create_frame_callbacks},
     native_terminal_view::{NativeTerminalView, TerminalHost},
 };
 
 struct TerminalExtension {
-    frames: Box<FrameCallbacks>,
+    vsync: VsyncObserver,
+    foreground: Arc<AtomicBool>,
     host: OnceLock<Box<TerminalHost>>,
 }
 
 impl Default for TerminalExtension {
     fn default() -> Self {
         Self {
-            frames: create_frame_callbacks(),
+            vsync: VsyncObserver::default(),
+            foreground: Arc::new(AtomicBool::new(true)),
             host: OnceLock::new(),
         }
     }
 }
 
 impl Extension for TerminalExtension {
+    fn vsync(&self) -> Option<&VsyncObserver> {
+        Some(&self.vsync)
+    }
+
     fn on_view_create(&self, view: NonNull<LynxView>) {
         let host = self.host.get_or_init(|| {
-            Box::new(TerminalHost {
-                view: view.as_ptr() as usize,
-                frames: (*self.frames).clone(),
-            })
+            Box::new(TerminalHost::new(
+                view.as_ptr() as usize,
+                self.vsync.clone(),
+                Arc::clone(&self.foreground),
+            ))
         });
         // SAFETY: Lynx creates native views on UI; the extension owns the
         // immutable factory context throughout this window's lifetime.
@@ -40,26 +55,21 @@ impl Extension for TerminalExtension {
         }
     }
 
-    fn on_view_destroy(&self) {
-        self.frames.destroy();
+    fn on_runtime_attach(&self, _env: napi_env) {
+        if let Some(host) = self.host.get() {
+            host.schedule_all();
+        }
     }
 
     fn on_enter_foreground(&self) {
-        self.frames.set_foreground(true);
+        self.foreground.store(true, Ordering::Release);
+        if let Some(host) = self.host.get() {
+            host.schedule_all();
+        }
     }
 
     fn on_enter_background(&self) {
-        self.frames.set_foreground(false);
-    }
-
-    fn on_destroy(&self) {
-        self.frames.destroy();
-    }
-}
-
-impl Drop for TerminalExtension {
-    fn drop(&mut self) {
-        self.frames.destroy();
+        self.foreground.store(false, Ordering::Release);
     }
 }
 

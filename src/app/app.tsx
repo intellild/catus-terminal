@@ -19,11 +19,9 @@ import {
 } from './components/session-views';
 import { SettingsDialog } from './components/settings/settings-dialog';
 import { SessionProvider } from './state/session-provider';
-import { useFrameDriver } from './frame-driver';
 import './tailwind.css';
 
 export function App() {
-  useFrameDriver();
   return (
     <SessionProvider>
       <AppLayout>

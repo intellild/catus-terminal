@@ -1,4 +1,4 @@
-//! Promise-based SFTP API, called from the Node main environment.
+//! Promise-based SFTP API, called directly from the preload Node environment.
 use crate::sftp::{Connection, Options};
 use napi::{
     Env,

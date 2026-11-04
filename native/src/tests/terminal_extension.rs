@@ -1,12 +1,8 @@
 use super::*;
 use crate::binding::extension::tests as host;
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
 
 #[test]
-fn rust_factory_registers_component_and_controls_the_shared_native_registry() {
+fn rust_factory_registers_component_with_a_shared_vsync_handle() {
     register_terminal_extension();
     let registration = host::take_registration();
     assert_eq!(registration.name, "CatusNativeTerminalElement");
@@ -21,66 +17,21 @@ fn rust_factory_registers_component_and_controls_the_shared_native_registry() {
     assert_eq!(native.name, "native-terminal");
     assert!(native.creator.is_some());
 
-    // Native views clone the Rust registry. It must share lifecycle state
-    // and remain stopped after the extension finalizes.
-    let retained_host = unsafe {
-        host::with_extension(raw, |extension: &TerminalExtension| {
-            extension.host.get().unwrap().frames.clone()
-        })
+    let vsync = unsafe {
+        host::with_extension(raw, |extension: &TerminalExtension| extension.vsync.clone())
     };
-    assert_ne!(native.opaque, 0);
-    let frames = &retained_host;
-    let calls = Arc::new(AtomicUsize::new(0));
-    let count = calls.clone();
-    let render = frames.register(move |_| {
-        count.fetch_add(1, Ordering::Relaxed);
-    });
-    render.set_active(true);
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
-    unsafe { callbacks.background.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
-    unsafe { callbacks.foreground.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    // The view host and extension share the same safe handle.
+    assert!(!vsync.request_animation_frame(|_| {}));
+
     unsafe { callbacks.view_destroy.unwrap()(raw) };
-    unsafe { callbacks.foreground.unwrap()(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
     unsafe { callbacks.destroy.unwrap()(raw) };
     unsafe { host::release(raw) };
-    frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
 }
 
 #[test]
-fn finalization_without_view_destroy_stops_retained_native_views_and_isolates_windows() {
-    let first = TerminalExtension::default();
-    let second = TerminalExtension::default();
-    let first_frames = first.frames.clone();
-    let second_frames = second.frames.clone();
-    let calls = Arc::new(AtomicUsize::new(0));
-    let count = calls.clone();
-    let a = first_frames.register(move |_| {
-        count.fetch_add(1, Ordering::Relaxed);
-    });
-    let count = calls.clone();
-    let b = second_frames.register(move |_| {
-        count.fetch_add(10, Ordering::Relaxed);
-    });
-    a.set_active(true);
-    b.set_active(true);
-    first.on_enter_background();
-    first_frames.dispatch(20, || 10);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 10);
-    drop(first);
-    first_frames.set_foreground(true);
-    first_frames.dispatch(20, || 10);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 20);
-    drop(second);
-    second_frames.dispatch(20, || 10);
-    assert_eq!(calls.load(Ordering::Relaxed), 20);
+fn finalization_without_view_destroy_drops_the_extension() {
+    let extension = TerminalExtension::default();
+    let vsync = extension.vsync.clone();
+    drop(extension);
+    drop(vsync);
 }

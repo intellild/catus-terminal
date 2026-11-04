@@ -183,6 +183,12 @@ impl TerminalSession {
     pub fn revision(&self) -> u64 {
         self.grid.blocking_lock().revision()
     }
+    pub fn set_on_change(&self, callback: Option<Arc<dyn Fn() + Send + Sync>>) {
+        self.grid.blocking_lock().set_on_change(callback);
+    }
+    pub fn notify_change(&self) {
+        self.grid.blocking_lock().notify_change();
+    }
     pub fn exited(&self) -> bool {
         self.pty.exited()
     }

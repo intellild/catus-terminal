@@ -4,18 +4,12 @@ pub mod binding;
 #[cfg(feature = "native-view")]
 mod frame;
 #[cfg(feature = "native-view")]
-mod frame_callbacks;
-#[cfg(feature = "native-view")]
-mod frame_driver;
-#[cfg(feature = "native-view")]
 mod native_terminal_view;
-#[cfg(feature = "native-view")]
-mod terminal_extension;
-#[cfg(feature = "native-view")]
-pub use frame_driver::dispatch_animation_frame;
 mod platform;
 mod sftp;
 mod sftp_api;
+#[cfg(feature = "native-view")]
+mod terminal_extension;
 pub use sftp_api::{SftpConnection, SftpEntry, SftpMetadata, SftpOptions, connect_sftp};
 mod host;
 #[cfg(feature = "native-view")]

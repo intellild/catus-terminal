@@ -3,7 +3,7 @@
 //! `register<T>` installs a factory which creates a concrete Rust extension,
 //! binds its lifecycle callbacks and transfers the initial C reference to Lynx.
 //! The host supplies the C symbols; this is not a standalone Node capability.
-use super::{ffi, protocol::ExtensionName};
+use super::{ffi, protocol::ExtensionName, vsync::VsyncObserver};
 
 use std::{
     ffi::{CStr, c_char, c_void},
@@ -16,7 +16,9 @@ use std::{
 use anyhow::{Result, bail};
 use napi::sys::{napi_env, napi_value};
 
-pub use ffi::{LynxView, RawModule, VsyncObserver};
+pub use ffi::LynxView;
+
+use ffi::RawModule;
 
 /// Register a concrete extension factory using a protocol name with static
 /// storage. Each created module owns a fresh `T::default()`.
@@ -47,10 +49,14 @@ unsafe extern "C" fn create<T: Extension + Default>(_opaque: *mut c_void) -> *mu
 /// must only be used on their owning thread while valid. Foreground/background
 /// refer to application visibility, not the JavaScript thread model.
 pub trait Extension: Send + Sync + 'static {
+    /// Safe handle used by the binding to attach the runtime VSync observer.
+    fn vsync(&self) -> Option<&VsyncObserver> {
+        None
+    }
     fn on_view_create(&self, _view: NonNull<LynxView>) {}
     fn on_view_destroy(&self) {}
     fn on_runtime_init(&self) {}
-    fn on_runtime_attach(&self, _env: napi_env, _observer: *mut VsyncObserver) {}
+    fn on_runtime_attach(&self, _env: napi_env) {}
     fn on_runtime_ready(&self, _env: napi_env, _lynx: napi_value, _url: &CStr) {}
     fn on_runtime_detach(&self) {}
     fn on_enter_foreground(&self) {}
@@ -81,7 +87,10 @@ impl Module {
             unsafe { drop(Box::from_raw(data)) };
             bail!("Create Lynx extension module");
         };
-        // SAFETY: The handle is live, owns Box<T>, and every callback uses T.
+        // SAFETY: The handle is live and owns Box<T>.
+        if let Some(vsync) = unsafe { (*data).vsync() } {
+            vsync.set_module(raw.as_ptr());
+        }
         unsafe { bind::<T>(raw.as_ptr()) };
         Ok(Self {
             raw,
@@ -130,6 +139,10 @@ unsafe extern "C" fn finalize<T: Extension>(_raw: *mut RawModule, data: *mut c_v
     if !data.is_null() {
         contain_panic(|| {
             // SAFETY: C calls the finalizer once after its final reference drops.
+            let extension = unsafe { &*data.cast::<T>() };
+            if let Some(vsync) = extension.vsync() {
+                vsync.shutdown();
+            }
             unsafe { drop(Box::from_raw(data.cast::<T>())) };
         });
     }
@@ -148,6 +161,7 @@ macro_rules! lifecycle {
                 $(ffi::$binder(raw, Some($callback::<T>));)*
                 ffi::lynx_extension_module_bind_lynx_view_create(raw, Some(view_create::<T>));
                 ffi::lynx_extension_module_bind_runtime_attach(raw, Some(runtime_attach::<T>));
+                ffi::lynx_extension_module_bind_runtime_detach(raw, Some(runtime_detach::<T>));
                 ffi::lynx_extension_module_bind_runtime_ready(raw, Some(runtime_ready::<T>));
             }
         }
@@ -157,7 +171,6 @@ macro_rules! lifecycle {
 lifecycle! {
     view_destroy => on_view_destroy, lynx_extension_module_bind_lynx_view_destroy;
     runtime_init => on_runtime_init, lynx_extension_module_bind_runtime_init;
-    runtime_detach => on_runtime_detach, lynx_extension_module_bind_runtime_detach;
     enter_foreground => on_enter_foreground, lynx_extension_module_bind_enter_foreground;
     enter_background => on_enter_background, lynx_extension_module_bind_enter_background;
     destroy => on_destroy, lynx_extension_module_bind_on_destroy;
@@ -173,10 +186,29 @@ unsafe extern "C" fn view_create<T: Extension>(raw: *mut RawModule, view: *mut L
 unsafe extern "C" fn runtime_attach<T: Extension>(
     raw: *mut RawModule,
     env: napi_env,
-    observer: *mut VsyncObserver,
+    observer: *mut ffi::lynx_vsync_observer_t,
 ) {
     // SAFETY: The host supplies borrowed runtime handles for this callback.
-    unsafe { dispatch::<T>(raw, |extension| extension.on_runtime_attach(env, observer)) };
+    unsafe {
+        dispatch::<T>(raw, |extension| {
+            if let Some(vsync) = extension.vsync() {
+                vsync.attach(observer);
+            }
+            extension.on_runtime_attach(env);
+        })
+    };
+}
+
+unsafe extern "C" fn runtime_detach<T: Extension>(raw: *mut RawModule) {
+    // SAFETY: The host calls this only for the module bound to T.
+    unsafe {
+        dispatch::<T>(raw, |extension| {
+            if let Some(vsync) = extension.vsync() {
+                vsync.detach();
+            }
+            extension.on_runtime_detach();
+        })
+    };
 }
 
 unsafe extern "C" fn runtime_ready<T: Extension>(

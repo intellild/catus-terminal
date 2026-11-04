@@ -95,9 +95,11 @@
   layout callbacks. Do not add custom width/height or active props, or remount
   the view through React keys.
 - Portable-pty read/write threads bridge to an async parser through channels;
-  only the parser updates grids. A single RAF adapter dispatches native callbacks
-  on the UI thread; do not add frame queues, broadcasts or frame IDs. Do not hold
-  callback registry locks while invoking callbacks.
+  only the parser updates grids. Renders are event-driven: call
+  `schedule_render` when the grid, terminal binding or layout changes. It requests
+  one VSync-synchronized frame, keeps at most one pending UI render, and drops
+  callbacks while UI is busy or the deadline expired. Do not add continuous JS or
+  native RAF loops, global frame dispatch, frame queues, broadcasts or frame IDs.
 - Drop expired or contended frames. Wait for submitted GPU work before returning
   borrowed Lynx buffers, and present only completed frames within their deadline.
 - Share the GPU device and glyph atlas globally. Hold the shared glyph lock
@@ -106,8 +108,9 @@
 - Use `anyhow::Result` with `?` / `Context` internally; convert to `napi::Result`
   only at N-API boundaries and preserve the full error chain.
 - SFTP uses ordinary SSH pipes and napi's Tokio runtime. Close connections
-  explicitly and retain drop cleanup. Keep async native calls in Node main; consult
-  the BTS crash TODO in `src/main/desktop/main.ts` before moving them to preload.
+  explicitly and retain drop cleanup. Preload owns native connections and exposes
+  serializable N-API operations; ContextBridge cannot return methods closing over
+  a native connection. Only file dialogs and scp transfers belong in main.
 - Native components share one package. When adding components, update CMake
   sources, Lynx registration and element types. Do not hand-edit generated API types.
 

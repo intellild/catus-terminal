@@ -41,7 +41,7 @@ export default defineConfig({
     filename: '[name].[platform].bundle',
   },
   tools: {
-    rspack(config, { rspack }) {
+    rspack(config) {
       config.module ??= {};
       config.module.rules ??= [];
       // Compile translation files into resource objects; no TOML parser in Lynx.
@@ -52,18 +52,6 @@ export default defineConfig({
         test: /[\\/]@lynx-js[\\/]lynx-ui-[^\\/]+[\\/]/,
         sideEffects: true,
       });
-      config.plugins ??= [];
-      // TODO: remove when Lynxtron's BTS RAF advances Presence callbacks.
-      config.plugins.push(
-        new rspack.NormalModuleReplacementPlugin(/delayFrames\.(jsx|ts)$/, (resource) => {
-          if (
-            process.env.CATUS_WEB !== '1' &&
-            /[\\/]@lynx-js[\\/]lynx-ui-common[\\/]/.test(resource.context)
-          ) {
-            resource.request = path.resolve(rootPath, 'src/app/components/ui/frames.ts');
-          }
-        }),
-      );
     },
   },
   environments: {
@@ -75,10 +63,6 @@ export default defineConfig({
           [path.resolve(rootPath, 'src/app/runtime.ts')]: path.resolve(
             rootPath,
             'src/app/web/runtime.ts',
-          ),
-          [path.resolve(rootPath, 'src/app/frame-driver.ts')]: path.resolve(
-            rootPath,
-            'src/app/web/frame-driver.ts',
           ),
           [path.resolve(rootPath, 'src/app/components/terminal/panel-placeholder.tsx')]:
             path.resolve(rootPath, 'src/app/web/session-content.tsx'),

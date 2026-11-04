@@ -32,6 +32,18 @@ thread_local! {
     static FAIL_CREATE: Cell<bool> = const { Cell::new(false) };
     static REGISTRATION: RefCell<Option<Registration>> = const { RefCell::new(None) };
     static NATIVE_REGISTRATIONS: RefCell<Vec<NativeRegistration>> = const { RefCell::new(Vec::new()) };
+    static FRAME_REQUESTS: RefCell<Vec<FrameRequest>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct FrameRequest {
+    pub(crate) observer: usize,
+    pub(crate) id: usize,
+    pub(crate) callback: ffi::vsync_observer_callback,
+    pub(crate) user_data: usize,
+}
+
+pub(crate) fn take_frame_requests() -> Vec<FrameRequest> {
+    FRAME_REQUESTS.with(|value| std::mem::take(&mut *value.borrow_mut()))
 }
 
 pub(crate) struct Registration {
@@ -90,6 +102,41 @@ unsafe extern "C" fn lynx_view_register_native_view(
             opaque: opaque as usize,
         });
     });
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_vsync_observer_request_animation_frame(
+    observer: *mut ffi::lynx_vsync_observer_t,
+    id: usize,
+    callback: ffi::vsync_observer_callback,
+    user_data: *mut c_void,
+) {
+    FRAME_REQUESTS.with(|value| {
+        value.borrow_mut().push(FrameRequest {
+            observer: observer as usize,
+            id,
+            callback,
+            user_data: user_data as usize,
+        });
+    });
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_extension_module_is_running_on_bts_thread(
+    _module: *mut RawModule,
+) -> bool {
+    false
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn lynx_extension_module_post_task_to_runtime(
+    _module: *mut RawModule,
+    task: ffi::lynx_extension_module_post_task_func,
+    data: *mut c_void,
+) {
+    if let Some(task) = task {
+        unsafe { task(data) };
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -173,13 +220,9 @@ impl Extension for Probe {
     fn on_runtime_init(&self) {
         self.record("runtime_init");
     }
-    fn on_runtime_attach(&self, env: napi_env, observer: *mut VsyncObserver) {
+    fn on_runtime_attach(&self, env: napi_env) {
         self.record("runtime_attach");
-        self.0
-            .handles
-            .lock()
-            .unwrap()
-            .extend([env as usize, observer as usize]);
+        self.0.handles.lock().unwrap().push(env as usize);
     }
     fn on_runtime_ready(&self, env: napi_env, lynx: napi_value, url: &CStr) {
         assert_eq!(url, c"file:///terminal");
@@ -224,7 +267,7 @@ fn binds_all_lifecycle_callbacks_and_preserves_borrowed_arguments() {
     assert_eq!(state.drops.load(Ordering::Relaxed), 0);
     let view = NonNull::<LynxView>::dangling().as_ptr();
     let env = NonNull::<u8>::dangling().as_ptr().cast();
-    let observer = NonNull::<VsyncObserver>::dangling().as_ptr();
+    let observer = NonNull::<ffi::lynx_vsync_observer_t>::dangling().as_ptr();
     let value = NonNull::<u16>::dangling().as_ptr().cast();
     unsafe {
         let callbacks = callbacks(raw);
@@ -254,13 +297,7 @@ fn binds_all_lifecycle_callbacks_and_preserves_borrowed_arguments() {
     );
     assert_eq!(
         *state.handles.lock().unwrap(),
-        [
-            view as usize,
-            env as usize,
-            observer as usize,
-            env as usize,
-            value as usize
-        ]
+        [view as usize, env as usize, env as usize, value as usize]
     );
     // on_destroy is a notification; only the finalizer releases Rust ownership.
     assert_eq!(state.drops.load(Ordering::Relaxed), 0);

@@ -25,3 +25,8 @@ impl Viewport {
         Ok((14. * self.pixel_ratio).round().clamp(1., 512.) as u32)
     }
 }
+
+/// Drops frames whose VSync target has already passed.
+pub(crate) fn expired(deadline: i64) -> bool {
+    deadline <= crate::platform::monotonic_now_ns()
+}

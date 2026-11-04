@@ -16,7 +16,7 @@ pub(crate) use macos::test_support;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 pub(crate) use macos::{
     GPU_BACKENDS, MouseState, TerminalPlatform, create_terminal_platform, load_font_size,
-    monotonic_now_ns, post_frame_to_ui,
+    monotonic_now_ns, post_task_to_ui,
 };
 
 #[cfg(all(feature = "native-view", not(target_os = "macos")))]

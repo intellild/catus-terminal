@@ -161,7 +161,7 @@ impl TerminalRenderer {
         prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
     ) -> Result<bool> {
         self.glyphs.origin = origin;
-        if crate::frame_callbacks::expired(deadline) {
+        if crate::frame::expired(deadline) {
             return Ok(false);
         }
         let Viewport { width, height, .. } = *viewport;
@@ -212,7 +212,7 @@ impl TerminalRenderer {
         } else {
             gpu.glyphs()?
         };
-        if deadline.is_some_and(crate::frame_callbacks::expired) {
+        if deadline.is_some_and(crate::frame::expired) {
             return Ok(false);
         }
         let validation = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -226,7 +226,7 @@ impl TerminalRenderer {
             viewport,
             grid,
         );
-        let expired_before_submit = deadline.is_some_and(crate::frame_callbacks::expired);
+        let expired_before_submit = deadline.is_some_and(crate::frame::expired);
         if result.is_ok() && !expired_before_submit {
             let submission = gpu.queue.submit([encoder.finish()]);
             // Lynx may swap the borrowed double buffer only after GPU writes finish.
@@ -255,7 +255,7 @@ impl TerminalRenderer {
             self.rendered_grid = None;
             return Ok(false);
         }
-        if deadline.is_some_and(crate::frame_callbacks::expired) {
+        if deadline.is_some_and(crate::frame::expired) {
             // Submitted GPU work has finished, so the borrowed buffer is safe,
             // but it is too late to present. Leave this session dirty.
             self.rendered_grid = None;
