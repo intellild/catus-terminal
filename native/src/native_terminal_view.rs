@@ -12,10 +12,10 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     sync::{
         Arc, Mutex, Weak,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -63,18 +63,20 @@ impl TerminalHost {
 struct RenderScheduler {
     vsync: VsyncObserver,
     foreground: Arc<AtomicBool>,
-    render: Box<dyn Fn(i64) + Send + Sync>,
+    render: Box<dyn Fn(i64) -> bool + Send + Sync>,
     active: AtomicBool,
     dirty: AtomicBool,
-    raf_pending: AtomicBool,
-    ui_pending: AtomicBool,
+    /// One render is in flight: waiting for VSync or for the UI task to run.
+    scheduled: AtomicBool,
+    /// Invalidates callbacks from a previous active/inactive transition.
+    generation: AtomicU64,
 }
 
 impl RenderScheduler {
     fn new(
         vsync: VsyncObserver,
         foreground: Arc<AtomicBool>,
-        render: Box<dyn Fn(i64) + Send + Sync>,
+        render: Box<dyn Fn(i64) -> bool + Send + Sync>,
     ) -> Arc<Self> {
         Arc::new(Self {
             vsync,
@@ -82,8 +84,8 @@ impl RenderScheduler {
             render,
             active: AtomicBool::new(false),
             dirty: AtomicBool::new(false),
-            raf_pending: AtomicBool::new(false),
-            ui_pending: AtomicBool::new(false),
+            scheduled: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -91,62 +93,81 @@ impl RenderScheduler {
         if self.active.swap(active, Ordering::AcqRel) == active {
             return;
         }
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        self.dirty.store(false, Ordering::Release);
+        self.scheduled.store(false, Ordering::Release);
         if active {
             self.schedule();
-        } else {
-            self.dirty.store(false, Ordering::Release);
         }
     }
 
     fn schedule(self: &Arc<Self>) {
         self.dirty.store(true, Ordering::Release);
-        if !self.active.load(Ordering::Acquire) || self.raf_pending.swap(true, Ordering::AcqRel) {
+        if !self.active.load(Ordering::Acquire) || self.scheduled.swap(true, Ordering::AcqRel) {
             return;
         }
+        let generation = self.generation.load(Ordering::Acquire);
         let scheduler = Arc::clone(self);
         if !self
             .vsync
-            .request_animation_frame(move |target| scheduler.on_vsync(target))
+            .request_animation_frame(move |target| scheduler.on_vsync(generation, target))
+            && self.generation.load(Ordering::Acquire) == generation
         {
-            self.raf_pending.store(false, Ordering::Release);
+            self.scheduled.store(false, Ordering::Release);
         }
     }
 
-    fn on_vsync(self: &Arc<Self>, target: i64) {
-        self.raf_pending.store(false, Ordering::Release);
+    fn on_vsync(self: &Arc<Self>, generation: u64, target: i64) {
+        if self.generation.load(Ordering::Acquire) != generation {
+            return;
+        }
         if !self.active.load(Ordering::Acquire)
             || target <= 0
             || !self.dirty.swap(false, Ordering::AcqRel)
         {
+            self.scheduled.store(false, Ordering::Release);
+            self.schedule_if_dirty();
             return;
         }
-        // UI is still busy: drop this refresh and request the next one.
-        if self.ui_pending.swap(true, Ordering::AcqRel) {
+        // Keep `scheduled` set while the UI task is pending, so another grid
+        // update cannot queue a second render.
+        let scheduler = Arc::clone(self);
+        let task: Box<dyn FnOnce() + Send> =
+            Box::new(move || scheduler.render_scheduled(generation, target));
+        post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
+    }
+
+    fn render_scheduled(self: &Arc<Self>, generation: u64, target: i64) {
+        if self.generation.load(Ordering::Acquire) != generation {
+            return;
+        }
+        if !self.active.load(Ordering::Acquire) {
+            self.scheduled.store(false, Ordering::Release);
+            return;
+        }
+        if expired(target) {
+            self.scheduled.store(false, Ordering::Release);
             self.dirty.store(true, Ordering::Release);
             self.schedule();
             return;
         }
-        let scheduler = Arc::clone(self);
-        let task: Box<dyn FnOnce() + Send> = Box::new(move || {
-            scheduler.ui_pending.store(false, Ordering::Release);
-            if !scheduler.active.load(Ordering::Acquire) {
-                return;
-            }
-            if expired(target) {
-                scheduler.dirty.store(true, Ordering::Release);
-                scheduler.schedule();
-                return;
-            }
-            if !scheduler.foreground.load(Ordering::Acquire) {
-                scheduler.dirty.store(true, Ordering::Release);
-                return;
-            }
-            (scheduler.render)(target);
-            if scheduler.dirty.load(Ordering::Acquire) {
-                scheduler.schedule();
-            }
-        });
-        post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
+        if !self.foreground.load(Ordering::Acquire) {
+            self.scheduled.store(false, Ordering::Release);
+            self.dirty.store(true, Ordering::Release);
+            return;
+        }
+        let presented = (self.render)(target);
+        self.scheduled.store(false, Ordering::Release);
+        if !presented {
+            self.dirty.store(true, Ordering::Release);
+        }
+        self.schedule_if_dirty();
+    }
+
+    fn schedule_if_dirty(self: &Arc<Self>) {
+        if self.dirty.load(Ordering::Acquire) {
+            self.schedule();
+        }
     }
 }
 
@@ -196,9 +217,17 @@ impl ViewFactory for NativeTerminalView {
             host.vsync.clone(),
             Arc::clone(&host.foreground),
             Box::new(move |deadline| {
-                if let Err(error) = target.dispatch(|view| view.frame(deadline)) {
+                let presented = Cell::new(false);
+                let result = target.dispatch(|view| {
+                    let shown = view.frame(deadline)?;
+                    presented.set(shown);
+                    Ok(())
+                });
+                if let Err(error) = result {
                     eprintln!("Terminal frame: {error:#}");
+                    return false;
                 }
+                presented.get()
             }),
         );
         host.register(&frames);
@@ -234,9 +263,9 @@ impl NativeTerminalView {
         self.platform.focus();
         Ok(())
     }
-    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<()> {
+    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<bool> {
         if expired(deadline) || state.id == 0 {
-            return Ok(());
+            return Ok(true);
         }
         ensure!(
             state.attached && state.viewport.width != 0 && state.viewport.height != 0,
@@ -257,7 +286,7 @@ impl NativeTerminalView {
                 .renderer_retry
                 .is_some_and(|retry| now.duration_since(retry) < Duration::from_secs(1))
             {
-                return Ok(());
+                return Ok(false);
             }
             state.renderer_retry = Some(now);
             terminal.resize_viewport(&state.viewport)?;
@@ -266,11 +295,11 @@ impl NativeTerminalView {
             .platform
             .render(&self.handle, &state.viewport, deadline, force)?
         {
-            return Ok(());
+            return Ok(false);
         }
         if expired(deadline) {
             terminal.invalidate_frame();
-            return Ok(());
+            return Ok(true);
         }
         if self.platform.uses_osr()
             && let Err(error) = self.handle.swap_back()
@@ -283,18 +312,22 @@ impl NativeTerminalView {
             state.needs_focus = false;
             state.focus_pending = true;
         }
-        Ok(())
+        Ok(true)
     }
-    fn frame(&self, deadline: i64) -> Result<()> {
+    fn frame(&self, deadline: i64) -> Result<bool> {
         if expired(deadline) {
-            return Ok(());
+            return Ok(true);
         }
         let Ok(mut state) = self.state.try_borrow_mut() else {
-            return Ok(());
+            return Ok(false);
         };
-        if let Err(error) = self.render(&mut state, deadline, false) {
-            state.error = format!("{error:#}");
-        }
+        let presented = match self.render(&mut state, deadline, false) {
+            Ok(presented) => presented,
+            Err(error) => {
+                state.error = format!("{error:#}");
+                false
+            }
+        };
         // A busy grid simply retries next RAF. Emit only scalar changes.
         let scroll = state
             .terminal
@@ -317,7 +350,7 @@ impl NativeTerminalView {
         if focus {
             self.focus()?;
         }
-        Ok(())
+        Ok(presented)
     }
 }
 fn scroll_value(id: u32, scroll: NativeScrollState) -> Result<Value> {
