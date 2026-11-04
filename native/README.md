@@ -28,7 +28,12 @@ native/
   src/frame.rs                 平台无关的 cxx Viewport
   src/binding/vsync.rs         VSyncObserver 的安全 Rust 封装
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
-  src/native_terminal_view.rs  Rust terminal element、layout、props、invoke 和事件
+  src/native_terminal_view/
+    mod.rs                     NativeTerminalView 对象和模块导出
+    host.rs                    TerminalHost 与 view/scheduler 注册
+    render_scheduler.rs        VSync 按需渲染状态机
+    state.rs                   终端绑定、layout、焦点和错误状态
+    view.rs                    element 生命周期、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
   src/platform/
     mod.rs                     按目标平台选择适配器
