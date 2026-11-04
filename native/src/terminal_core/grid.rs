@@ -161,6 +161,7 @@ pub struct TerminalGrid {
     size: GridSize,
     revision: u64,
     reported_size: Arc<Mutex<GridSize>>,
+    on_change: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 impl TerminalGrid {
     pub(crate) fn new(size: GridSize, replies: WriterSender) -> Self {
@@ -178,18 +179,31 @@ impl TerminalGrid {
             size,
             revision: 1,
             reported_size,
+            on_change: None,
+        }
+    }
+    pub(crate) fn set_on_change(&mut self, callback: Option<Arc<dyn Fn() + Send + Sync>>) {
+        self.on_change = callback;
+    }
+    pub(super) fn changed(&mut self) {
+        self.revision += 1;
+        self.notify_change();
+    }
+    pub(super) fn notify_change(&self) {
+        if let Some(callback) = &self.on_change {
+            callback();
         }
     }
     pub fn advance(&mut self, bytes: &[u8]) {
         self.parser.advance(&mut self.term, bytes);
-        self.revision += 1;
+        self.changed();
     }
     pub fn resize(&mut self, size: GridSize) {
         if self.size != size {
             self.term.resize(size);
             *self.reported_size.lock().unwrap() = size;
             self.size = size;
-            self.revision += 1;
+            self.changed();
         }
     }
     pub fn size(&self) -> GridSize {

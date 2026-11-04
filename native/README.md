@@ -222,14 +222,13 @@ PtyDelegate（terminal_core/pty/delegate.rs）
 
 `binding/vsync.rs` 保存 module 和 Lynx VSync observer，对外只暴露安全的
 `VsyncObserver` 句柄；raw pointer、BTS task 和 N-API callback 都留在 binding 内。
-每个 `NativeTerminalView` 在 attach、绑定 session 和布局有效后激活自己的帧循环：
-UI 通过 `post_task_to_runtime` 让 BTS 请求下一帧，VSync 回调只把这个 view 的
-target deadline 投递到 UI，然后该 view 调用自己的 `frame(deadline)` 渲染并重新请求。
-每个循环同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 还没消费上一帧时，
-新的 VSync 回调直接丢弃并继续请求下一帧，不补帧、不排队。过期 deadline 同样丢弃。
-`on_runtime_detach`、view/extension 销毁会取消请求；后台只跳过 UI 渲染，
-保留每 view 的循环，避免丢失 foreground 恢复回调。
-Lynx 以 0 target 取消未完成的请求，旧循环不会重新启动。
+渲染是事件驱动的：terminal 网格更新、terminal-id 切换、layout/resize、attach 和
+foreground 恢复时调用 `schedule_render`。它通过绑定层请求一次与 VSync 同步的渲染，
+VSync 回调只把这个 view 的 target deadline 投递到 UI，再由该 view 调用自己的
+`frame(deadline)`。同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；
+UI 忙或 deadline 过期时直接丢弃，不补帧、不排队，也不维持常驻 RAF 循环。
+`on_runtime_detach`、view/extension 销毁会取消 pending 请求；后台保留 dirty 状态，
+foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成的请求。
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 `renderFrame` 保留为显式入口。
 原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。
@@ -240,6 +239,7 @@ async parser 只更新自己的网格；attach/layout/props 只更新状态，�
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
 Rust 测试在 `src/tests/vsync.rs`，覆盖安全封装下的请求、回调、detach 和重复请求拒绝。
+网格变更通知通过 `TerminalGrid::set_on_change` 传递到 view 的 `schedule_render`。
 `src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
 `../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。

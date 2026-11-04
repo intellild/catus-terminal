@@ -32,6 +32,7 @@ impl TerminalHandle {
     pub(crate) fn set_preedit(&self, text: &str) {
         *self.preedit.lock().unwrap() = text.to_owned();
         self.invalidate_frame();
+        self.session.core.notify_change();
     }
 
     // Called by OnLayoutChanged, or when binding a session to an already-laid-out view.

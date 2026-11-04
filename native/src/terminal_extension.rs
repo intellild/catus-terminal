@@ -7,6 +7,8 @@ use std::{
     },
 };
 
+use napi::sys::napi_env;
+
 use crate::{
     binding::{
         VsyncObserver,
@@ -40,11 +42,11 @@ impl Extension for TerminalExtension {
 
     fn on_view_create(&self, view: NonNull<LynxView>) {
         let host = self.host.get_or_init(|| {
-            Box::new(TerminalHost {
-                view: view.as_ptr() as usize,
-                vsync: self.vsync.clone(),
-                foreground: Arc::clone(&self.foreground),
-            })
+            Box::new(TerminalHost::new(
+                view.as_ptr() as usize,
+                self.vsync.clone(),
+                Arc::clone(&self.foreground),
+            ))
         });
         // SAFETY: Lynx creates native views on UI; the extension owns the
         // immutable factory context throughout this window's lifetime.
@@ -53,8 +55,17 @@ impl Extension for TerminalExtension {
         }
     }
 
+    fn on_runtime_attach(&self, _env: napi_env) {
+        if let Some(host) = self.host.get() {
+            host.schedule_all();
+        }
+    }
+
     fn on_enter_foreground(&self) {
         self.foreground.store(true, Ordering::Release);
+        if let Some(host) = self.host.get() {
+            host.schedule_all();
+        }
     }
 
     fn on_enter_background(&self) {

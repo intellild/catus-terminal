@@ -59,7 +59,7 @@ impl TerminalGrid {
         self.term
             .scroll_display(Scroll::Delta(target as i32 - before as i32));
         if self.term.grid().display_offset() != before {
-            self.revision += 1;
+            self.changed();
         }
     }
     pub fn scroll_multiplier(&self, modifiers: MouseModifiers) -> f64 {
@@ -78,7 +78,7 @@ impl TerminalGrid {
             self.term.selection.take().is_some() || self.term.grid().display_offset() != 0;
         self.term.scroll_display(Scroll::Bottom);
         if changed {
-            self.revision += 1;
+            self.changed();
         }
     }
 
@@ -114,7 +114,7 @@ impl TerminalGrid {
         let before = self.term.grid().display_offset();
         self.term.scroll_display(Scroll::Delta(lines));
         if self.term.grid().display_offset() != before {
-            self.revision += 1;
+            self.changed();
         }
         None
     }
@@ -169,12 +169,12 @@ impl TerminalGrid {
                     _ => SelectionType::Simple,
                 };
                 self.term.selection = Some(Selection::new(kind, point, side));
-                self.revision += 1;
+                self.changed();
             }
             PointerAction::Move | PointerAction::Up => {
                 if let Some(selection) = &mut self.term.selection {
                     selection.update(point, side);
-                    self.revision += 1;
+                    self.changed();
                 }
             }
             PointerAction::Cancel => {}

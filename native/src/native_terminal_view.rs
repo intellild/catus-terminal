@@ -14,7 +14,7 @@ use anyhow::{Context, Result, ensure};
 use std::{
     cell::RefCell,
     sync::{
-        Arc,
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -24,18 +24,53 @@ pub(crate) struct TerminalHost {
     pub(crate) view: usize,
     pub(crate) vsync: VsyncObserver,
     pub(crate) foreground: Arc<AtomicBool>,
+    schedulers: Mutex<Vec<Weak<RenderScheduler>>>,
 }
 
-struct ViewFrameLoop {
+impl TerminalHost {
+    pub(crate) fn new(view: usize, vsync: VsyncObserver, foreground: Arc<AtomicBool>) -> Self {
+        Self {
+            view,
+            vsync,
+            foreground,
+            schedulers: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn register(&self, scheduler: &Arc<RenderScheduler>) {
+        self.schedulers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(Arc::downgrade(scheduler));
+    }
+
+    pub(crate) fn schedule_all(&self) {
+        let schedulers: Vec<_> = {
+            let mut schedulers = self
+                .schedulers
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            schedulers.retain(|scheduler| scheduler.strong_count() > 0);
+            schedulers.iter().filter_map(Weak::upgrade).collect()
+        };
+        for scheduler in schedulers {
+            scheduler.schedule();
+        }
+    }
+}
+
+/// Coalesces grid/state changes into one VSync-synchronized render.
+struct RenderScheduler {
     vsync: VsyncObserver,
     foreground: Arc<AtomicBool>,
     render: Box<dyn Fn(i64) + Send + Sync>,
     active: AtomicBool,
-    requested: AtomicBool,
+    dirty: AtomicBool,
+    raf_pending: AtomicBool,
     ui_pending: AtomicBool,
 }
 
-impl ViewFrameLoop {
+impl RenderScheduler {
     fn new(
         vsync: VsyncObserver,
         foreground: Arc<AtomicBool>,
@@ -46,7 +81,8 @@ impl ViewFrameLoop {
             foreground,
             render,
             active: AtomicBool::new(false),
-            requested: AtomicBool::new(false),
+            dirty: AtomicBool::new(false),
+            raf_pending: AtomicBool::new(false),
             ui_pending: AtomicBool::new(false),
         })
     }
@@ -56,46 +92,61 @@ impl ViewFrameLoop {
             return;
         }
         if active {
-            self.request();
+            self.schedule();
+        } else {
+            self.dirty.store(false, Ordering::Release);
         }
     }
 
-    fn request(self: &Arc<Self>) {
-        if !self.active.load(Ordering::Acquire) || self.requested.swap(true, Ordering::AcqRel) {
+    fn schedule(self: &Arc<Self>) {
+        self.dirty.store(true, Ordering::Release);
+        if !self.active.load(Ordering::Acquire) || self.raf_pending.swap(true, Ordering::AcqRel) {
             return;
         }
-        let loop_ = Arc::clone(self);
+        let scheduler = Arc::clone(self);
         if !self
             .vsync
-            .request_animation_frame(move |target| loop_.on_frame(target))
+            .request_animation_frame(move |target| scheduler.on_vsync(target))
         {
-            self.requested.store(false, Ordering::Release);
+            self.raf_pending.store(false, Ordering::Release);
         }
     }
 
-    fn on_frame(self: &Arc<Self>, target: i64) {
-        self.requested.store(false, Ordering::Release);
-        if !self.active.load(Ordering::Acquire) || target <= 0 {
+    fn on_vsync(self: &Arc<Self>, target: i64) {
+        self.raf_pending.store(false, Ordering::Release);
+        if !self.active.load(Ordering::Acquire)
+            || target <= 0
+            || !self.dirty.swap(false, Ordering::AcqRel)
+        {
             return;
         }
-        // Drop this refresh if UI has not consumed the previous one.
+        // UI is still busy: drop this refresh and request the next one.
         if self.ui_pending.swap(true, Ordering::AcqRel) {
-            self.request();
+            self.dirty.store(true, Ordering::Release);
+            self.schedule();
             return;
         }
-        let loop_ = Arc::clone(self);
+        let scheduler = Arc::clone(self);
         let task: Box<dyn FnOnce() + Send> = Box::new(move || {
-            loop_.ui_pending.store(false, Ordering::Release);
-            if !loop_.active.load(Ordering::Acquire) || expired(target) {
+            scheduler.ui_pending.store(false, Ordering::Release);
+            if !scheduler.active.load(Ordering::Acquire) {
                 return;
             }
-            if !loop_.foreground.load(Ordering::Acquire) {
+            if expired(target) {
+                scheduler.dirty.store(true, Ordering::Release);
+                scheduler.schedule();
                 return;
             }
-            (loop_.render)(target);
+            if !scheduler.foreground.load(Ordering::Acquire) {
+                scheduler.dirty.store(true, Ordering::Release);
+                return;
+            }
+            (scheduler.render)(target);
+            if scheduler.dirty.load(Ordering::Acquire) {
+                scheduler.schedule();
+            }
         });
         post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
-        self.request();
     }
 }
 
@@ -133,14 +184,15 @@ impl Default for State {
 pub(crate) struct NativeTerminalView {
     handle: Handle,
     platform: Box<TerminalPlatform>,
-    frames: Arc<ViewFrameLoop>,
+    frames: Arc<RenderScheduler>,
+    notify: Arc<dyn Fn() + Send + Sync>,
     state: RefCell<State>,
 }
 impl ViewFactory for NativeTerminalView {
     type Context = TerminalHost;
     fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
         let platform = create_terminal_platform(host.view, &handle)?;
-        let frames = ViewFrameLoop::new(
+        let frames = RenderScheduler::new(
             host.vsync.clone(),
             Arc::clone(&host.foreground),
             Box::new(move |deadline| {
@@ -149,10 +201,16 @@ impl ViewFactory for NativeTerminalView {
                 }
             }),
         );
+        host.register(&frames);
+        let notify: Arc<dyn Fn() + Send + Sync> = {
+            let frames = Arc::clone(&frames);
+            Arc::new(move || frames.schedule())
+        };
         Ok(Self {
             handle,
             platform,
             frames,
+            notify,
             state: RefCell::new(State::default()),
         })
     }
@@ -167,6 +225,9 @@ impl NativeTerminalView {
                 && state.viewport.width != 0
                 && state.viewport.height != 0,
         );
+    }
+    fn schedule_render(&self) {
+        self.frames.schedule();
     }
     fn focus(&self) -> Result<()> {
         self.handle.request_focus()?;
@@ -284,6 +345,7 @@ impl NativeView for NativeTerminalView {
             terminal.invalidate_frame();
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_detach(&self) -> Result<()> {
@@ -297,6 +359,9 @@ impl NativeView for NativeTerminalView {
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
+        if let Some(terminal) = &state.terminal {
+            terminal.set_on_change(None);
+        }
         state.terminal = None;
         state.id = 0;
         self.update_frames(&state);
@@ -336,6 +401,7 @@ impl NativeView for NativeTerminalView {
             state.error = format!("{error:#}");
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_properties_changed(&self, attrs: &Value, _events: &Value) -> Result<()> {
@@ -356,6 +422,9 @@ impl NativeView for NativeTerminalView {
         }
         state.last_scroll = None;
         state.renderer_retry = None;
+        if let Some(terminal) = &state.terminal {
+            terminal.set_on_change(None);
+        }
         if id == 0 {
             self.platform.clear_terminal();
             state.terminal = None;
@@ -373,6 +442,7 @@ impl NativeView for NativeTerminalView {
             })();
             match binding {
                 Ok(terminal) => {
+                    terminal.set_on_change(Some(Arc::clone(&self.notify)));
                     state.terminal = Some(terminal);
                     state.id = id;
                 }
@@ -382,6 +452,7 @@ impl NativeView for NativeTerminalView {
             }
         }
         self.update_frames(&state);
+        self.schedule_render();
         Ok(())
     }
     fn on_focus_changed(&self, focused: bool, leaf: bool) -> Result<()> {
@@ -455,6 +526,11 @@ impl NativeView for NativeTerminalView {
 }
 impl Drop for NativeTerminalView {
     fn drop(&mut self) {
+        if let Ok(state) = self.state.try_borrow()
+            && let Some(terminal) = &state.terminal
+        {
+            terminal.set_on_change(None);
+        }
         self.frames.set_active(false);
     }
 }

@@ -132,26 +132,28 @@ NSRunLoop”这一具体问题。检索到的
 ## 当前 native VSync 帧源
 
 Lynxtron 0.0.31 恢复 macOS RAF 后，终端不再依赖 JS RAF 或 main 进程桥。每个
-native terminal view 拥有自己的帧循环：
+native terminal view 按需 schedule 一帧：
 
 ```text
 NativeTerminalView (UI)
-  attach / terminal-id / layout → 自己的帧循环 set_active(true)
-       ↓ binding::VsyncObserver 安全封装（内部 post_task_to_runtime）
+  网格更新 / terminal-id 切换 / resize / attach / foreground
+       → schedule_render → binding::VsyncObserver 安全封装
+       ↓ 内部 post_task_to_runtime
 BTS
   lynx_vsync_observer_request_animation_frame(observer, view_id, callback, request)
        ↓ callback（BTS，target deadline）
-  post_task_to_ui(boxed render) + 立即为这个 view 请求下一帧
+  post_task_to_ui(boxed render)
        ↓ UI
   view.frame(target) → session renderer → IOSurface → wgpu → SwapBack
 ```
 
-`binding/vsync.rs` 只在内部共享 module 和 observer；每个 view 自己请求、自己渲染。
-同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；UI 忙时新回调直接丢弃并继续
-请求下一帧，过期 deadline 也直接丢弃。没有全局帧回调注册、JS 帧驱动、帧 ID、broadcast
-或应用维护的帧队列。
-`on_runtime_detach`、view/extension 销毁会取消请求；后台保留循环但跳过 UI 渲染；Lynx 以 0 target
-取消未完成请求，旧循环不会重新启动。`renderFrame` 保留为显式入口。
+`binding/vsync.rs` 只在内部共享 module 和 observer；每个 view 在内容变化时
+`schedule_render`，不会常驻请求 RAF。同一 view 最多只有一个 VSync 请求和一个待处理
+UI 渲染；UI 忙或过期 deadline 直接丢弃，不补帧、不排队。没有全局帧回调注册、
+JS 帧驱动、帧 ID、broadcast 或应用维护的帧队列。
+`on_runtime_detach`、view/extension 销毁会取消请求；后台保留 dirty 状态但跳过 UI 渲染，
+foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成请求。
+`renderFrame` 保留为显式入口。
 deadline 直接使用 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 
 ## 历史：JS RAF 适配器（0.0.28）
