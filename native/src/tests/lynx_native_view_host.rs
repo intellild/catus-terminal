@@ -45,6 +45,7 @@ thread_local! {
     pub(super) static LIVE_VIEWS: Cell<usize> = const { Cell::new(0) };
     pub(super) static EVENTS: RefCell<Vec<(String, Value)>> = const { RefCell::new(Vec::new()) };
     pub(super) static REPLIES: RefCell<Vec<(i32, Value)>> = const { RefCell::new(Vec::new()) };
+    pub(super) static PRESENTED: Cell<Option<(i32, i32, bool, usize)>> = const { Cell::new(None) };
 }
 pub(super) unsafe fn callbacks(raw: *mut RawView) -> (Callbacks, *mut c_void) {
     let host = unsafe { &*raw.cast::<Host>() };
@@ -142,16 +143,15 @@ unsafe extern "C" fn lynx_native_view_request_focus(_raw: *mut RawView) {}
 #[unsafe(no_mangle)]
 unsafe extern "C" fn lynx_native_view_mark_dirty(_raw: *mut RawView) {}
 #[unsafe(no_mangle)]
-unsafe extern "C" fn lynx_native_view_swap_back(_raw: *mut RawView) -> bool {
-    true
-}
-#[unsafe(no_mangle)]
-unsafe extern "C" fn lynx_native_view_acquire_surface(
+unsafe extern "C" fn lynx_native_view_present_surface(
     _raw: *mut RawView,
-    _width: i32,
-    _height: i32,
-) -> *mut RawSurface {
-    std::ptr::null_mut()
+    width: i32,
+    height: i32,
+    transform: *const f32,
+    handle: *mut RawSurface,
+) -> bool {
+    PRESENTED.set(Some((width, height, transform.is_null(), handle as usize)));
+    true
 }
 #[unsafe(no_mangle)]
 unsafe extern "C" fn lynx_view_get_native_window(_raw: *mut LynxView) -> *mut c_void {

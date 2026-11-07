@@ -46,15 +46,7 @@ impl MacTerminalView {
         if !self.uses_osr() {
             return self.render_native(deadline, force);
         }
-        let surface = handle.acquire_surface(viewport.width, viewport.height)?;
-        // SAFETY: On macOS the SDK surface handle is IOSurfaceRef. GPU work
-        // completes inside render_osr, before this borrowed buffer is returned.
-        unsafe {
-            self.render_osr(
-                &*surface.as_ptr().cast::<objc2_io_surface::IOSurfaceRef>(),
-                deadline,
-            )
-        }
+        self.render_osr(handle, viewport, deadline)
     }
     pub(crate) fn motion_event(&self, handle: &Handle, event: &MotionEvent) -> Result<()> {
         if event.kind == MotionKind::Down {

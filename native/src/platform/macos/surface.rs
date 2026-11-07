@@ -1,12 +1,46 @@
-//! Import a synchronously borrowed Lynx IOSurface into the shared wgpu device.
+//! Own and import the OSR IOSurface used by the shared wgpu device.
 use crate::frame::Viewport;
 use anyhow::{Context, Result, anyhow};
-use objc2_io_surface::IOSurfaceRef;
+use objc2_core_foundation::{CFDictionary, CFNumber, CFRetained};
+use objc2_io_surface::{
+    IOSurfaceRef, kIOSurfaceBytesPerElement, kIOSurfaceBytesPerRow, kIOSurfaceHeight,
+    kIOSurfacePixelFormat, kIOSurfaceWidth,
+};
 use objc2_metal::{
     MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
     MTLTextureUsage,
 };
-/// Draw a supplied grid into a borrowed IOSurface, without accessing a session,
+
+/// Create a Metal-shareable BGRA8 IOSurface. Dimensions are physical pixels,
+/// matching the layout Lynx expects from `PresentSurface`.
+pub(crate) fn create_surface(width: u32, height: u32) -> Result<CFRetained<IOSurfaceRef>> {
+    let bytes_per_element = 4;
+    let bytes_per_row = (width * bytes_per_element).div_ceil(256) * 256;
+    let values = [
+        CFNumber::new_i64(width.into()),
+        CFNumber::new_i64(height.into()),
+        CFNumber::new_i64(bytes_per_element.into()),
+        CFNumber::new_i64(bytes_per_row.into()),
+        CFNumber::new_i64(u32::from_be_bytes(*b"BGRA").into()),
+    ];
+    // IOSurface keys are CFStrings; numeric layout values are CFNumbers.
+    let properties = CFDictionary::from_slices(
+        &unsafe {
+            [
+                kIOSurfaceWidth,
+                kIOSurfaceHeight,
+                kIOSurfaceBytesPerElement,
+                kIOSurfaceBytesPerRow,
+                kIOSurfacePixelFormat,
+            ]
+        },
+        &values.iter().map(|value| &**value).collect::<Vec<_>>(),
+    );
+    unsafe { IOSurfaceRef::new(properties.as_opaque()) }
+        .with_context(|| format!("Create {width}x{height} terminal IOSurface"))
+}
+
+/// Draw a supplied grid into an IOSurface, without accessing a session,
 /// PTY or native view. Returns false when the frame is expired or contended.
 ///
 /// # Safety
@@ -41,7 +75,7 @@ pub(crate) unsafe fn import_surface(
         || surface.bytes_per_element() != 4
     {
         return Err(anyhow!(
-            "Unexpected Lynx IOSurface dimensions or pixel layout"
+            "Unexpected OSR IOSurface dimensions or pixel layout"
         ));
     }
     let raw = objc2::rc::autoreleasepool(|_| {
@@ -61,7 +95,7 @@ pub(crate) unsafe fn import_surface(
         device
             .raw_device()
             .newTextureWithDescriptor_iosurface_plane(&descriptor, surface, 0)
-            .context("Metal could not import the Lynx IOSurface")
+            .context("Metal could not import the OSR IOSurface")
     })?;
     unsafe { import_texture(device, raw, viewport) }
 }
