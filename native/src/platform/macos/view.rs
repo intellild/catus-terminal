@@ -343,7 +343,7 @@ impl MacTerminalView {
             .as_ref()
             .context("Terminal is not bound")?
             .clone();
-        let frame = self.osr_surfaces.borrow_mut().next(viewport)?;
+        let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
         let rendered = unsafe { terminal.render_surface(frame.surface(), deadline)? };
         if !rendered {
             return Ok(false);
@@ -359,6 +359,7 @@ impl MacTerminalView {
             terminal.invalidate_frame();
             return Err(error);
         }
+        self.osr_surfaces.borrow_mut().commit(frame.index());
         Ok(true)
     }
     fn update_cursor(&self, terminal: &TerminalHandle) {

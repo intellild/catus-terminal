@@ -318,7 +318,9 @@ attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期�
 `use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
 创建时窗口尚未就绪的自动选择会在后续 attach/layout 重新判断，窗口出现后切换到嵌入模式。
 OSR 才启用 `IsSurfaceEnabled()`。平台层按物理像素维护两个自建 IOSurface
-（BGRA8、Metal 可导入），每帧轮换一个作为渲染目标，不再借用 Lynx 的 back buffer。
+（BGRA8、Metal 可导入）：一块交给 Lynx 显示，另一块作为渲染目标，present 成功后才交换
+角色；失败或超时的帧继续写同一块目标，不触碰正在显示的 surface，也不再借用 Lynx 的
+back buffer。
 会话层检查锁忙和 idle revision，准备网格快照后调用公共
 `render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
 该函数只负责目标校验、纹理导入及绘制，不读取 PTY 或 session。Rust 检查尺寸和
