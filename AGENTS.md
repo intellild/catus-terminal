@@ -101,7 +101,9 @@
   callbacks while UI is busy or the deadline expired. Do not add continuous JS or
   native RAF loops, global frame dispatch, frame queues, broadcasts or frame IDs.
 - Drop expired or contended frames. Wait for submitted GPU work before returning
-  borrowed Lynx buffers, and present only completed frames within their deadline.
+  borrowed platform buffers or presenting owned OSR surfaces, and present only
+  completed frames within their deadline. Present owned surfaces through
+  `Handle::present_surface` so Lynx marks the view dirty.
 - Share the GPU device and glyph atlas globally. Hold the shared glyph lock
   through upload, submission and GPU completion. Cache invalidation must affect
   all renderers; closing or rebinding a view must not clear the atlas.
@@ -136,6 +138,11 @@ Use pnpm and the Node.js versions declared in `package.json`.
 - E2E defaults to windowless mode with isolated configuration and a fake PTY.
   Close existing Catus apps first. macOS Metal and an awake display are required;
   locked-screen/displayless CI is not verified.
+- `pnpm build:native` only refreshes `native/dist`. `pnpm build` copies it to
+  `dist/desktop/.lynxtron/native/`, which is what the app and direct
+  `pnpm exec rstest` E2E runs load. After a native-only build, run `pnpm build`
+  (or use `pnpm test:e2e`, which does the full build) before trusting runtime
+  results; otherwise the test exercises the previous binary.
 - A clean `pnpm dev` start logs no `snapshotPatchApply failed` / `Snapshot not found`.
   If it does, an MTS-rendered module imports `effect`: move the component that needs
   it into a BTS-only module and import it only from a `background-only` region.
