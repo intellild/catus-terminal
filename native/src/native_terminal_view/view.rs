@@ -108,10 +108,8 @@ impl NativeTerminalView {
         {
             return Ok(false);
         }
-        if expired(deadline) {
-            terminal.invalidate_frame();
-            return Ok(true);
-        }
+        // Platform rendering presents only frames that are still within their
+        // deadline, so a successful return is already the final word.
         state.error.clear();
         if state.needs_focus {
             state.needs_focus = false;

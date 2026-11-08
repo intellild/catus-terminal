@@ -18,6 +18,7 @@ pub struct MacTerminalView {
     input: Retained<InputView>,
     state: Rc<InputState>,
     layer: Retained<CAMetalLayer>,
+    layer_configured: Cell<bool>,
     terminal: Rc<RefCell<Option<TerminalHandle>>>,
     osr_surfaces: RefCell<OsrSurfaces>,
     context: RefCell<Option<Retained<NSTextInputContext>>>,
@@ -84,6 +85,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
         input,
         state,
         layer,
+        layer_configured: Cell::new(false),
         terminal,
         osr_surfaces: RefCell::new(OsrSurfaces::default()),
         context: RefCell::new(None),
@@ -321,13 +323,21 @@ impl MacTerminalView {
         if !force && !self.is_presentable() {
             return Ok(false);
         }
-        let binding = self.terminal.borrow();
-        let terminal = binding.as_ref().context("Terminal is not bound")?;
-        self.update_overlay(terminal);
-        let rendered =
-            unsafe { terminal.render_layer(Retained::as_ptr(&self.layer) as usize, deadline)? };
+        let terminal = self
+            .terminal
+            .borrow()
+            .as_ref()
+            .context("Terminal is not bound")?
+            .clone();
+        self.update_overlay(&terminal);
+        let rendered = super::terminal::render_layer(
+            &terminal,
+            &self.layer,
+            &self.layer_configured,
+            deadline,
+        )?;
         if rendered {
-            self.update_cursor(terminal);
+            self.update_cursor(&terminal);
         }
         Ok(rendered)
     }
