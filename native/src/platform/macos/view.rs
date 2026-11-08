@@ -328,23 +328,16 @@ impl MacTerminalView {
         if !force && !self.is_presentable() {
             return Ok(RenderOutcome::Retry);
         }
-        let terminal = self
-            .terminal
-            .borrow()
-            .as_ref()
-            .context("Terminal is not bound")?
-            .clone();
-        let outcome = super::terminal::render_layer(
+        let terminal = self.bound_terminal()?;
+        match super::terminal::render_layer(
             &terminal,
             &self.layer,
             &self.layer_configured,
             deadline,
-        )?;
-        if outcome == RenderOutcome::Presented {
-            self.update_overlay(&terminal);
-            self.update_cursor(&terminal);
+        )? {
+            RenderOutcome::Presented => Ok(self.finish_presentation(&terminal)),
+            outcome => Ok(outcome),
         }
-        Ok(outcome)
     }
     /// Render the bound session into an owned IOSurface and hand it to Lynx.
     /// The surface stays valid through presentation because the pool keeps a
@@ -357,12 +350,7 @@ impl MacTerminalView {
     ) -> Result<RenderOutcome> {
         self.assert_ui();
         // Release the terminal borrow before calling into Lynx.
-        let terminal = self
-            .terminal
-            .borrow()
-            .as_ref()
-            .context("Terminal is not bound")?
-            .clone();
+        let terminal = self.bound_terminal()?;
         let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
         match super::osr::render_surface(&terminal, frame.surface(), deadline)? {
             SnapshotOutcome::Drawn => {}
@@ -373,7 +361,6 @@ impl MacTerminalView {
             terminal.invalidate_frame();
             return Ok(RenderOutcome::Retry);
         }
-        self.update_cursor(&terminal);
         if let Err(error) =
             handle.present_surface(viewport.width, viewport.height, None, frame.handle())
         {
@@ -381,7 +368,19 @@ impl MacTerminalView {
             return Err(error);
         }
         self.osr_surfaces.borrow_mut().commit(frame.index());
-        Ok(RenderOutcome::Presented)
+        Ok(self.finish_presentation(&terminal))
+    }
+    fn bound_terminal(&self) -> Result<TerminalHandle> {
+        self.terminal
+            .borrow()
+            .as_ref()
+            .context("Terminal is not bound")
+            .cloned()
+    }
+    fn finish_presentation(&self, terminal: &TerminalHandle) -> RenderOutcome {
+        self.update_overlay(terminal);
+        self.update_cursor(terminal);
+        RenderOutcome::Presented
     }
     fn update_cursor(&self, terminal: &TerminalHandle) {
         if let Ok(cursor) = terminal.cursor_rect() {
