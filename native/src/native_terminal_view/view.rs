@@ -23,7 +23,6 @@ use super::{
 impl ViewFactory for NativeTerminalView {
     type Context = TerminalHost;
     fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
-        let platform = create_terminal_platform(host.view, &handle)?;
         let frames = RenderScheduler::new(
             host.vsync.clone(),
             Arc::clone(&host.foreground),
@@ -40,11 +39,12 @@ impl ViewFactory for NativeTerminalView {
                 outcome.get()
             }),
         );
-        host.register(&frames);
         let notify: Arc<dyn Fn() + Send + Sync> = {
             let frames = Arc::clone(&frames);
             Arc::new(move || frames.schedule())
         };
+        let platform = create_terminal_platform(host.view, &handle, Arc::clone(&notify))?;
+        host.register(&frames);
         Ok(Self {
             handle,
             platform,

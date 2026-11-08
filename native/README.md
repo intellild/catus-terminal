@@ -234,7 +234,8 @@ VSync 回调只把这个 view 的 target deadline 投递到 UI，再由该 view 
 `frame(deadline)`。同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；
 UI 忙或 deadline 过期时直接丢弃，不补帧、不排队，也不维持常驻 RAF 循环。
 渲染结果区分 presented / idle / retry：idle 直接清 dirty、不再重排 VSync；
-retry 才保留 dirty 并请求下一帧。
+retry 才保留 dirty 并请求下一帧。嵌入模式在窗口不可见、最小化或被遮挡时返回 idle，
+并观察 NSWindow 的 occlusion / deminiaturize / expose 通知，窗口重新可见后重新 schedule。
 `on_runtime_detach`、view/extension 销毁会取消 pending 请求；后台保留 dirty 状态，
 foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成的请求。
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。

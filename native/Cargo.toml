@@ -31,7 +31,7 @@ async-trait = "0.1"
 wgpu = { version = "=30.0.1", default-features = false, features = ["metal"], optional = true }
 objc2 = { version = "0.6", optional = true }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSGraphicsContext", "NSView", "NSResponder", "NSWindow", "NSEvent", "NSTextInputClient", "NSTextInputContext", "NSPasteboard", "NSTrackingArea", "objc2-core-foundation", "objc2-quartz-core"], optional = true }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSAttributedString", "NSGeometry", "NSObject", "NSRange"], optional = true }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSAttributedString", "NSGeometry", "NSNotification", "NSObject", "NSRange"], optional = true }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-metal", "objc2-core-graphics"], optional = true }
 objc2-metal = { version = "0.3", default-features = false, features = ["MTLDevice", "MTLTexture", "MTLAllocation", "MTLResource", "MTLPixelFormat", "objc2-io-surface"], optional = true }
 
