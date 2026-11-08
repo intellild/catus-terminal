@@ -334,7 +334,6 @@ impl MacTerminalView {
             .as_ref()
             .context("Terminal is not bound")?
             .clone();
-        self.update_overlay(&terminal);
         let outcome = super::terminal::render_layer(
             &terminal,
             &self.layer,
@@ -342,6 +341,7 @@ impl MacTerminalView {
             deadline,
         )?;
         if outcome == RenderOutcome::Presented {
+            self.update_overlay(&terminal);
             self.update_cursor(&terminal);
         }
         Ok(outcome)
