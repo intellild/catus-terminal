@@ -4,6 +4,7 @@ use crate::terminal_session::acquire_terminal;
 use crate::terminal_session::{
     TerminalSessionCommand, close_terminal_session, create_terminal_session,
 };
+use crate::terminal_view::{RenderOutcome, SnapshotOutcome};
 use crate::{frame::Viewport, platform::test_support::Target, renderer::test_support::TEST_LOCK};
 use std::time::{Duration, Instant};
 
@@ -60,8 +61,11 @@ fn layout(handle: &TerminalHandle, viewport: Viewport) -> Target {
     Target::new(viewport)
 }
 fn render(handle: &TerminalHandle, target: &Target) -> bool {
-    // Target owns an IOSurface borrowed by the synchronous Rust render call.
-    unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() }
+    // Target owns the IOSurface used by this synchronous render call.
+    matches!(
+        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        SnapshotOutcome::Drawn
+    )
 }
 
 #[test]
@@ -87,6 +91,10 @@ fn pty_session_renders_updates_to_borrowed_framebuffer_and_skips_idle_frames() {
     );
     assert!(!handle.needs_frame().unwrap());
     assert!(!render(&handle, &target));
+    assert!(matches!(
+        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        SnapshotOutcome::Idle
+    ));
     assert_eq!(target.pixels(), ready);
     handle.write("update\r").unwrap();
     wait_text(&handle, "FAKE PTY UPDATED");
@@ -179,15 +187,24 @@ fn session_drops_expired_and_busy_frames_then_renders_the_latest_grid() {
     let target = layout(&handle, viewport);
     wait_text(&handle, "FAKE PTY READY");
     let initial = target.pixels();
-    assert!(!unsafe { handle.render_surface(target.surface(), 0).unwrap() });
+    assert!(matches!(
+        unsafe { handle.render_surface(target.surface(), 0).unwrap() },
+        SnapshotOutcome::Deferred
+    ));
     assert_eq!(target.pixels(), initial);
     assert!(handle.needs_frame().unwrap());
     let held = handle.session.rendering.lock().unwrap();
-    assert!(!unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() });
+    assert!(matches!(
+        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        SnapshotOutcome::Deferred
+    ));
     drop(held);
     handle.write("update\r").unwrap();
     wait_text(&handle, "FAKE PTY UPDATED");
-    assert!(unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() });
+    assert!(matches!(
+        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        SnapshotOutcome::Drawn
+    ));
     assert!(
         target
             .pixels()
@@ -258,21 +275,33 @@ fn metal_layer_drawable_uses_the_session_renderer_and_skips_idle_or_expired_fram
         let layer: Retained<CAMetalLayer> = msg_send![class!(CAMetalLayer), new];
         let _: () = msg_send![&*layer, setDrawableSize: CGSize::new(512., 256.)];
         let configured = Cell::new(false);
-        assert!(!super::render_layer(&handle, &layer, &configured, 0).unwrap());
+        assert_eq!(
+            super::render_layer(&handle, &layer, &configured, 0).unwrap(),
+            RenderOutcome::Retry
+        );
         assert!(
             !configured.get(),
             "an expired tick must not configure or draw"
         );
         assert!(handle.needs_frame().unwrap());
-        assert!(super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
+        assert_eq!(
+            super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap(),
+            RenderOutcome::Presented
+        );
         assert!(configured.get());
         assert!(!handle.needs_frame().unwrap());
-        assert!(!super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
+        assert_eq!(
+            super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap(),
+            RenderOutcome::Idle
+        );
         let cursor = handle.cursor_rect().unwrap();
         assert!(cursor.width > 0. && cursor.height > 0.);
         handle.write("update\r").unwrap();
         wait_text(&handle, "FAKE PTY UPDATED");
-        assert!(super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
+        assert_eq!(
+            super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap(),
+            RenderOutcome::Presented
+        );
     });
 }
 

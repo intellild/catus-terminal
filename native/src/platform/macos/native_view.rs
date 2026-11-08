@@ -6,6 +6,7 @@ use crate::{
     binding::types::{MotionKind, SignalKind},
     binding::{extension::LynxView, host},
     frame::Viewport,
+    terminal_view::RenderOutcome,
 };
 use anyhow::Result;
 
@@ -42,7 +43,7 @@ impl MacTerminalView {
         viewport: &Viewport,
         deadline: i64,
         force: bool,
-    ) -> Result<bool> {
+    ) -> Result<RenderOutcome> {
         if !self.uses_osr() {
             return self.render_native(deadline, force);
         }

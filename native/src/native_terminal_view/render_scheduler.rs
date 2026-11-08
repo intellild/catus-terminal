@@ -3,13 +3,15 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use crate::{binding::VsyncObserver, frame::expired, platform::post_task_to_ui};
+use crate::{
+    binding::VsyncObserver, frame::expired, platform::post_task_to_ui, terminal_view::RenderOutcome,
+};
 
 /// Coalesces grid/state changes into one VSync-synchronized render.
 pub(super) struct RenderScheduler {
     vsync: VsyncObserver,
     foreground: Arc<AtomicBool>,
-    render: Box<dyn Fn(i64) -> bool + Send + Sync>,
+    render: Box<dyn Fn(i64) -> RenderOutcome + Send + Sync>,
     active: AtomicBool,
     dirty: AtomicBool,
     /// One render is in flight: waiting for VSync or for the UI task to run.
@@ -22,7 +24,7 @@ impl RenderScheduler {
     pub(super) fn new(
         vsync: VsyncObserver,
         foreground: Arc<AtomicBool>,
-        render: Box<dyn Fn(i64) -> bool + Send + Sync>,
+        render: Box<dyn Fn(i64) -> RenderOutcome + Send + Sync>,
     ) -> Arc<Self> {
         Arc::new(Self {
             vsync,
@@ -102,9 +104,9 @@ impl RenderScheduler {
             self.dirty.store(true, Ordering::Release);
             return;
         }
-        let presented = (self.render)(target);
+        let outcome = (self.render)(target);
         self.scheduled.store(false, Ordering::Release);
-        if !presented {
+        if outcome == RenderOutcome::Retry {
             self.dirty.store(true, Ordering::Release);
         }
         self.schedule_if_dirty();

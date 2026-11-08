@@ -13,7 +13,7 @@ use crate::{
     frame::{Viewport, expired},
     platform::create_terminal_platform,
     terminal_session::acquire_terminal,
-    terminal_view::NativeScrollState,
+    terminal_view::{NativeScrollState, RenderOutcome},
 };
 
 use super::{
@@ -28,17 +28,16 @@ impl ViewFactory for NativeTerminalView {
             host.vsync.clone(),
             Arc::clone(&host.foreground),
             Box::new(move |deadline| {
-                let presented = Cell::new(false);
+                let outcome = Cell::new(RenderOutcome::Retry);
                 let result = target.dispatch(|view| {
-                    let shown = view.frame(deadline)?;
-                    presented.set(shown);
+                    outcome.set(view.frame(deadline)?);
                     Ok(())
                 });
                 if let Err(error) = result {
                     eprintln!("Terminal frame: {error:#}");
-                    return false;
+                    return RenderOutcome::Retry;
                 }
-                presented.get()
+                outcome.get()
             }),
         );
         host.register(&frames);
@@ -74,9 +73,9 @@ impl NativeTerminalView {
         self.platform.focus();
         Ok(())
     }
-    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<bool> {
+    fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<RenderOutcome> {
         if expired(deadline) || state.id == 0 {
-            return Ok(true);
+            return Ok(RenderOutcome::Idle);
         }
         ensure!(
             state.attached && state.viewport.width != 0 && state.viewport.height != 0,
@@ -97,16 +96,16 @@ impl NativeTerminalView {
                 .renderer_retry
                 .is_some_and(|retry| now.duration_since(retry) < Duration::from_secs(1))
             {
-                return Ok(false);
+                return Ok(RenderOutcome::Retry);
             }
             state.renderer_retry = Some(now);
             terminal.resize_viewport(&state.viewport)?;
         }
-        if !self
+        let outcome = self
             .platform
-            .render(&self.handle, &state.viewport, deadline, force)?
-        {
-            return Ok(false);
+            .render(&self.handle, &state.viewport, deadline, force)?;
+        if outcome != RenderOutcome::Presented {
+            return Ok(outcome);
         }
         // Platform rendering presents only frames that are still within their
         // deadline, so a successful return is already the final word.
@@ -115,20 +114,20 @@ impl NativeTerminalView {
             state.needs_focus = false;
             state.focus_pending = true;
         }
-        Ok(true)
+        Ok(RenderOutcome::Presented)
     }
-    fn frame(&self, deadline: i64) -> Result<bool> {
+    fn frame(&self, deadline: i64) -> Result<RenderOutcome> {
         if expired(deadline) {
-            return Ok(true);
+            return Ok(RenderOutcome::Idle);
         }
         let Ok(mut state) = self.state.try_borrow_mut() else {
-            return Ok(false);
+            return Ok(RenderOutcome::Retry);
         };
-        let presented = match self.render(&mut state, deadline, false) {
-            Ok(presented) => presented,
+        let outcome = match self.render(&mut state, deadline, false) {
+            Ok(outcome) => outcome,
             Err(error) => {
                 state.error = format!("{error:#}");
-                false
+                RenderOutcome::Retry
             }
         };
         // A busy grid simply retries next RAF. Emit only scalar changes.
@@ -153,7 +152,7 @@ impl NativeTerminalView {
         if focus {
             self.focus()?;
         }
-        Ok(presented)
+        Ok(outcome)
     }
 }
 fn scroll_value(id: u32, scroll: NativeScrollState) -> Result<Value> {

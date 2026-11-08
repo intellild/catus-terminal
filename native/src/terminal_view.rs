@@ -11,6 +11,25 @@ pub(crate) struct NativeScrollState {
     pub(crate) visible_rows: u32,
 }
 
+/// Result of preparing and drawing a session frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SnapshotOutcome {
+    /// The renderer drew the grid into the caller-provided target.
+    Drawn,
+    /// The grid is unchanged; no target was prepared.
+    Idle,
+    /// A lock or deadline deferred the frame; retry on the next VSync.
+    Deferred,
+}
+
+/// Platform result after turning a snapshot into a presented frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenderOutcome {
+    Presented,
+    Idle,
+    Retry,
+}
+
 impl TerminalHandle {
     pub(crate) fn scroll_state(&self) -> Result<NativeScrollState> {
         use anyhow::Context;
@@ -94,7 +113,8 @@ impl TerminalHandle {
             .needs_grid(self.session.core.revision(), &state.viewport)
     }
 
-    // Session/grid preparation stays outside platform rendering functions.
+    /// Prepare the latest grid and draw it. `Idle` means the renderer already
+    /// has this revision; `Deferred` means a lock or deadline prevented drawing.
     pub(crate) fn render_snapshot(
         &self,
         deadline: i64,
@@ -103,28 +123,33 @@ impl TerminalHandle {
             &Viewport,
             &crate::terminal_core::grid::GridSnapshot,
         ) -> Result<bool>,
-    ) -> Result<bool> {
+    ) -> Result<SnapshotOutcome> {
         if crate::frame::expired(deadline) {
-            return Ok(false);
+            return Ok(SnapshotOutcome::Deferred);
         }
         let Some(mut rendering) = try_lock(&self.session.rendering)? else {
-            return Ok(false);
+            return Ok(SnapshotOutcome::Deferred);
         };
         let state = rendering.as_mut().context("Waiting for terminal layout")?;
         let Some(revision) = self.session.core.try_revision()? else {
-            return Ok(false);
+            return Ok(SnapshotOutcome::Deferred);
         };
-        if state.renderer.try_needs_grid(revision, &state.viewport)? != Some(true) {
-            return Ok(false);
+        match state.renderer.try_needs_grid(revision, &state.viewport)? {
+            Some(true) => {}
+            Some(false) => return Ok(SnapshotOutcome::Idle),
+            None => return Ok(SnapshotOutcome::Deferred),
         }
         let Some(mut snapshot) = self.session.core.try_snapshot()? else {
-            return Ok(false);
+            return Ok(SnapshotOutcome::Deferred);
         };
         let Some(preedit) = try_lock(&self.preedit)? else {
-            return Ok(false);
+            return Ok(SnapshotOutcome::Deferred);
         };
         snapshot.overlay_preedit(&preedit);
-        draw(&mut state.renderer, &state.viewport, &snapshot)
+        match draw(&mut state.renderer, &state.viewport, &snapshot)? {
+            true => Ok(SnapshotOutcome::Drawn),
+            false => Ok(SnapshotOutcome::Deferred),
+        }
     }
 }
 
