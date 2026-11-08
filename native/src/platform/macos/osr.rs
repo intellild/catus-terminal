@@ -6,7 +6,10 @@ use anyhow::Result;
 use objc2_core_foundation::CFRetained;
 use objc2_io_surface::IOSurfaceRef;
 
-use crate::{binding::native_view::RawSurface, frame::Viewport};
+use crate::{
+    binding::native_view::RawSurface, frame::Viewport, terminal_session::TerminalHandle,
+    terminal_view::SnapshotOutcome,
+};
 
 use super::surface;
 
@@ -68,6 +71,18 @@ impl OsrSurfaces {
 
 struct OsrSurface {
     surface: CFRetained<IOSurfaceRef>,
+}
+
+/// Render the session into an owned surface. The caller presents it after a
+/// successful draw; the renderer waits for submitted GPU writes before returning.
+pub(super) fn render_surface(
+    terminal: &TerminalHandle,
+    target: &IOSurfaceRef,
+    deadline: i64,
+) -> Result<SnapshotOutcome> {
+    terminal.render_snapshot(deadline, |renderer, viewport, grid| unsafe {
+        surface::render_to_surface(renderer, viewport, grid, target, deadline)
+    })
 }
 
 pub(crate) struct OsrFrame {
