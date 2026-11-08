@@ -9,21 +9,26 @@ use crate::{
     terminal_view::RenderOutcome,
 };
 use anyhow::Result;
+use std::sync::Arc;
 
 pub(crate) fn create_terminal_platform(
     view: usize,
     handle: &Handle,
+    schedule: Arc<dyn Fn() + Send + Sync>,
 ) -> Result<Box<MacTerminalView>> {
     let view = view as *mut LynxView;
     // SAFETY: Native view factories run on UI while their Lynx view is alive.
     unsafe {
-        create_mac_terminal_view(&NativeViewHost {
-            parent: host::native_window(view) as usize,
-            lynx_view: view as usize,
-            native_view: handle.as_ptr()?.as_ptr() as usize,
-            request_focus: Some(request_focus),
-            register_ime: Some(register_ime),
-        })
+        create_mac_terminal_view(
+            &NativeViewHost {
+                parent: host::native_window(view) as usize,
+                lynx_view: view as usize,
+                native_view: handle.as_ptr()?.as_ptr() as usize,
+                request_focus: Some(request_focus),
+                register_ime: Some(register_ime),
+            },
+            schedule,
+        )
     }
 }
 unsafe extern "C" fn request_focus(view: usize) {

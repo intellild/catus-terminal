@@ -2,6 +2,7 @@
 use super::input_view::{InputEvent, InputState, InputView};
 use super::osr::OsrSurfaces;
 use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
+use super::visibility::WindowVisibility;
 use crate::{
     binding::native_view::Handle,
     frame::Viewport,
@@ -16,6 +17,7 @@ use objc2_quartz_core::{CALayer, CAMetalLayer};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    sync::Arc,
 };
 
 pub struct MacTerminalView {
@@ -26,6 +28,7 @@ pub struct MacTerminalView {
     layer_configured: Cell<bool>,
     terminal: Rc<RefCell<Option<TerminalHandle>>>,
     osr_surfaces: RefCell<OsrSurfaces>,
+    visibility: WindowVisibility,
     context: RefCell<Option<Retained<NSTextInputContext>>>,
     osr: Cell<bool>,
     explicit_osr: Cell<bool>,
@@ -38,7 +41,10 @@ pub struct MacTerminalView {
 /// # Safety
 /// The host must lend live AppKit/Lynx handles and C function pointers with the
 /// declared signatures. Callbacks and the adapter must stay on the UI thread.
-pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacTerminalView>> {
+pub unsafe fn create_mac_terminal_view(
+    host: &NativeViewHost,
+    schedule: Arc<dyn Fn() + Send + Sync>,
+) -> Result<Box<MacTerminalView>> {
     let mtm =
         MainThreadMarker::new().context("Terminal NSView must be created on the UI thread")?;
     let parent = unsafe { (host.parent as *const NSView).as_ref() };
@@ -93,6 +99,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
         layer_configured: Cell::new(false),
         terminal,
         osr_surfaces: RefCell::new(OsrSurfaces::default()),
+        visibility: WindowVisibility::new(schedule),
         context: RefCell::new(None),
         osr: Cell::new(parent.is_none_or(|parent| parent.window().is_none())),
         explicit_osr: Cell::new(false),
@@ -163,6 +170,7 @@ impl MacTerminalView {
     pub fn attach(&self) {
         self.assert_ui();
         self.refresh_osr();
+        self.observe_window();
         self.attached.set(true);
         self.attach_view();
     }
@@ -184,6 +192,7 @@ impl MacTerminalView {
     pub fn layout(&self, left: f32, top: f32, width: f32, height: f32, ratio: f32) {
         self.assert_ui();
         self.refresh_osr();
+        self.observe_window();
         if ![left, top, width, height, ratio]
             .into_iter()
             .all(f32::is_finite)
@@ -274,6 +283,11 @@ impl MacTerminalView {
     pub fn destroy(&self) {
         self.detach();
         self.clear_terminal();
+        self.visibility.clear();
+    }
+    fn observe_window(&self) {
+        self.visibility
+            .observe(self.parent().and_then(|parent| parent.window()));
     }
     fn update_overlay(&self, terminal: &TerminalHandle) {
         // AppKit subviews sit above Lynx's composited UI. Reveal the overlay strip
@@ -326,7 +340,7 @@ impl MacTerminalView {
     pub fn render_native(&self, deadline: i64, force: bool) -> Result<RenderOutcome> {
         self.assert_ui();
         if !force && !self.is_presentable() {
-            return Ok(RenderOutcome::Retry);
+            return Ok(RenderOutcome::Idle);
         }
         let terminal = self.bound_terminal()?;
         match super::terminal::render_layer(

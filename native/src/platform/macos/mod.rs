@@ -10,6 +10,7 @@ mod osr;
 mod surface;
 mod terminal;
 mod view;
+mod visibility;
 pub(crate) use native_view::create_terminal_platform;
 pub(crate) use view::MacTerminalView as TerminalPlatform;
 
