@@ -2,7 +2,12 @@
 use super::input_view::{InputEvent, InputState, InputView};
 use super::osr::OsrSurfaces;
 use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
-use crate::{binding::native_view::Handle, frame::Viewport, terminal_session::TerminalHandle};
+use crate::{
+    binding::native_view::Handle,
+    frame::Viewport,
+    terminal_session::TerminalHandle,
+    terminal_view::{RenderOutcome, SnapshotOutcome},
+};
 use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::{NSEvent, NSEventType, NSTextInputContext, NSView, NSWindowOcclusionState};
@@ -318,10 +323,10 @@ impl MacTerminalView {
                 .contains(NSWindowOcclusionState::Visible)
     }
 
-    pub fn render_native(&self, deadline: i64, force: bool) -> Result<bool> {
+    pub fn render_native(&self, deadline: i64, force: bool) -> Result<RenderOutcome> {
         self.assert_ui();
         if !force && !self.is_presentable() {
-            return Ok(false);
+            return Ok(RenderOutcome::Retry);
         }
         let terminal = self
             .terminal
@@ -330,21 +335,26 @@ impl MacTerminalView {
             .context("Terminal is not bound")?
             .clone();
         self.update_overlay(&terminal);
-        let rendered = super::terminal::render_layer(
+        let outcome = super::terminal::render_layer(
             &terminal,
             &self.layer,
             &self.layer_configured,
             deadline,
         )?;
-        if rendered {
+        if outcome == RenderOutcome::Presented {
             self.update_cursor(&terminal);
         }
-        Ok(rendered)
+        Ok(outcome)
     }
     /// Render the bound session into an owned IOSurface and hand it to Lynx.
     /// The surface stays valid through presentation because the pool keeps a
     /// retain; no Lynx back buffer is borrowed.
-    pub fn render_osr(&self, handle: &Handle, viewport: &Viewport, deadline: i64) -> Result<bool> {
+    pub fn render_osr(
+        &self,
+        handle: &Handle,
+        viewport: &Viewport,
+        deadline: i64,
+    ) -> Result<RenderOutcome> {
         self.assert_ui();
         // Release the terminal borrow before calling into Lynx.
         let terminal = self
@@ -354,13 +364,14 @@ impl MacTerminalView {
             .context("Terminal is not bound")?
             .clone();
         let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
-        let rendered = unsafe { terminal.render_surface(frame.surface(), deadline)? };
-        if !rendered {
-            return Ok(false);
+        match unsafe { terminal.render_surface(frame.surface(), deadline)? } {
+            SnapshotOutcome::Drawn => {}
+            SnapshotOutcome::Idle => return Ok(RenderOutcome::Idle),
+            SnapshotOutcome::Deferred => return Ok(RenderOutcome::Retry),
         }
         if crate::frame::expired(deadline) {
             terminal.invalidate_frame();
-            return Ok(false);
+            return Ok(RenderOutcome::Retry);
         }
         self.update_cursor(&terminal);
         if let Err(error) =
@@ -370,7 +381,7 @@ impl MacTerminalView {
             return Err(error);
         }
         self.osr_surfaces.borrow_mut().commit(frame.index());
-        Ok(true)
+        Ok(RenderOutcome::Presented)
     }
     fn update_cursor(&self, terminal: &TerminalHandle) {
         if let Ok(cursor) = terminal.cursor_rect() {

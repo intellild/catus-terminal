@@ -1,5 +1,6 @@
 //! macOS Lynx terminal bridge; shared session logic prepares the latest grid.
 use crate::terminal_session::TerminalHandle;
+use crate::terminal_view::{RenderOutcome, SnapshotOutcome};
 use anyhow::Result;
 
 pub(super) mod ffi {
@@ -62,7 +63,7 @@ impl TerminalHandle {
         &self,
         surface: &objc2_io_surface::IOSurfaceRef,
         deadline: i64,
-    ) -> Result<bool> {
+    ) -> Result<SnapshotOutcome> {
         self.render_snapshot(deadline, |renderer, viewport, grid| unsafe {
             super::surface::render_to_surface(renderer, viewport, grid, surface, deadline)
         })
@@ -77,7 +78,7 @@ pub(super) fn render_layer(
     layer: &objc2_quartz_core::CAMetalLayer,
     layer_configured: &std::cell::Cell<bool>,
     deadline: i64,
-) -> Result<bool> {
+) -> Result<RenderOutcome> {
     use anyhow::Context;
     use objc2::{
         msg_send,
@@ -87,7 +88,7 @@ pub(super) fn render_layer(
     use objc2_metal::{MTLPixelFormat, MTLTexture};
 
     let mut drawable: Option<Retained<AnyObject>> = None;
-    let rendered = terminal.render_snapshot(deadline, |renderer, viewport, snapshot| {
+    match terminal.render_snapshot(deadline, |renderer, viewport, snapshot| {
         renderer.render_grid(viewport, snapshot, deadline, |device| {
             if !layer_configured.get() {
                 let hal = unsafe { device.as_hal::<wgpu::hal::api::Metal>() }
@@ -108,19 +109,20 @@ pub(super) fn render_layer(
                 unsafe { msg_send![&**target, texture] };
             unsafe { super::surface::import_texture(device, texture, viewport) }
         })
-    })?;
-    if !rendered {
-        return Ok(false);
+    })? {
+        SnapshotOutcome::Drawn => {}
+        SnapshotOutcome::Idle => return Ok(RenderOutcome::Idle),
+        SnapshotOutcome::Deferred => return Ok(RenderOutcome::Retry),
     }
     if crate::frame::expired(deadline) {
         terminal.invalidate_frame();
-        return Ok(false);
+        return Ok(RenderOutcome::Retry);
     }
     let drawable = drawable.context("Terminal Metal drawable unavailable")?;
     unsafe {
         let _: () = msg_send![&*drawable, present];
     }
-    Ok(true)
+    Ok(RenderOutcome::Presented)
 }
 
 #[cfg(test)]
