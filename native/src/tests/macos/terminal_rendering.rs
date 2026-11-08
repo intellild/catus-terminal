@@ -240,8 +240,10 @@ fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure
 
 #[test]
 fn metal_layer_drawable_uses_the_session_renderer_and_skips_idle_or_expired_frames() {
-    use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
+    use objc2::{class, msg_send, rc::Retained};
     use objc2_core_foundation::CGSize;
+    use objc2_quartz_core::CAMetalLayer;
+    use std::cell::Cell;
     let _guard = TEST_LOCK.lock().unwrap();
     let session = FakeSession::new(2099);
     let handle = session.handle();
@@ -253,19 +255,24 @@ fn metal_layer_drawable_uses_the_session_renderer_and_skips_idle_or_expired_fram
     let _target = layout(&handle, viewport);
     wait_text(&handle, "FAKE PTY READY");
     objc2::rc::autoreleasepool(|_| unsafe {
-        let layer: Retained<AnyObject> = msg_send![class!(CAMetalLayer), new];
+        let layer: Retained<CAMetalLayer> = msg_send![class!(CAMetalLayer), new];
         let _: () = msg_send![&*layer, setDrawableSize: CGSize::new(512., 256.)];
-        let pointer = &*layer as *const AnyObject as usize;
-        assert!(!handle.render_layer(pointer, 0).unwrap());
+        let configured = Cell::new(false);
+        assert!(!super::render_layer(&handle, &layer, &configured, 0).unwrap());
+        assert!(
+            !configured.get(),
+            "an expired tick must not configure or draw"
+        );
         assert!(handle.needs_frame().unwrap());
-        assert!(handle.render_layer(pointer, i64::MAX).unwrap());
+        assert!(super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
+        assert!(configured.get());
         assert!(!handle.needs_frame().unwrap());
-        assert!(!handle.render_layer(pointer, i64::MAX).unwrap());
+        assert!(!super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
         let cursor = handle.cursor_rect().unwrap();
         assert!(cursor.width > 0. && cursor.height > 0.);
         handle.write("update\r").unwrap();
         wait_text(&handle, "FAKE PTY UPDATED");
-        assert!(handle.render_layer(pointer, i64::MAX).unwrap());
+        assert!(super::render_layer(&handle, &layer, &configured, i64::MAX).unwrap());
     });
 }
 

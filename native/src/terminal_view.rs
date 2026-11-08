@@ -94,19 +94,6 @@ impl TerminalHandle {
             .needs_grid(self.session.core.revision(), &state.viewport)
     }
 
-    // Busy, idle and expired ticks never prepare a native render target.
-    pub(crate) fn render_frame(
-        &self,
-        deadline: i64,
-        prepare_target: impl FnOnce(&wgpu::Device, &Viewport) -> Result<wgpu::Texture>,
-    ) -> Result<bool> {
-        self.render_snapshot(deadline, |renderer, viewport, snapshot| {
-            renderer.render_grid(viewport, snapshot, deadline, |device| {
-                prepare_target(device, viewport)
-            })
-        })
-    }
-
     // Session/grid preparation stays outside platform rendering functions.
     pub(crate) fn render_snapshot(
         &self,

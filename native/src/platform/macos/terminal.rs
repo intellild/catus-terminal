@@ -56,50 +56,7 @@ impl TerminalHandle {
         })
     }
 
-    // SAFETY: The UI thread lends a live CAMetalLayer for the duration of this call.
-    pub(super) unsafe fn render_layer(&self, layer: usize, deadline: i64) -> Result<bool> {
-        use anyhow::Context;
-        use objc2::{
-            msg_send,
-            rc::Retained,
-            runtime::{AnyObject, ProtocolObject},
-        };
-        use objc2_metal::{MTLPixelFormat, MTLTexture};
-        let layer = unsafe { (layer as *mut AnyObject).as_ref() }
-            .context("Missing terminal Metal layer")?;
-        let mut drawable: Option<Retained<AnyObject>> = None;
-        let rendered = self.render_frame(deadline, |device, viewport| {
-            let hal = unsafe { device.as_hal::<wgpu::hal::api::Metal>() }
-                .context("Terminal requires Metal")?;
-            let raw_device = hal.raw_device();
-            unsafe {
-                let _: () = msg_send![layer, setDevice: &**raw_device];
-                let _: () = msg_send![layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
-                let _: () = msg_send![layer, setFramebufferOnly: true];
-                drawable = msg_send![layer, nextDrawable];
-            }
-            let target = drawable
-                .as_ref()
-                .context("Terminal Metal drawable unavailable")?;
-            let texture: Retained<ProtocolObject<dyn MTLTexture>> =
-                unsafe { msg_send![&**target, texture] };
-            unsafe { super::surface::import_texture(device, texture, viewport) }
-        })?;
-        if rendered {
-            if crate::frame::expired(deadline) {
-                self.invalidate_frame();
-                return Ok(false);
-            }
-            if let Some(drawable) = drawable {
-                unsafe {
-                    let _: () = msg_send![&*drawable, present];
-                }
-            }
-        }
-        Ok(rendered)
-    }
-
-    // SAFETY: C++ lends a live IOSurfaceRef exclusively until this returns.
+    // SAFETY: The platform lends an owned IOSurface exclusively until this returns.
     // The shared renderer waits for submitted GPU writes before returning it.
     pub(super) unsafe fn render_surface(
         &self,
@@ -110,6 +67,60 @@ impl TerminalHandle {
             super::surface::render_to_surface(renderer, viewport, grid, surface, deadline)
         })
     }
+}
+
+/// Render the session into the view's CAMetalLayer and present the drawable.
+/// The layer is configured once; expired frames release their drawable without
+/// presenting so the grid stays dirty for the next frame.
+pub(super) fn render_layer(
+    terminal: &TerminalHandle,
+    layer: &objc2_quartz_core::CAMetalLayer,
+    layer_configured: &std::cell::Cell<bool>,
+    deadline: i64,
+) -> Result<bool> {
+    use anyhow::Context;
+    use objc2::{
+        msg_send,
+        rc::Retained,
+        runtime::{AnyObject, ProtocolObject},
+    };
+    use objc2_metal::{MTLPixelFormat, MTLTexture};
+
+    let mut drawable: Option<Retained<AnyObject>> = None;
+    let rendered = terminal.render_snapshot(deadline, |renderer, viewport, snapshot| {
+        renderer.render_grid(viewport, snapshot, deadline, |device| {
+            if !layer_configured.get() {
+                let hal = unsafe { device.as_hal::<wgpu::hal::api::Metal>() }
+                    .context("Terminal requires Metal")?;
+                let raw_device = hal.raw_device();
+                unsafe {
+                    let _: () = msg_send![layer, setDevice: &**raw_device];
+                    let _: () = msg_send![layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
+                    let _: () = msg_send![layer, setFramebufferOnly: true];
+                }
+                layer_configured.set(true);
+            }
+            drawable = unsafe { msg_send![layer, nextDrawable] };
+            let target = drawable
+                .as_ref()
+                .context("Terminal Metal drawable unavailable")?;
+            let texture: Retained<ProtocolObject<dyn MTLTexture>> =
+                unsafe { msg_send![&**target, texture] };
+            unsafe { super::surface::import_texture(device, texture, viewport) }
+        })
+    })?;
+    if !rendered {
+        return Ok(false);
+    }
+    if crate::frame::expired(deadline) {
+        terminal.invalidate_frame();
+        return Ok(false);
+    }
+    let drawable = drawable.context("Terminal Metal drawable unavailable")?;
+    unsafe {
+        let _: () = msg_send![&*drawable, present];
+    }
+    Ok(true)
 }
 
 #[cfg(test)]
