@@ -56,18 +56,6 @@ impl TerminalHandle {
             height: ch / ratio,
         })
     }
-
-    // SAFETY: The platform lends an owned IOSurface exclusively until this returns.
-    // The shared renderer waits for submitted GPU writes before returning it.
-    pub(super) unsafe fn render_surface(
-        &self,
-        surface: &objc2_io_surface::IOSurfaceRef,
-        deadline: i64,
-    ) -> Result<SnapshotOutcome> {
-        self.render_snapshot(deadline, |renderer, viewport, grid| unsafe {
-            super::surface::render_to_surface(renderer, viewport, grid, surface, deadline)
-        })
-    }
 }
 
 /// Render the session into the view's CAMetalLayer and present the drawable.

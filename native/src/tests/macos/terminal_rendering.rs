@@ -60,10 +60,17 @@ fn layout(handle: &TerminalHandle, viewport: Viewport) -> Target {
     wait_text(handle, &format!("SIZE {}x{}", size.columns, size.rows));
     Target::new(viewport)
 }
+fn render_surface(
+    handle: &TerminalHandle,
+    surface: &objc2_io_surface::IOSurfaceRef,
+    deadline: i64,
+) -> anyhow::Result<SnapshotOutcome> {
+    super::super::osr::render_surface(handle, surface, deadline)
+}
 fn render(handle: &TerminalHandle, target: &Target) -> bool {
     // Target owns the IOSurface used by this synchronous render call.
     matches!(
-        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        render_surface(handle, target.surface(), i64::MAX).unwrap(),
         SnapshotOutcome::Drawn
     )
 }
@@ -92,7 +99,7 @@ fn pty_session_renders_updates_to_borrowed_framebuffer_and_skips_idle_frames() {
     assert!(!handle.needs_frame().unwrap());
     assert!(!render(&handle, &target));
     assert!(matches!(
-        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        render_surface(&handle, target.surface(), i64::MAX).unwrap(),
         SnapshotOutcome::Idle
     ));
     assert_eq!(target.pixels(), ready);
@@ -188,21 +195,21 @@ fn session_drops_expired_and_busy_frames_then_renders_the_latest_grid() {
     wait_text(&handle, "FAKE PTY READY");
     let initial = target.pixels();
     assert!(matches!(
-        unsafe { handle.render_surface(target.surface(), 0).unwrap() },
+        render_surface(&handle, target.surface(), 0).unwrap(),
         SnapshotOutcome::Deferred
     ));
     assert_eq!(target.pixels(), initial);
     assert!(handle.needs_frame().unwrap());
     let held = handle.session.rendering.lock().unwrap();
     assert!(matches!(
-        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        render_surface(&handle, target.surface(), i64::MAX).unwrap(),
         SnapshotOutcome::Deferred
     ));
     drop(held);
     handle.write("update\r").unwrap();
     wait_text(&handle, "FAKE PTY UPDATED");
     assert!(matches!(
-        unsafe { handle.render_surface(target.surface(), i64::MAX).unwrap() },
+        render_surface(&handle, target.surface(), i64::MAX).unwrap(),
         SnapshotOutcome::Drawn
     ));
     assert!(
@@ -231,7 +238,7 @@ fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure
         ..viewport
     });
     assert!(
-        unsafe { handle.render_surface(wrong_size.surface(), i64::MAX) }
+        render_surface(&handle, wrong_size.surface(), i64::MAX)
             .unwrap_err()
             .to_string()
             .contains("dimensions or pixel layout")
@@ -239,7 +246,7 @@ fn rust_validates_borrowed_iosurface_layout_and_preserves_dirty_state_on_failure
     assert!(handle.needs_frame().unwrap());
     let wrong_pixels = Target::with_bytes_per_element(viewport, 1);
     assert!(
-        unsafe { handle.render_surface(wrong_pixels.surface(), i64::MAX) }
+        render_surface(&handle, wrong_pixels.surface(), i64::MAX)
             .unwrap_err()
             .to_string()
             .contains("dimensions or pixel layout")

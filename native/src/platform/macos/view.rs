@@ -364,7 +364,7 @@ impl MacTerminalView {
             .context("Terminal is not bound")?
             .clone();
         let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
-        match unsafe { terminal.render_surface(frame.surface(), deadline)? } {
+        match super::osr::render_surface(&terminal, frame.surface(), deadline)? {
             SnapshotOutcome::Drawn => {}
             SnapshotOutcome::Idle => return Ok(RenderOutcome::Idle),
             SnapshotOutcome::Deferred => return Ok(RenderOutcome::Retry),
