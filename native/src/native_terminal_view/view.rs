@@ -112,12 +112,6 @@ impl NativeTerminalView {
             terminal.invalidate_frame();
             return Ok(true);
         }
-        if self.platform.uses_osr()
-            && let Err(error) = self.handle.swap_back()
-        {
-            terminal.invalidate_frame();
-            return Err(error);
-        }
         state.error.clear();
         if state.needs_focus {
             state.needs_focus = false;

@@ -41,7 +41,8 @@ native/
     windows.rs                 portable-pty 默认进程和 EOF 策略
     macos/
       mod.rs                   Metal 后端选择
-      surface.rs               IOSurface 校验与 wgpu texture 导入
+      surface.rs               IOSurface 创建、校验与 wgpu texture 导入
+      osr.rs                   自建 OSR IOSurface 池与帧轮换
       terminal.rs              macOS 输入数据和纹理渲染入口
       native_view.rs           Lynx 宿主、鼠标事件和 surface 的 macOS 适配
       view.rs                  Rust NSView、CAMetalLayer、嵌入 / OSR 生命周期
@@ -316,15 +317,17 @@ NSView frame 根据父 view 的 isFlipped 转换；自身 isFlipped 只决定内
 attach/detach/destroy 管理子 view、焦点、输入法和回调生命周期。
 `use-osr` 可显式选择 OSR；没有宿主 NSView 或 NSWindow 的 windowless 环境自动使用 OSR。
 创建时窗口尚未就绪的自动选择会在后续 attach/layout 重新判断，窗口出现后切换到嵌入模式。
-OSR 才启用 `IsSurfaceEnabled()`。`AcquireSurface` 的尺寸是物理像素，macOS 返回借用的
-`IOSurfaceRef`。Rust 用缓存的 layout 获取 buffer，将平台句柄直接借用为
-`&IOSurfaceRef` 调用 `render_osr`，不经 C++ 或整数地址桥接。会话层检查锁忙和 idle revision，
-准备网格快照后调用公共 `render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
+OSR 才启用 `IsSurfaceEnabled()`。平台层按物理像素维护两个自建 IOSurface
+（BGRA8、Metal 可导入）：一块交给 Lynx 显示，另一块作为渲染目标，present 成功后才交换
+角色；失败或超时的帧继续写同一块目标，不触碰正在显示的 surface，也不再借用 Lynx 的
+back buffer。
+会话层检查锁忙和 idle revision，准备网格快照后调用公共
+`render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
 该函数只负责目标校验、纹理导入及绘制，不读取 PTY 或 session。Rust 检查尺寸和
 像素布局，使用全局共享 MTLDevice 创建 BGRA8Unorm texture，再导入 wgpu 绘制。
-Rust 等待已提交 GPU 工作完成，再检查 deadline，通过 C API `swap_back` 和
-`mark_dirty` 呈现完成的帧。device 和 viewport 留在 Rust。
-嵌入模式直接呈现 CAMetalLayer drawable，不调用 Lynx SwapBack。
+Rust 等待已提交 GPU 工作完成并检查 deadline，然后通过 C API `PresentSurface`
+把自建 surface 交给 Lynx 合成；不再使用 `AcquireSurface` / `SwapBack`。
+嵌入模式直接呈现 CAMetalLayer drawable，不经过 Lynx surface。
 两种模式共享 NSTextInputClient：嵌入模式通过 NSView responder 接收事件；OSR 与 CEF 一样通过
 `lynx_view_register_ime_handler` 和 NSTextInputContext 接收宿主事件。组合文本不会写入 PTY，
 提交文本才调用 Rust write；两种模式的组合文本均由共享 atlas 绘制。

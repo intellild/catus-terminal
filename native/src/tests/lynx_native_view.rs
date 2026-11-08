@@ -287,6 +287,20 @@ fn creation_failures_and_default_implementation_do_not_leak() {
 }
 
 #[test]
+fn present_surface_forwards_dimensions_and_the_platform_handle() {
+    let (view, handle, _) = probe(Rc::default());
+    let surface = NonNull::<RawSurface>::dangling();
+    handle.present_surface(320, 200, None, surface).unwrap();
+    host::PRESENTED.with(|presented| {
+        assert_eq!(
+            presented.take(),
+            Some((320, 200, true, surface.as_ptr() as usize))
+        );
+    });
+    drop(view);
+}
+
+#[test]
 fn generic_factory_registers_concrete_views_and_keeps_instances_isolated() {
     use crate::binding::extension::tests as extension_host;
     let first = Rc::new(ProbeState::default());

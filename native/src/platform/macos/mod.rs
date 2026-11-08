@@ -6,6 +6,7 @@ mod input_view;
 mod mouse;
 pub(crate) use mouse::MouseState;
 mod native_view;
+mod osr;
 mod surface;
 mod terminal;
 mod view;

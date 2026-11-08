@@ -144,7 +144,7 @@ BTS
        ↓ callback（BTS，target deadline）
   post_task_to_ui(boxed render)
        ↓ UI
-  view.frame(target) → session renderer → IOSurface → wgpu → SwapBack
+  view.frame(target) → session renderer → 自有 IOSurface → wgpu → PresentSurface
 ```
 
 `binding/vsync.rs` 只在内部共享 module 和 observer；每个 view 在内容变化时

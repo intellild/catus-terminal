@@ -1,7 +1,8 @@
 //! Rust ownership of the AppKit view, Metal layer and CEF-style OSR input route.
 use super::input_view::{InputEvent, InputState, InputView};
+use super::osr::OsrSurfaces;
 use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
-use crate::terminal_session::TerminalHandle;
+use crate::{binding::native_view::Handle, frame::Viewport, terminal_session::TerminalHandle};
 use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::{NSEvent, NSEventType, NSTextInputContext, NSView, NSWindowOcclusionState};
@@ -18,6 +19,7 @@ pub struct MacTerminalView {
     state: Rc<InputState>,
     layer: Retained<CAMetalLayer>,
     terminal: Rc<RefCell<Option<TerminalHandle>>>,
+    osr_surfaces: RefCell<OsrSurfaces>,
     context: RefCell<Option<Retained<NSTextInputContext>>>,
     osr: Cell<bool>,
     explicit_osr: Cell<bool>,
@@ -83,6 +85,7 @@ pub unsafe fn create_mac_terminal_view(host: &NativeViewHost) -> Result<Box<MacT
         state,
         layer,
         terminal,
+        osr_surfaces: RefCell::new(OsrSurfaces::default()),
         context: RefCell::new(None),
         osr: Cell::new(parent.is_none_or(|parent| parent.window().is_none())),
         explicit_osr: Cell::new(false),
@@ -328,21 +331,36 @@ impl MacTerminalView {
         }
         Ok(rendered)
     }
-    /// # Safety
-    /// Surface must be a live, borrowed Lynx IOSurface for this call.
-    pub unsafe fn render_osr(
-        &self,
-        surface: &objc2_io_surface::IOSurfaceRef,
-        deadline: i64,
-    ) -> Result<bool> {
+    /// Render the bound session into an owned IOSurface and hand it to Lynx.
+    /// The surface stays valid through presentation because the pool keeps a
+    /// retain; no Lynx back buffer is borrowed.
+    pub fn render_osr(&self, handle: &Handle, viewport: &Viewport, deadline: i64) -> Result<bool> {
         self.assert_ui();
-        let binding = self.terminal.borrow();
-        let terminal = binding.as_ref().context("Terminal is not bound")?;
-        let rendered = unsafe { terminal.render_surface(surface, deadline)? };
-        if rendered {
-            self.update_cursor(terminal);
+        // Release the terminal borrow before calling into Lynx.
+        let terminal = self
+            .terminal
+            .borrow()
+            .as_ref()
+            .context("Terminal is not bound")?
+            .clone();
+        let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
+        let rendered = unsafe { terminal.render_surface(frame.surface(), deadline)? };
+        if !rendered {
+            return Ok(false);
         }
-        Ok(rendered)
+        if crate::frame::expired(deadline) {
+            terminal.invalidate_frame();
+            return Ok(false);
+        }
+        self.update_cursor(&terminal);
+        if let Err(error) =
+            handle.present_surface(viewport.width, viewport.height, None, frame.handle())
+        {
+            terminal.invalidate_frame();
+            return Err(error);
+        }
+        self.osr_surfaces.borrow_mut().commit(frame.index());
+        Ok(true)
     }
     fn update_cursor(&self, terminal: &TerminalHandle) {
         if let Ok(cursor) = terminal.cursor_rect() {
@@ -356,6 +374,8 @@ impl MacTerminalView {
 impl Drop for MacTerminalView {
     fn drop(&mut self) {
         self.destroy();
+        // Keep presented surfaces alive until Lynx has released the native view.
+        self.osr_surfaces.borrow_mut().clear();
     }
 }
 

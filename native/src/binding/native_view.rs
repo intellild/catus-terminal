@@ -185,26 +185,36 @@ impl Handle {
         }
         Ok(())
     }
-    pub fn swap_back(&self) -> Result<()> {
+    /// Present an externally owned platform surface and request a redraw; on
+    /// macOS `surface` is the IOSurfaceRef object pointer. The surface must stay
+    /// alive until Lynx finishes compositing it, so the caller keeps its pool
+    /// entry. External presentation bypasses the internal swap/dirty path.
+    pub fn present_surface(
+        &self,
+        width: u32,
+        height: u32,
+        transform: Option<&[f32; 9]>,
+        surface: NonNull<RawSurface>,
+    ) -> Result<()> {
+        let width = i32::try_from(width).context("Surface width exceeds i32")?;
+        let height = i32::try_from(height).context("Surface height exceeds i32")?;
         let raw = self.as_ptr()?;
         ensure!(
-            unsafe { ffi::lynx_native_view_swap_back(raw.as_ptr()) },
-            "Lynx could not swap the rendered back buffer"
+            unsafe {
+                ffi::lynx_native_view_present_surface(
+                    raw.as_ptr(),
+                    width,
+                    height,
+                    transform.map_or(std::ptr::null(), |transform| transform.as_ptr()),
+                    surface.as_ptr(),
+                )
+            },
+            "Lynx could not present the native surface"
         );
         unsafe {
             ffi::lynx_native_view_mark_dirty(raw.as_ptr());
         }
         Ok(())
-    }
-    /// Borrowed platform buffer; caller must finish GPU writes before returning
-    /// to Lynx, and must not release this surface or reuse it after swap_back.
-    pub fn acquire_surface(&self, width: u32, height: u32) -> Result<NonNull<RawSurface>> {
-        let width = i32::try_from(width).context("Surface width exceeds i32")?;
-        let height = i32::try_from(height).context("Surface height exceeds i32")?;
-        NonNull::new(unsafe {
-            ffi::lynx_native_view_acquire_surface(self.as_ptr()?.as_ptr(), width, height)
-        })
-        .context("Lynx back buffer is unavailable")
     }
 }
 
