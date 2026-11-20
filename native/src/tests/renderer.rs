@@ -10,7 +10,7 @@ fn viewport(ratio: f32) -> Viewport {
         pixel_ratio: ratio,
     }
 }
-fn target(renderer: &TerminalRenderer) -> wgpu::Texture {
+fn target(renderer: &GridPainter<'_>) -> wgpu::Texture {
     renderer
         .gpu
         .device
@@ -29,17 +29,17 @@ fn target(renderer: &TerminalRenderer) -> wgpu::Texture {
             view_formats: &[],
         })
 }
-fn grid(renderer: &TerminalRenderer, viewport: &Viewport, text: &str) -> GridSnapshot {
-    let size = renderer.grid_size(viewport).unwrap();
+fn grid(renderer: &GridPainter<'_>, viewport: &Viewport, text: &str) -> GridSnapshot {
+    let size = renderer.gpu.measure_cells(viewport).unwrap().size;
     let mut grid = TerminalGrid::new(size, test_sender());
     grid.advance(text.as_bytes());
     grid.snapshot()
 }
-fn uploads(renderer: &TerminalRenderer) -> u64 {
+fn uploads(renderer: &GridPainter<'_>) -> u64 {
     renderer.gpu.glyphs().unwrap().cache.atlas.uploads()
 }
 fn draw(
-    renderer: &mut TerminalRenderer,
+    renderer: &mut GridPainter<'_>,
     target: &wgpu::Texture,
     viewport: &Viewport,
     grid: &GridSnapshot,
@@ -48,8 +48,8 @@ fn draw(
         .render_into(&target.create_view(&Default::default()), viewport, grid)
         .unwrap();
 }
-fn pixels(renderer: &TerminalRenderer, target: &wgpu::Texture) -> Vec<u8> {
-    let gpu = &renderer.gpu;
+fn pixels(renderer: &GridPainter<'_>, target: &wgpu::Texture) -> Vec<u8> {
+    let gpu = renderer.gpu;
     let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 512 * 128 * 4,
@@ -97,7 +97,8 @@ fn pixels(renderer: &TerminalRenderer, target: &wgpu::Texture) -> Vec<u8> {
 #[test]
 fn real_grid_renders_background_glyphs_and_reuses_atlas() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let mut renderer = create_terminal_renderer().unwrap();
+    let mut renderer_state = DrawState::default();
+    let mut renderer = Renderer::offscreen().painter(&mut renderer_state).unwrap();
     renderer.gpu.glyphs().unwrap().clear();
     let viewport = viewport(1.);
     let grid = grid(
@@ -113,17 +114,31 @@ fn real_grid_renders_background_glyphs_and_reuses_atlas() {
     assert_eq!(uploads(&renderer), initial_uploads);
     assert!(!renderer.needs_grid(grid.revision, &viewport).unwrap());
     let pixels = pixels(&renderer, &target);
-    assert!(pixels.chunks_exact(4).any(|p| p[..3] == [77, 77, 205]));
-    assert!(pixels.chunks_exact(4).any(|p| p[1] > p[0] && p[1] > p[2]));
+    assert!(
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[..3] == [77, 77, 205])
+    );
+    assert!(
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[1] > p[0] && p[1] > p[2])
+    );
 }
 
 #[test]
 fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let mut first = create_terminal_renderer().unwrap();
+    let mut first_state = DrawState::default();
+    let mut first = Renderer::offscreen().painter(&mut first_state).unwrap();
     first.gpu.glyphs().unwrap().clear();
-    let mut second = create_terminal_renderer().unwrap();
-    assert!(std::sync::Arc::ptr_eq(&first.gpu, &second.gpu));
+    let mut second_state = DrawState::default();
+    let mut second = Renderer::offscreen().painter(&mut second_state).unwrap();
+    assert!(std::ptr::eq(first.gpu, second.gpu));
     let small = viewport(1.);
     let large = viewport(2.);
     let grid = grid(&first, &small, "\x1b[?25lSAME 中 😀");
@@ -140,11 +155,12 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
     assert!(!first.needs_grid(grid.revision, &small).unwrap());
     draw(&mut first, &a, &small, &grid);
     assert_eq!(uploads(&first), both_sizes);
-    let gpu = std::sync::Arc::as_ptr(&first.gpu);
-    drop(first);
-    drop(second);
-    let mut recreated = create_terminal_renderer().unwrap();
-    assert_eq!(std::sync::Arc::as_ptr(&recreated.gpu), gpu);
+    let gpu = first.gpu;
+    drop(first_state);
+    drop(second_state);
+    let mut recreated_state = DrawState::default();
+    let mut recreated = Renderer::offscreen().painter(&mut recreated_state).unwrap();
+    assert!(std::ptr::eq(recreated.gpu, gpu));
     draw(&mut recreated, &a, &small, &grid);
     assert_eq!(uploads(&recreated), both_sizes);
 }
@@ -152,9 +168,11 @@ fn views_share_device_atlas_and_multiple_scales_after_recreation() {
 #[test]
 fn concurrent_views_keep_separate_buffers_and_failed_uploads_invalidate_all_views() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let mut first = create_terminal_renderer().unwrap();
+    let mut first_state = DrawState::default();
+    let mut first = Renderer::offscreen().painter(&mut first_state).unwrap();
     first.gpu.glyphs().unwrap().clear();
-    let mut second = create_terminal_renderer().unwrap();
+    let mut second_state = DrawState::default();
+    let mut second = Renderer::offscreen().painter(&mut second_state).unwrap();
     let viewport = viewport(1.);
     let red = grid(&first, &viewport, "\x1b[?25l\x1b[41m RED");
     let green = grid(&second, &viewport, "\x1b[?25l\x1b[42m GREEN");
@@ -166,12 +184,16 @@ fn concurrent_views_keep_separate_buffers_and_failed_uploads_invalidate_all_view
     });
     assert!(
         pixels(&first, &a)
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[..3] == [77, 77, 205])
     );
     assert!(
         pixels(&second, &b)
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[..3] == [126, 194, 122])
     );
     assert!(!first.needs_grid(red.revision, &viewport).unwrap());
@@ -195,7 +217,8 @@ fn concurrent_views_keep_separate_buffers_and_failed_uploads_invalidate_all_view
 #[test]
 fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let mut renderer = create_terminal_renderer().unwrap();
+    let mut renderer_state = DrawState::default();
+    let mut renderer = Renderer::offscreen().painter(&mut renderer_state).unwrap();
     let viewport = viewport(1.);
     let grid = grid(&renderer, &viewport, "\x1b[?25l DROP / RETRY");
     let target = target(&renderer);
@@ -208,7 +231,7 @@ fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
     );
     assert!(renderer.needs_grid(grid.revision, &viewport).unwrap());
     assert_eq!(uploads(&renderer), initial_uploads);
-    let gpu = renderer.gpu.clone();
+    let gpu = renderer.gpu;
     let shared = gpu.glyphs().unwrap();
     assert!(
         renderer
@@ -235,7 +258,8 @@ fn expired_or_busy_frames_leave_the_grid_dirty_without_gpu_uploads() {
 #[test]
 fn shared_renderer_prepares_wgpu_targets_only_for_valid_live_frames() {
     let _guard = TEST_LOCK.lock().unwrap();
-    let mut renderer = create_terminal_renderer().unwrap();
+    let mut renderer_state = DrawState::default();
+    let mut renderer = Renderer::offscreen().painter(&mut renderer_state).unwrap();
     let viewport = viewport(1.);
     let grid = grid(&renderer, &viewport, "\x1b[?25l SHARED TARGET");
     let target = target(&renderer);
@@ -284,7 +308,9 @@ fn shared_renderer_prepares_wgpu_targets_only_for_valid_live_frames() {
     assert!(!renderer.needs_grid(grid.revision, &viewport).unwrap());
     assert!(
         pixels(&renderer, &target)
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[1] > 32)
     );
 }

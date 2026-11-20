@@ -71,18 +71,26 @@ impl SharedGlyphs {
 }
 
 impl GlyphRenderer {
-    pub fn grid_size(
+    pub(crate) fn measure_cells(
         shared: &mut SharedGlyphs,
         viewport: &Viewport,
-    ) -> Result<crate::terminal_core::grid::GridSize> {
+    ) -> Result<crate::frame::CellLayout> {
         let metrics = shared.cache.metrics(viewport.font_pixels()?)?;
-        let padding = (8. * viewport.pixel_ratio).round();
-        Ok(crate::terminal_core::grid::GridSize::new(
-            ((viewport.width as f32 - 2. * padding).max(0.)
-                / metrics.average_advance.round().max(1.) as f32) as usize,
-            ((viewport.height as f32 - 2. * padding).max(0.)
-                / metrics.line_height.round().max(1.) as f32) as usize,
-        ))
+        let ratio = viewport.pixel_ratio;
+        let padding = (8. * ratio).round();
+        let width = metrics.average_advance.round().max(1.) as f32;
+        let height = metrics.line_height.round().max(1.) as f32;
+        Ok(crate::frame::CellLayout {
+            size: crate::terminal_core::grid::GridSize::new(
+                ((viewport.width as f32 - 2. * padding).max(0.) / width) as usize,
+                ((viewport.height as f32 - 2. * padding).max(0.) / height) as usize,
+            ),
+            geometry: crate::frame::CellGeometry {
+                width: width / ratio,
+                height: height / ratio,
+                padding: padding / ratio,
+            },
+        })
     }
 
     #[allow(clippy::too_many_arguments)]

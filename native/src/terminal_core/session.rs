@@ -1,28 +1,32 @@
-//! Terminal computation and interaction, independent of transport protocol and rendering.
+//! Terminal session ownership, input handling and renderer binding.
 use super::{
     grid::{GridSize, GridSnapshot, TerminalGrid},
-    pty::{PlainPtyDelegate, Pty, PtyDelegate, block_on},
+    pty::{PlainPtyDelegate, Pty, PtyDelegate, WriterSender, block_on},
     tmux::TmuxSessionInfo,
 };
 use anyhow::{Result, anyhow};
 use portable_pty::CommandBuilder;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+#[cfg(feature = "native-view")]
+use {crate::renderer::Renderer, arc_swap::ArcSwapWeak, std::sync::Weak, tokio::sync::MutexGuard};
 
 pub struct TerminalSession {
-    grid: Arc<Mutex<TerminalGrid>>,
-    pty: Pty,
+    grid: Mutex<TerminalGrid>,
+    #[cfg(feature = "native-view")]
+    renderer: ArcSwapWeak<Renderer>,
+    pub(super) pty: Pty,
     pub shell: String,
 }
 impl TerminalSession {
-    pub fn default_shell(size: GridSize) -> Result<Self> {
+    pub fn default_shell(size: GridSize) -> Result<Arc<Self>> {
         let (mut command, shell) = crate::platform::default_shell_command();
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         Self::spawn(command, size, shell)
     }
     #[cfg(test)]
-    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Self> {
+    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Arc<Self>> {
         Self::command_in_directory(program, args, None, size)
     }
     pub(crate) fn command_in_directory(
@@ -30,7 +34,7 @@ impl TerminalSession {
         args: &[String],
         cwd: Option<&str>,
         size: GridSize,
-    ) -> Result<Self> {
+    ) -> Result<Arc<Self>> {
         Self::command_with_delegate(program, args, cwd, size, Arc::new(PlainPtyDelegate))
     }
     pub(crate) fn command_with_delegate(
@@ -39,7 +43,7 @@ impl TerminalSession {
         cwd: Option<&str>,
         size: GridSize,
         delegate: Arc<dyn PtyDelegate>,
-    ) -> Result<Self> {
+    ) -> Result<Arc<Self>> {
         let mut command = CommandBuilder::new(program);
         if let Some(cwd) = cwd {
             command.cwd(cwd);
@@ -49,7 +53,7 @@ impl TerminalSession {
         command.env("COLORTERM", "truecolor");
         Self::spawn_with_delegate(command, size, program.to_owned(), delegate)
     }
-    fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Self> {
+    fn spawn(command: CommandBuilder, size: GridSize, shell: String) -> Result<Arc<Self>> {
         Self::spawn_with_delegate(command, size, shell, Arc::new(PlainPtyDelegate))
     }
     fn spawn_with_delegate(
@@ -57,26 +61,46 @@ impl TerminalSession {
         size: GridSize,
         shell: String,
         delegate: Arc<dyn PtyDelegate>,
-    ) -> Result<Self> {
-        let (pty, grid) = Pty::spawn(command, size, shell.clone(), delegate)?;
-        Ok(Self { grid, pty, shell })
+    ) -> Result<Arc<Self>> {
+        let (pty, grid, output) = Pty::spawn(command, size, &shell, delegate)?;
+        let session = Arc::new(Self {
+            grid: Mutex::new(grid),
+            pty,
+            shell,
+            #[cfg(feature = "native-view")]
+            renderer: ArcSwapWeak::default(),
+        });
+        session.pty.start_parser(Arc::downgrade(&session), output);
+        Ok(session)
     }
+
+    pub(super) async fn process_output(&self, bytes: &[u8], writer: &WriterSender) -> Result<()> {
+        let mut grid = self.grid.lock().await;
+        #[cfg(feature = "native-view")]
+        let revision = grid.revision();
+        let result = self.pty.advance(bytes, &mut grid, writer).await;
+        #[cfg(feature = "native-view")]
+        self.schedule_render_if_changed(grid, revision);
+        result
+    }
+
     pub fn write(&self, bytes: Vec<u8>) -> Result<()> {
         if self.exited() {
             return Err(anyhow!("Shell has exited"));
         }
-        self.grid.blocking_lock().clear_interaction();
+        self.update_grid(TerminalGrid::clear_interaction);
         self.send_input(bytes)
     }
     fn send_input(&self, bytes: Vec<u8>) -> Result<()> {
         block_on(self.pty.write(bytes))
     }
     #[cfg(feature = "native-view")]
-    pub(crate) fn try_scroll_state(&self) -> Result<Option<super::grid::ScrollState>> {
-        self.try_grid(|grid| grid.scroll_state())
+    pub(crate) fn scroll_state(&self) -> Result<super::grid::ScrollState> {
+        self.try_grid(|grid| grid.scroll_state())?
+            .ok_or_else(|| anyhow!("Terminal grid busy"))
     }
     pub fn scroll_to(&self, offset: usize) {
-        self.grid.blocking_lock().scroll_to(offset);
+        self.update_grid(|grid| grid.scroll_to(offset));
     }
     pub fn scroll_multiplier(&self, modifiers: super::grid::MouseModifiers) -> f64 {
         self.grid.blocking_lock().scroll_multiplier(modifiers)
@@ -95,10 +119,9 @@ impl TerminalSession {
         button: u8,
         modifiers: super::grid::MouseModifiers,
     ) -> Result<()> {
-        let bytes = self
-            .grid
-            .blocking_lock()
-            .pointer(action, row, column, right_half, clicks, button, modifiers);
+        let bytes = self.update_grid(|grid| {
+            grid.pointer(action, row, column, right_half, clicks, button, modifiers)
+        });
         if let Some(bytes) = bytes {
             self.write_mouse(bytes)?;
         }
@@ -111,10 +134,7 @@ impl TerminalSession {
         column: usize,
         modifiers: super::grid::MouseModifiers,
     ) -> Result<()> {
-        let bytes = self
-            .grid
-            .blocking_lock()
-            .scroll(lines, row, column, modifiers);
+        let bytes = self.update_grid(|grid| grid.scroll(lines, row, column, modifiers));
         if let Some(bytes) = bytes {
             self.write_mouse(bytes)?;
         }
@@ -136,12 +156,13 @@ impl TerminalSession {
         Ok(())
     }
     pub fn resize(&self, size: GridSize) -> Result<()> {
-        let mut grid = self.grid.blocking_lock();
-        if grid.size() != size {
-            block_on(self.pty.resize(size))?;
-            grid.resize(size);
-        }
-        Ok(())
+        self.update_grid(|grid| {
+            if grid.size() != size {
+                block_on(self.pty.resize(size))?;
+                grid.resize(size);
+            }
+            Ok(())
+        })
     }
     pub fn tmux_info(&self) -> Option<TmuxSessionInfo> {
         block_on(self.pty.tmux_info())
@@ -183,11 +204,45 @@ impl TerminalSession {
     pub fn revision(&self) -> u64 {
         self.grid.blocking_lock().revision()
     }
-    pub fn set_on_change(&self, callback: Option<Arc<dyn Fn() + Send + Sync>>) {
-        self.grid.blocking_lock().set_on_change(callback);
+    #[cfg(all(test, feature = "native-view"))]
+    pub(crate) fn with_grid_locked(&self, operation: impl FnOnce()) {
+        let _guard = self.grid.blocking_lock();
+        operation();
     }
-    pub fn notify_change(&self) {
-        self.grid.blocking_lock().notify_change();
+
+    fn update_grid<T>(&self, update: impl FnOnce(&mut TerminalGrid) -> T) -> T {
+        let mut grid = self.grid.blocking_lock();
+        #[cfg(feature = "native-view")]
+        let revision = grid.revision();
+        let result = update(&mut grid);
+        #[cfg(feature = "native-view")]
+        self.schedule_render_if_changed(grid, revision);
+        result
+    }
+
+    #[cfg(feature = "native-view")]
+    fn schedule_render_if_changed(
+        &self,
+        grid: MutexGuard<'_, TerminalGrid>,
+        previous_revision: u64,
+    ) {
+        if grid.revision() == previous_revision {
+            return;
+        }
+        drop(grid);
+        if let Some(renderer) = self.renderer.load().upgrade() {
+            renderer.schedule_render();
+        }
+    }
+
+    #[cfg(feature = "native-view")]
+    pub(crate) fn attach(&self, renderer: Weak<Renderer>) {
+        self.renderer.store(renderer);
+    }
+
+    #[cfg(feature = "native-view")]
+    pub(crate) fn detach(&self, renderer: &Weak<Renderer>) {
+        self.renderer.compare_and_swap(renderer, Weak::new());
     }
     pub fn exited(&self) -> bool {
         self.pty.exited()
@@ -198,7 +253,7 @@ impl TerminalSession {
     pub fn close(&self) {
         block_on(self.pty.close());
     }
-    pub fn detach(&self) {
+    pub fn detach_pty(&self) {
         block_on(self.pty.detach());
     }
 }

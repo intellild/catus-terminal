@@ -4,6 +4,7 @@ use crate::{
     terminal_session::TerminalSessionCommand,
 };
 use anyhow::Result;
+use std::sync::Arc;
 
 pub(crate) struct PlainHostDelegate;
 impl HostDelegate for PlainHostDelegate {
@@ -11,7 +12,7 @@ impl HostDelegate for PlainHostDelegate {
         &self,
         command: Option<TerminalSessionCommand>,
         size: GridSize,
-    ) -> Result<TerminalSession> {
+    ) -> Result<Arc<TerminalSession>> {
         match command {
             Some(command) => TerminalSession::command_in_directory(
                 &command.program,

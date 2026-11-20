@@ -22,7 +22,7 @@ use crate::{
 struct TerminalExtension {
     vsync: VsyncObserver,
     foreground: Arc<AtomicBool>,
-    host: OnceLock<Box<TerminalHost>>,
+    host: OnceLock<Arc<TerminalHost>>,
 }
 
 impl Default for TerminalExtension {
@@ -42,7 +42,7 @@ impl Extension for TerminalExtension {
 
     fn on_view_create(&self, view: NonNull<LynxView>) {
         let host = self.host.get_or_init(|| {
-            Box::new(TerminalHost::new(
+            Arc::new(TerminalHost::new(
                 view.as_ptr() as usize,
                 self.vsync.clone(),
                 Arc::clone(&self.foreground),
@@ -57,14 +57,14 @@ impl Extension for TerminalExtension {
 
     fn on_runtime_attach(&self, _env: napi_env) {
         if let Some(host) = self.host.get() {
-            host.schedule_all();
+            host.notify_resume();
         }
     }
 
     fn on_enter_foreground(&self) {
         self.foreground.store(true, Ordering::Release);
         if let Some(host) = self.host.get() {
-            host.schedule_all();
+            host.notify_resume();
         }
     }
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, ensure};
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -12,61 +12,105 @@ use crate::{
     },
     frame::{Viewport, expired},
     platform::create_terminal_platform,
-    terminal_session::acquire_terminal,
-    terminal_view::{NativeScrollState, RenderOutcome},
+    renderer::{FramePreparation, RenderOutcome, Renderer},
+    terminal_content::TerminalContent,
+    terminal_core::grid::ScrollState,
+    terminal_session::{Session, session},
 };
 
-use super::{
-    NativeTerminalView, host::TerminalHost, render_scheduler::RenderScheduler, state::State,
-};
+use super::{NativeTerminalView, host::TerminalHost, state::State};
 
 impl ViewFactory for NativeTerminalView {
-    type Context = TerminalHost;
-    fn create(handle: Handle, target: Target<Self>, host: &TerminalHost) -> Result<Self> {
-        let frames = RenderScheduler::new(
+    type Context = Arc<TerminalHost>;
+    fn create(handle: Handle, target: Target<Self>, host: &Arc<TerminalHost>) -> Result<Self> {
+        let renderer = Renderer::new(
             host.vsync.clone(),
             Arc::clone(&host.foreground),
-            Box::new(move |deadline| {
-                let outcome = Cell::new(RenderOutcome::Retry);
-                let result = target.dispatch(|view| {
-                    outcome.set(view.frame(deadline)?);
-                    Ok(())
-                });
-                if let Err(error) = result {
-                    eprintln!("Terminal frame: {error:#}");
-                    return RenderOutcome::Retry;
-                }
-                outcome.get()
-            }),
+            Some(target.clone()),
         );
-        let notify: Arc<dyn Fn() + Send + Sync> = {
-            let frames = Arc::clone(&frames);
-            Arc::new(move || frames.schedule())
-        };
-        let platform = create_terminal_platform(host.view, &handle, Arc::clone(&notify))?;
-        host.register(&frames);
+        let platform = create_terminal_platform(host.view, &handle, target.clone())?;
         Ok(Self {
+            host: Arc::clone(host),
+            target,
             handle,
             platform,
-            frames,
-            notify,
+            renderer,
+            content: RefCell::default(),
+            drawing: RefCell::default(),
+            cells: None.into(),
+            mouse: RefCell::default(),
+            repaint: true.into(),
+            viewport: None.into(),
             state: RefCell::new(State::default()),
         })
     }
 }
 
 impl NativeTerminalView {
-    fn update_frames(&self, state: &State) {
-        self.frames.set_active(
-            state.attached
-                && state.id != 0
-                && state.terminal.is_some()
-                && state.viewport.width != 0
-                && state.viewport.height != 0,
-        );
+    pub(crate) fn session(&self) -> Result<Arc<Session>> {
+        self.content
+            .borrow()
+            .as_ref()
+            .map(|content| Arc::clone(&content.session))
+            .context("Terminal is not bound")
     }
-    fn schedule_render(&self) {
-        self.frames.schedule();
+    fn attach_session(&self) {
+        if let Some(content) = self.content.borrow().as_ref() {
+            content.session.attach(Arc::downgrade(&self.renderer));
+        }
+    }
+    fn detach_session(&self) {
+        if let Some(content) = self.content.borrow().as_ref() {
+            content.session.detach(&Arc::downgrade(&self.renderer));
+        }
+    }
+    fn bind(&self, next: Option<Arc<Session>>, attached: bool) -> Result<()> {
+        if let (Some(session), Some(viewport)) = (&next, self.viewport.get()) {
+            session.resize(self.cells_for(&viewport)?.size)?;
+        }
+        self.detach_session();
+        self.content.replace(next.map(TerminalContent::new));
+        self.mouse.replace(Default::default());
+        if attached {
+            self.attach_session();
+        }
+        self.invalidate_frame();
+        Ok(())
+    }
+    pub(crate) fn invalidate_frame(&self) {
+        self.repaint.set(true);
+        self.renderer.schedule_render();
+    }
+    pub(crate) fn set_preedit(&self, text: String) {
+        if let Some(content) = self.content.borrow_mut().as_mut()
+            && content.preedit != text
+        {
+            content.preedit = text;
+            self.invalidate_frame();
+        }
+    }
+    fn cells_for(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
+        if let Some(cells) = self.cells.get() {
+            return Ok(cells);
+        }
+        let cells = self.renderer.measure_cells(viewport)?;
+        self.cells.set(Some(cells));
+        Ok(cells)
+    }
+
+    pub(crate) fn cell_geometry(&self) -> Option<crate::frame::CellGeometry> {
+        self.cells.get().map(|cells| cells.geometry)
+    }
+    fn resize_session(&self, viewport: &Viewport) -> Result<()> {
+        if let Some(content) = self.content.borrow().as_ref() {
+            content.session.resize(self.cells_for(viewport)?.size)?;
+        }
+        Ok(())
+    }
+
+    fn update_frames(&self, state: &State) {
+        self.renderer
+            .set_active(state.attached && state.id != 0 && self.viewport.get().is_some());
     }
     fn focus(&self) -> Result<()> {
         self.handle.request_focus()?;
@@ -74,38 +118,57 @@ impl NativeTerminalView {
         Ok(())
     }
     fn render(&self, state: &mut State, deadline: i64, force: bool) -> Result<RenderOutcome> {
-        if expired(deadline) || state.id == 0 {
+        if state.id == 0 {
             return Ok(RenderOutcome::Idle);
         }
-        ensure!(
-            state.attached && state.viewport.width != 0 && state.viewport.height != 0,
-            "Waiting for an attached terminal and non-zero layout"
-        );
-        let terminal = state
-            .terminal
-            .as_ref()
-            .context("Terminal is not attached")?;
-        // A renderer is created on the first valid layout. If that allocation
-        // failed transiently, retry here instead of leaving the view blank for
-        // the rest of the process.
-        if !terminal.has_renderer() {
-            // Retry a transient initialization failure, but do not attempt a
-            // failing GPU/font setup on every frame.
+        if expired(deadline) {
+            return Ok(RenderOutcome::Retry);
+        }
+        ensure!(state.attached, "Waiting for an attached terminal");
+        let viewport = self.viewport.get().context("Waiting for terminal layout")?;
+        if let Some(retry) = state.renderer_retry {
             let now = Instant::now();
-            if state
-                .renderer_retry
-                .is_some_and(|retry| now.duration_since(retry) < Duration::from_secs(1))
-            {
+            if now < retry {
                 return Ok(RenderOutcome::Retry);
             }
-            state.renderer_retry = Some(now);
-            terminal.resize_viewport(&state.viewport)?;
+            state.renderer_retry = Some(now + Duration::from_secs(1));
+            self.resize_session(&viewport)?;
+            state.renderer_retry = None;
         }
-        let outcome = self
-            .platform
-            .render(&self.handle, &state.viewport, deadline, force)?;
-        if outcome != RenderOutcome::Presented {
-            return Ok(outcome);
+        if !self.platform.can_present(force) {
+            return Ok(RenderOutcome::Idle);
+        }
+        let mut drawing = self.drawing.borrow_mut();
+        if self.repaint.replace(false) {
+            drawing.invalidate();
+        }
+        let prepared = self.renderer.prepare_frame(
+            &mut drawing,
+            self.content
+                .borrow()
+                .as_ref()
+                .context("Terminal is not bound")?,
+            viewport,
+            deadline,
+        )?;
+        let mut frame = match prepared {
+            FramePreparation::Ready(frame) => frame,
+            FramePreparation::Idle => return Ok(RenderOutcome::Idle),
+            FramePreparation::Deferred => return Ok(RenderOutcome::Retry),
+        };
+        let cursor = frame.insertion_point();
+        match self.platform.present(&self.handle, &mut frame) {
+            Ok(RenderOutcome::Presented) => (),
+            result => {
+                self.repaint.set(true);
+                return result;
+            }
+        }
+        if let Some(geometry) = self.cell_geometry() {
+            self.platform.update_cursor(geometry.cursor_rect(cursor));
+        }
+        if let Ok(scroll) = self.session()?.scroll_state() {
+            self.platform.update_overlay(scroll.history_rows);
         }
         // Platform rendering presents only frames that are still within their
         // deadline, so a successful return is already the final word.
@@ -116,10 +179,7 @@ impl NativeTerminalView {
         }
         Ok(RenderOutcome::Presented)
     }
-    fn frame(&self, deadline: i64) -> Result<RenderOutcome> {
-        if expired(deadline) {
-            return Ok(RenderOutcome::Idle);
-        }
+    pub(crate) fn frame(&self, deadline: i64) -> Result<RenderOutcome> {
         let Ok(mut state) = self.state.try_borrow_mut() else {
             return Ok(RenderOutcome::Retry);
         };
@@ -131,10 +191,10 @@ impl NativeTerminalView {
             }
         };
         // A busy grid simply retries next RAF. Emit only scalar changes.
-        let scroll = state
-            .terminal
-            .as_ref()
-            .and_then(|terminal| terminal.scroll_state().ok())
+        let scroll = self
+            .session()
+            .and_then(|session| session.scroll_state())
+            .ok()
             .and_then(|scroll| {
                 let value = (state.id, scroll);
                 if state.last_scroll == Some(value) {
@@ -155,15 +215,15 @@ impl NativeTerminalView {
         Ok(outcome)
     }
 }
-fn scroll_value(id: u32, scroll: NativeScrollState) -> Result<Value> {
+fn scroll_value(id: u32, scroll: ScrollState) -> Result<Value> {
     let value = Value::map()?;
     for (name, number) in [
-        (Property::SessionId, id),
+        (Property::SessionId, usize::try_from(id)?),
         (Property::Offset, scroll.offset),
         (Property::HistoryRows, scroll.history_rows),
         (Property::VisibleRows, scroll.visible_rows),
     ] {
-        value.set(name, &Value::integer(number.into())?)?;
+        value.set(name, &Value::integer(number.try_into()?)?)?;
     }
     Ok(value)
 }
@@ -176,28 +236,27 @@ impl NativeView for NativeTerminalView {
         self.platform.attach();
         let mut state = self.state.borrow_mut();
         state.attached = true;
-        if let Some(terminal) = &state.terminal {
-            terminal.invalidate_frame();
-        }
+        self.host.element.attach(&self.target);
+        self.attach_session();
         self.update_frames(&state);
-        self.schedule_render();
+        self.invalidate_frame();
         Ok(())
     }
     fn on_detach(&self) -> Result<()> {
+        self.host.element.detach(&self.target);
         self.platform.detach();
+        self.detach_session();
         let mut state = self.state.borrow_mut();
         state.attached = false;
         self.update_frames(&state);
         Ok(())
     }
     fn on_destroy(&self) -> Result<()> {
+        self.host.element.detach(&self.target);
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
-        if let Some(terminal) = &state.terminal {
-            terminal.set_on_change(None);
-        }
-        state.terminal = None;
+        self.bind(None, false)?;
         state.id = 0;
         self.update_frames(&state);
         Ok(())
@@ -219,24 +278,28 @@ impl NativeView for NativeTerminalView {
             || width * pixel_ratio > 8192.
             || height * pixel_ratio > 8192.
         {
-            state.viewport.width = 0;
-            state.viewport.height = 0;
+            self.viewport.set(None);
+            self.cells.set(None);
+            state.renderer_retry = None;
             state.error = "Terminal layout is zero or exceeds the texture size limit".into();
             self.update_frames(&state);
             return Ok(());
         }
-        state.viewport = Viewport {
+        let viewport = Viewport {
             width: (width * pixel_ratio).ceil() as u32,
             height: (height * pixel_ratio).ceil() as u32,
             pixel_ratio,
         };
-        if let Some(terminal) = &state.terminal
-            && let Err(error) = terminal.resize_viewport(&state.viewport)
-        {
+        if self.viewport.replace(Some(viewport)) != Some(viewport) {
+            self.cells.set(None);
+        }
+        state.renderer_retry = None;
+        if let Err(error) = self.resize_session(&viewport) {
             state.error = format!("{error:#}");
+            state.renderer_retry = Some(Instant::now() + Duration::from_secs(1));
         }
         self.update_frames(&state);
-        self.schedule_render();
+        self.renderer.schedule_render();
         Ok(())
     }
     fn on_properties_changed(&self, attrs: &Value, _events: &Value) -> Result<()> {
@@ -255,39 +318,22 @@ impl NativeView for NativeTerminalView {
         if id == state.id {
             return Ok(());
         }
+        let next = if id == 0 {
+            Ok(None)
+        } else {
+            session(id).map(Some)
+        };
+        if let Err(error) = next.and_then(|next| self.bind(next, state.attached)) {
+            state.error = format!("{error:#}");
+            return Ok(());
+        }
+        state.id = id;
         state.last_scroll = None;
         state.renderer_retry = None;
-        if let Some(terminal) = &state.terminal {
-            terminal.set_on_change(None);
-        }
-        if id == 0 {
-            self.platform.clear_terminal();
-            state.terminal = None;
-            state.id = 0;
-            state.error.clear();
-        } else {
-            let binding = (|| -> Result<_> {
-                let terminal = acquire_terminal(id)?;
-                if state.viewport.width != 0 && state.viewport.height != 0 {
-                    terminal.resize_viewport(&state.viewport)?;
-                }
-                self.platform.bind_terminal(&terminal);
-                terminal.invalidate_frame();
-                Ok(terminal)
-            })();
-            match binding {
-                Ok(terminal) => {
-                    terminal.set_on_change(Some(Arc::clone(&self.notify)));
-                    state.terminal = Some(terminal);
-                    state.id = id;
-                }
-                Err(error) => {
-                    state.error = format!("{error:#}");
-                }
-            }
-        }
+        state.error.clear();
+        self.platform.set_bound(id != 0);
         self.update_frames(&state);
-        self.schedule_render();
+        self.renderer.schedule_render();
         Ok(())
     }
     fn on_focus_changed(&self, focused: bool, leaf: bool) -> Result<()> {
@@ -323,10 +369,7 @@ impl NativeView for NativeTerminalView {
         if method == Method::Unknown {
             return Ok(Reply::method_not_found());
         }
-        let terminal = state
-            .terminal
-            .as_ref()
-            .context("Terminal is not attached")?;
+        let session = self.session()?;
         match method {
             Method::ScrollTo | Method::GetScrollState => {
                 if method == Method::ScrollTo {
@@ -334,19 +377,19 @@ impl NativeView for NativeTerminalView {
                         params.get(Property::SessionId)?.u32()? == state.id,
                         "Terminal session changed"
                     );
-                    terminal.scroll_to(params.get(Property::Offset)?.u32()?);
+                    session.scroll_to(params.get(Property::Offset)?.u32()? as usize);
                 }
                 Ok(Reply::success(scroll_value(
                     state.id,
-                    terminal.scroll_state()?,
+                    session.scroll_state()?,
                 )?))
             }
             Method::Write => {
-                terminal.write(&params.get(Property::Text)?.string()?)?;
+                session.write(params.get(Property::Text)?.string()?.into_bytes())?;
                 Ok(Reply::success(Value::boolean(true)?))
             }
             Method::Key => {
-                terminal.key(
+                session.key(
                     &params.get(Property::Key)?.string()?,
                     params
                         .get(Property::Control)
@@ -361,11 +404,7 @@ impl NativeView for NativeTerminalView {
 }
 impl Drop for NativeTerminalView {
     fn drop(&mut self) {
-        if let Ok(state) = self.state.try_borrow()
-            && let Some(terminal) = &state.terminal
-        {
-            terminal.set_on_change(None);
-        }
-        self.frames.set_active(false);
+        self.renderer.set_active(false);
+        self.detach_session();
     }
 }

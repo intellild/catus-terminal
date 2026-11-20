@@ -163,7 +163,7 @@ impl Server {
         );
         String::from_utf8(output.stdout).unwrap()
     }
-    fn attach(&self, session: &str, window: &str) -> TerminalSession {
+    fn attach(&self, session: &str, window: &str) -> std::sync::Arc<TerminalSession> {
         let args = [
             "-L",
             &self.socket,
@@ -286,7 +286,7 @@ fn real_tmux_session_lists_creates_selects_and_closes_windows() {
             && terminal.snapshot().text().contains("FIRST")
     });
 
-    terminal.detach();
+    terminal.detach_pty();
     let reattached = server.attach("test-1", "tab-1");
     wait(&reattached, || {
         ready(&reattached)

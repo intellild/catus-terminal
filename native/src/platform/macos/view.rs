@@ -5,9 +5,8 @@ use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
 use super::visibility::WindowVisibility;
 use crate::{
     binding::native_view::Handle,
-    frame::Viewport,
-    terminal_session::TerminalHandle,
-    terminal_view::{RenderOutcome, SnapshotOutcome},
+    frame::CursorRect,
+    renderer::{PreparedFrame, RenderOutcome},
 };
 use anyhow::{Context, Result};
 use objc2::{ClassType, MainThreadOnly, rc::Retained, runtime::ProtocolObject};
@@ -17,7 +16,6 @@ use objc2_quartz_core::{CALayer, CAMetalLayer};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::Arc,
 };
 
 pub struct MacTerminalView {
@@ -26,7 +24,6 @@ pub struct MacTerminalView {
     state: Rc<InputState>,
     layer: Retained<CAMetalLayer>,
     layer_configured: Cell<bool>,
-    terminal: Rc<RefCell<Option<TerminalHandle>>>,
     osr_surfaces: RefCell<OsrSurfaces>,
     visibility: WindowVisibility,
     context: RefCell<Option<Retained<NSTextInputContext>>>,
@@ -43,48 +40,19 @@ pub struct MacTerminalView {
 /// declared signatures. Callbacks and the adapter must stay on the UI thread.
 pub unsafe fn create_mac_terminal_view(
     host: &NativeViewHost,
-    schedule: Arc<dyn Fn() + Send + Sync>,
+    emit: impl Fn(InputEvent) -> Result<()> + 'static,
 ) -> Result<Box<MacTerminalView>> {
     let mtm =
         MainThreadMarker::new().context("Terminal NSView must be created on the UI thread")?;
     let parent = unsafe { (host.parent as *const NSView).as_ref() };
-    let terminal = Rc::new(RefCell::new(None::<TerminalHandle>));
-    let binding = terminal.clone();
     let host = *host;
-    let state = InputState::new(
-        parent,
-        move |event| {
-            if let Some(terminal) = binding.borrow().as_ref() {
-                match event {
-                    InputEvent::Text(text) => terminal.write(&text)?,
-                    InputEvent::Paste(text) => terminal.paste(&text)?,
-                    InputEvent::Key { key, control, alt } => terminal.key(&key, control, alt)?,
-                    InputEvent::Preedit(text) => terminal.set_preedit(&text),
-                    InputEvent::Mouse(event) => terminal.mouse_input(&event)?,
-                    InputEvent::Copy => {
-                        if let Some(text) = terminal.session.core.selected_text() {
-                            let board = objc2_app_kit::NSPasteboard::generalPasteboard();
-                            board.clearContents();
-                            unsafe {
-                                board.setString_forType(
-                                    &objc2_foundation::NSString::from_str(&text),
-                                    objc2_app_kit::NSPasteboardTypeString,
-                                );
-                            }
-                        }
-                    }
-                }
+    let state = InputState::new(parent, emit, move || {
+        if let Some(callback) = host.request_focus {
+            unsafe {
+                callback(host.native_view);
             }
-            Ok(())
-        },
-        move || {
-            if let Some(callback) = host.request_focus {
-                unsafe {
-                    callback(host.native_view);
-                }
-            }
-        },
-    );
+        }
+    });
     let input = InputView::new(mtm, state.clone());
     input.setHidden(true);
     let layer = CAMetalLayer::layer();
@@ -94,12 +62,11 @@ pub unsafe fn create_mac_terminal_view(
     Ok(Box::new(MacTerminalView {
         host,
         input,
+        visibility: WindowVisibility::new(Rc::downgrade(&state)),
         state,
         layer,
         layer_configured: Cell::new(false),
-        terminal,
         osr_surfaces: RefCell::new(OsrSurfaces::default()),
-        visibility: WindowVisibility::new(schedule),
         context: RefCell::new(None),
         osr: Cell::new(parent.is_none_or(|parent| parent.window().is_none())),
         explicit_osr: Cell::new(false),
@@ -130,9 +97,7 @@ impl MacTerminalView {
         if self.osr.replace(osr) != osr {
             self.blur();
             self.input.removeFromSuperview();
-            if let Some(terminal) = self.terminal.borrow().as_ref() {
-                terminal.invalidate_frame();
-            }
+            self.state.emit(InputEvent::Redraw);
             self.attach_view();
         }
     }
@@ -150,21 +115,19 @@ impl MacTerminalView {
             self.apply_osr(false);
         }
     }
-    pub fn bind_terminal(&self, terminal: &TerminalHandle) {
+    pub fn set_bound(&self, bound: bool) {
         self.assert_ui();
-        self.input.reset_composition();
-        *self.terminal.borrow_mut() = Some(terminal.clone());
-        self.input.setHidden(false);
-    }
-    pub fn clear_terminal(&self) {
-        self.assert_ui();
-        self.blur();
-        self.terminal.borrow_mut().take();
-        self.input.setHidden(true);
-        self.state.overlay_width.set(0.);
-        self.overlay_mask.set(None);
-        unsafe {
-            self.layer.setMask(None);
+        if bound {
+            self.input.reset_composition();
+            self.input.setHidden(false);
+        } else {
+            self.blur();
+            self.input.setHidden(true);
+            self.state.overlay_width.set(0.);
+            self.overlay_mask.set(None);
+            unsafe {
+                self.layer.setMask(None);
+            }
         }
     }
     pub fn attach(&self) {
@@ -282,20 +245,15 @@ impl MacTerminalView {
     }
     pub fn destroy(&self) {
         self.detach();
-        self.clear_terminal();
+        self.set_bound(false);
         self.visibility.clear();
     }
     fn observe_window(&self) {
         self.visibility
             .observe(self.parent().and_then(|parent| parent.window()));
     }
-    fn update_overlay(&self, terminal: &TerminalHandle) {
-        // AppKit subviews sit above Lynx's composited UI. Reveal the overlay strip
-        // without resizing the terminal grid, and let Lynx receive hits there.
-        let Ok(scroll) = terminal.scroll_state() else {
-            return;
-        };
-        let width = if scroll.history_rows > 0 { 12. } else { 0. };
+    pub(crate) fn update_overlay(&self, history_rows: usize) {
+        let width = if history_rows > 0 { 12. } else { 0. };
         let bounds = self.input.bounds();
         let key = (bounds.size.width, bounds.size.height, width);
         if self.overlay_mask.get() == Some(key) {
@@ -337,72 +295,36 @@ impl MacTerminalView {
                 .contains(NSWindowOcclusionState::Visible)
     }
 
-    pub fn render_native(&self, deadline: i64, force: bool) -> Result<RenderOutcome> {
-        self.assert_ui();
-        if !force && !self.is_presentable() {
-            return Ok(RenderOutcome::Idle);
-        }
-        let terminal = self.bound_terminal()?;
-        match super::terminal::render_layer(
-            &terminal,
-            &self.layer,
-            &self.layer_configured,
-            deadline,
-        )? {
-            RenderOutcome::Presented => Ok(self.finish_presentation(&terminal)),
-            outcome => Ok(outcome),
-        }
+    pub(crate) fn can_present(&self, force: bool) -> bool {
+        self.uses_osr() || force || self.is_presentable()
     }
-    /// Render the bound session into an owned IOSurface and hand it to Lynx.
-    /// The surface stays valid through presentation because the pool keeps a
-    /// retain; no Lynx back buffer is borrowed.
-    pub fn render_osr(
+
+    pub(super) fn present_native(&self, frame: &mut PreparedFrame<'_>) -> Result<RenderOutcome> {
+        self.assert_ui();
+        super::terminal::render_layer(frame, &self.layer, &self.layer_configured)
+    }
+
+    pub(super) fn present_osr(
         &self,
         handle: &Handle,
-        viewport: &Viewport,
-        deadline: i64,
+        frame: &mut PreparedFrame<'_>,
     ) -> Result<RenderOutcome> {
         self.assert_ui();
-        // Release the terminal borrow before calling into Lynx.
-        let terminal = self.bound_terminal()?;
-        let frame = self.osr_surfaces.borrow_mut().acquire(viewport)?;
-        match super::osr::render_surface(&terminal, frame.surface(), deadline)? {
-            SnapshotOutcome::Drawn => {}
-            SnapshotOutcome::Idle => return Ok(RenderOutcome::Idle),
-            SnapshotOutcome::Deferred => return Ok(RenderOutcome::Retry),
-        }
-        if crate::frame::expired(deadline) {
-            terminal.invalidate_frame();
+        let viewport = frame.viewport;
+        let target = self.osr_surfaces.borrow_mut().acquire(&viewport)?;
+        if !super::osr::render_surface(frame, target.surface())? || frame.expired() {
             return Ok(RenderOutcome::Retry);
         }
-        if let Err(error) =
-            handle.present_surface(viewport.width, viewport.height, None, frame.handle())
-        {
-            terminal.invalidate_frame();
-            return Err(error);
-        }
-        self.osr_surfaces.borrow_mut().commit(frame.index());
-        Ok(self.finish_presentation(&terminal))
+        handle.present_surface(viewport.width, viewport.height, None, target.handle())?;
+        self.osr_surfaces.borrow_mut().commit(target.index());
+        Ok(RenderOutcome::Presented)
     }
-    fn bound_terminal(&self) -> Result<TerminalHandle> {
-        self.terminal
-            .borrow()
-            .as_ref()
-            .context("Terminal is not bound")
-            .cloned()
-    }
-    fn finish_presentation(&self, terminal: &TerminalHandle) -> RenderOutcome {
-        self.update_overlay(terminal);
-        self.update_cursor(terminal);
-        RenderOutcome::Presented
-    }
-    fn update_cursor(&self, terminal: &TerminalHandle) {
-        if let Ok(cursor) = terminal.cursor_rect() {
-            self.state.cursor.set(NSRect::new(
-                NSPoint::new(cursor.x.into(), cursor.y.into()),
-                NSSize::new(cursor.width.into(), cursor.height.into()),
-            ));
-        }
+
+    pub(crate) fn update_cursor(&self, cursor: CursorRect) {
+        self.state.cursor.set(NSRect::new(
+            NSPoint::new(cursor.x.into(), cursor.y.into()),
+            NSSize::new(cursor.width.into(), cursor.height.into()),
+        ));
     }
 }
 impl Drop for MacTerminalView {

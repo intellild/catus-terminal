@@ -45,8 +45,9 @@ pub(crate) fn create_surface(width: u32, height: u32) -> Result<CFRetained<IOSur
 ///
 /// # Safety
 /// The caller must reserve the surface exclusively until GPU writes complete.
+#[cfg(test)]
 pub(crate) unsafe fn render_to_surface(
-    renderer: &mut crate::renderer::TerminalRenderer,
+    renderer: &mut crate::renderer::GridPainter<'_>,
     viewport: &Viewport,
     grid: &crate::terminal_core::grid::GridSnapshot,
     surface: &IOSurfaceRef,

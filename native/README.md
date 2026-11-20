@@ -22,17 +22,17 @@ native/
   src/host.rs                 Host 会话归属、创建、查找、关闭和 detach
   src/host/                   HostDelegate trait 与普通/tmux 后端
   src/host/factory.rs         HostFactory 选择后端并注入 Host::new
-  src/terminal_session.rs      N-API u32 句柄接口和 session renderer
-  src/terminal_view.rs         layout resize、revision 和网格快照编排
+  src/terminal_session.rs      N-API u32 会话句柄接口
+  src/terminal_content.rs      已绑定的 session、IME 组合文本和内容快照
   src/renderer.rs              共享 GPU、平台无关 wgpu 绘制与 deadline
+  src/renderer/scheduler.rs    Renderer 的 VSync 按需调度
   src/frame.rs                 平台无关的 cxx Viewport
   src/binding/vsync.rs         VSyncObserver 的安全 Rust 封装
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
   src/native_terminal_view/
     mod.rs                     NativeTerminalView 对象和模块导出
-    host.rs                    TerminalHost 与 view/scheduler 注册
-    render_scheduler.rs        VSync 按需渲染状态机
-    state.rs                   终端绑定、layout、焦点和错误状态
+    host.rs                    TerminalHost 向已挂载的 element 转发窗口恢复事件
+    state.rs                   当前会话 ID、挂载状态、滚动事件和焦点状态
     view.rs                    element 生命周期、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
   src/platform/
@@ -91,8 +91,7 @@ SDK 头文件变动自动触发重新生成；测试用独立 C 宿主替身和�
 生成需要 libclang，macOS 可使用 Xcode Command Line Tools 提供的版本；自定义安装可设置 `LIBCLANG_PATH`。
 
 `terminal_extension.rs` 实现 `Extension` trait，通过泛型 `register<T>` 注册 factory。
-每个 Lynx view 创建一个 Rust extension 和帧注册表；`on_view_create` 注册 `native-terminal`。
-Rust native view 克隆该表的共享句柄，不再使用 C++ shared host 或 render target。
+每个 Lynx view 创建一个 Rust extension，`on_view_create` 注册 `native-terminal` 并提供窗口级 VSync 句柄。
 前后台生命周期直接修改 Rust 状态；view/module 销毁及最终 Drop 均停止帧回调。
 已创建的 native view 可以比 extension 活得更久，但不能继续绘制已销毁窗口。
 C++ 注册文件只保留加载 constructor，由 cdylib 专用静态库触发，避免 Rust 测试进程自动注册宿主接口。
@@ -145,32 +144,38 @@ E2E preload 用 `CATUS_E2E_PTY`
 `TerminalView` 与 `NativeTerminalView` 持续挂载，切换 tab 只更新 `terminal-id`，无需 active 或 key。
 没有选中 tab 时 ID 0 清除 native 绑定并隐藏 view，Rust 停止该 view 的帧监听；loading/配置错误也保持挂载。
 Rust `Host` 强引用自己所属的 session；全局 `Hosts` 只维护 host 和数字句柄的归属索引。
-每个 session 拥有计算层和带锁的 renderer/viewport。
-renderer 在首次有效 layout 时惰性创建，之后随 session 保留。
-切换 tab 保留同一个 native element、shell 和 renderer，由 OnPropertiesChanged 更新 session 绑定。
-Rust 的 `on_properties_changed` 校验数字 ID，并取得共享 `TerminalHandle`。
+每个 `NativeTerminalView` 持有一个 `Arc<Renderer>`，管理 viewport、绘制缓存和鼠标状态。
+element 在 attach 时将 renderer 的弱引用交给当前 session，detach 或切换 session 时解除旧绑定。
+`TerminalHost` 将 runtime attach 和窗口回前台事件投递到 UI 线程，由当时仍挂载的 element 请求重绘。
+`TerminalContent` 保存当前 session 和 IME 组合文本，生成带组合文本的网格快照。
+AppKit 把输入和窗口重绘事件送回 element，由 element 请求绘制并向平台提交准备好的帧。
+session 直接持有 `ArcSwapWeak<Renderer>`。PTY parser 等待输出时只保留 `Weak<TerminalSession>`，
+收到数据后调用 session 的 `process_output`。
+`attach` 原子替换 renderer 的弱引用，
+`detach` 只在引用仍指向该 renderer 时清除绑定。两者都可以在 parser 持有网格锁时执行。
+网格 revision 发生变化后，session 先释放网格锁，再读取当前 renderer 并调用 `schedule_render()`。
+没有绑定 element 的 session 继续解析 PTY。
+切换 tab 时，先按 element 的 layout 准备新 session，再解绑旧 session、清理输入状态并重绘首帧。
 诊断/主机 API 为 `writeTerminalSession(id, text)` 和 `getTerminalSessionInfo(id)`。
 
 `terminal_core/grid.rs` 只计算 Alacritty 字符网格；`terminal_core/session.rs` 管理网格及输入编码，
 通过 `Pty` 发送已编码的字节。`terminal_core/pty.rs` 管理阻塞 PTY 读写线程和进程回收。
 portable-pty 的 reader/writer 各占一个独立线程，只负责阻塞读写；reader 通过有界
 tokio channel（16 个 chunk）把字节交给专用 tokio runtime 上的 async parser，writer
-从无界 channel 接收命令，避免 UI 输入等待 PTY。parser 获取
+从无界 channel 接收命令，避免 UI 输入等待 PTY。session 处理输出时获取
 `tokio::sync::Mutex<TerminalGrid>` 后 `.await` `PtyDelegate`；delegate 方法本身也是
 async，`TmuxPtyDelegate` 的 `TmuxClient` 使用 tokio Mutex。PTY 的
 master/child/input/error 和 grid 都使用 tokio 锁，UI/N-API/测试的同步边界用
 `block_on`/`blocking_lock` 进入 async API。关闭时先发送 delegate 命令，再发送带
 grace 的 Close；writer 在 grace 内保持 fd 打开，让 shell 消费已排队的命令后退出。
-`host.rs` 管理生命周期，`terminal_session.rs` 提供 N-API 和 native handle，
-`terminal_view.rs` 编排共享渲染流程，
+`host.rs` 管理生命周期，`terminal_session.rs` 提供 N-API 和 session 查找，
+`native_terminal_view/view.rs` 处理绑定、布局和绘制，
 `platform/macos/terminal.rs` 提供 macOS cxx 适配。
 `OnLayoutChanged` 接收逻辑尺寸及 backing scale，更新 viewport，再用 crossfont
 字体 advance、line height（含 CoreText leading）和 padding 计算行列，resize PTY。
 属性晚于 layout 到达时，绑定 session 后应用缓存的 layout；UI 不传宽高或行列参数。
-`renderFrame()` 只读取 session 的 renderer/viewport、检查 revision、生成快照并绘制。
-`renderer.rs` 接收计算后的网格、session 的 viewport 和准备 wgpu texture 的回调，
-不访问 PTY 或 OS 指针。macOS 回调在 `platform/macos/surface.rs` 导入 IOSurface。
-native view 不独立持有或创建 renderer。
+`renderFrame()` 根据 element 的 viewport、当前 session 的 grid revision 和全局 atlas generation
+决定是否绘制。macOS 在 `platform/macos/surface.rs` 导入 IOSurface。
 
 配置数据在 TypeScript 中使用 `HostProfile` / `HostProfileSchema`，配置文件包含 `hosts` 与 `display` 字段。
 Rust `Host` 统一管理会话创建、查找、关闭、detach 和成员清理；
@@ -214,14 +219,14 @@ Pty（terminal_core/pty.rs）
 PtyDelegate（terminal_core/pty/delegate.rs）
   PlainPtyDelegate → 原始字节流和 PTY resize
   TmuxPtyDelegate → control mode 和 tmux window resize
-       ↓
-现有 renderer 和 native view
+
+NativeTerminalView ──Arc──→ Renderer ←──Weak── 已绑定的 TerminalSession
 ```
 
 | native-terminal 接口 | 用途 |
 | --- | --- |
 | `terminal-id: number` | 正数绑定 u32 session ID，0 解绑 |
-| `renderFrame()` | 使用 session 的 viewport 绘制最新网格，空闲时跳过 GPU；成功返回 true |
+| `renderFrame()` | 使用 element 的 viewport 绘制最新网格，空闲时跳过 GPU；成功返回 true |
 | `focus()` | 获得 Lynx 键盘焦点 |
 | `write({ text })` | 写入 UTF-8 文本（诊断/未来粘贴入口） |
 | `key({ key, control, alt })` | 编码普通键和基本终端控制键并写入 PTY |
@@ -241,16 +246,16 @@ foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成的请求
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 `renderFrame` 保留为显式入口。
 原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。
-每个回调都检查本次 VSync 的 monotonic deadline；view/session/grid/atlas 锁忙则直接丢帧。
+每个回调都检查本次 VSync 的 monotonic deadline；UI 正在绘制或 grid/atlas 锁忙则直接丢帧。
 提交前过期丢弃 encoder 并撤销未上传的 atlas handles；提交后过期先等待 GPU 完成，
 再丢弃呈现，保持网格 dirty。不会把还在写入的借用 buffer 还给 Lynx，也不会重放旧帧。
 async parser 只更新自己的网格；attach/layout/props 只更新状态，不直接启动 GPU 绘制。
 网格 revision、尺寸和 scale 均未变化时不获取 framebuffer、不生成快照、不绘制。
 ID 0、零尺寸、detach、后台和销毁停止执行渲染回调。
 Rust 测试在 `src/tests/vsync.rs`，覆盖安全封装下的请求、回调、detach 和重复请求拒绝。
-网格变更通知通过 `TerminalGrid::set_on_change` 传递到 view 的 `schedule_render`。
+网格更新完成后，session 通过弱引用直接请求 renderer 绘制。
 `src/tests/macos/terminal_rendering.rs` 使用真实 portable-pty 启动
-`../tests/fixtures/fake-pty.mjs`，通过 session 的 `render_surface` 导入真实 IOSurface 并回读
+`../tests/fixtures/fake-pty.mjs`，通过 element 的绑定和 `render_surface` 导入真实 IOSurface 并回读
 Metal 像素。覆盖网格更新、空闲跳帧、过期/资源忙丢帧后的最新网格恢复、坏 framebuffer、重新绑定、session 隔离和 DPI resize。
 `src/tests/renderer_support.rs` 只提供共享测试锁；
 `src/tests/macos/surface_support.rs` 提供 IOSurface 创建与像素回读夹具。
@@ -324,9 +329,8 @@ OSR 才启用 `IsSurfaceEnabled()`。平台层按物理像素维护两个自建 
 （BGRA8、Metal 可导入）：一块交给 Lynx 显示，另一块作为渲染目标，present 成功后才交换
 角色；失败或超时的帧继续写同一块目标，不触碰正在显示的 surface，也不再借用 Lynx 的
 back buffer。
-会话层检查锁忙和 idle revision，准备网格快照后调用公共
-`render_to_surface(renderer, viewport, grid, &IOSurfaceRef, deadline)`。
-该函数只负责目标校验、纹理导入及绘制，不读取 PTY 或 session。Rust 检查尺寸和
+element 调用 `Renderer::prepare_frame` 检查 revision 并取得内容快照。
+平台适配器为准备好的帧提供 IOSurface 或 Metal drawable。Rust 检查尺寸和
 像素布局，使用全局共享 MTLDevice 创建 BGRA8Unorm texture，再导入 wgpu 绘制。
 Rust 等待已提交 GPU 工作完成并检查 deadline，然后通过 C API `PresentSurface`
 把自建 surface 交给 Lynx 合成；不再使用 `AcquireSurface` / `SwapBack`。
@@ -342,10 +346,10 @@ JS 不再转发 keydown，防止 native 输入与 JS 重复写入。
 `pnpm test:native-input` 在 macOS 主线程运行 Rust 测试，验证原生文本输入协议；Rust 测试验证 CAMetalLayer drawable 和 OSR 组合文本。
 真实系统输入法的候选窗交互仍需要 macOS 运行时验收。
 
-`renderer.rs` 使用全局 `LazyLock<anyhow::Result<GpuContext>>` 惰性创建一次 device、
+`renderer.rs` 使用全局 `OnceCell<GpuContext>` 惰性创建一次 device、
 queue、glyph pipeline、sampler 和 `Mutex<SharedGlyphs>`；所有 terminal view 共享。
-每个 renderer 独立保存 instance buffer 与网格 revision/viewport/generation。
-销毁或重新绑定 view 只释放其 session 句柄；renderer 保留至 session 释放，重挂载时使帧状态失效，不清空共享缓存。原有三角形/atlas 演示、
+每个 element 的 `DrawState` 独立保存 instance buffer 与上一帧的 revision/viewport/generation。
+切换 session 时复用 element 的绘制资源并使上一帧缓存失效。销毁 element 时释放其绘制资源，全局 atlas 继续共享。原有三角形/atlas 演示、
 渲染统计和 IOSurface 像素扫描接口已移除；错误通过实际方法的失败回调返回。
 
 `text/font.rs` 使用 crossfont 0.9.0，按字体、字符和物理字号缓存字形。
@@ -356,7 +360,7 @@ DPI 改变会查找/补充另一个字号，既有字号和 atlas 区域仍保�
 
 普通字形使用 R8Unorm coverage 页；彩色字形使用 premultiplied RGBA8Unorm 页。
 位图由 256 字节行对齐 staging buffer 上传。pipeline、sampler、页 bind group 共享；
-instance buffer 每个 session 独立。保持 crossfont 平台默认 AA 和 RGB coverage 均值策略。
+instance buffer 每个 element 独立。保持 crossfont 平台默认 AA 和 RGB coverage 均值策略。
 
 共享锁覆盖字形生成、上传编码、提交和 GPU 完成，避免另一个 view 使用尚未提交的
 字形数据。失败时清空 atlas、递增 generation，所有 view 在下一帧重新绘制。

@@ -1,43 +1,50 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 
 use crate::{
-    binding::VsyncObserver, frame::expired, platform::post_task_to_ui, terminal_view::RenderOutcome,
+    binding::{VsyncObserver, native_view::Target},
+    frame::expired,
+    native_terminal_view::NativeTerminalView,
+    platform::post_task_to_ui,
+    renderer::RenderOutcome,
 };
 
-/// Coalesces grid/state changes into one VSync-synchronized render.
-pub(super) struct RenderScheduler {
-    vsync: VsyncObserver,
-    foreground: Arc<AtomicBool>,
-    render: Box<dyn Fn(i64) -> RenderOutcome + Send + Sync>,
-    active: AtomicBool,
-    dirty: AtomicBool,
-    /// One render is in flight: waiting for VSync or for the UI task to run.
-    scheduled: AtomicBool,
-    /// Invalidates callbacks from a previous active/inactive transition.
-    generation: AtomicU64,
-}
+use super::Renderer;
 
-impl RenderScheduler {
-    pub(super) fn new(
+impl Renderer {
+    pub(crate) fn new(
         vsync: VsyncObserver,
         foreground: Arc<AtomicBool>,
-        render: Box<dyn Fn(i64) -> RenderOutcome + Send + Sync>,
+        target: Option<Target<NativeTerminalView>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             vsync,
             foreground,
-            render,
+            target,
             active: AtomicBool::new(false),
             dirty: AtomicBool::new(false),
             scheduled: AtomicBool::new(false),
-            generation: AtomicU64::new(0),
+            generation: 0.into(),
         })
     }
 
-    pub(super) fn set_active(self: &Arc<Self>, active: bool) {
+    #[cfg(test)]
+    pub(crate) fn offscreen() -> Arc<Self> {
+        Self::new(
+            VsyncObserver::default(),
+            Arc::new(AtomicBool::new(true)),
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_dirty(&self) -> bool {
+        self.dirty.swap(false, Ordering::AcqRel)
+    }
+
+    pub(crate) fn set_active(self: &Arc<Self>, active: bool) {
         if self.active.swap(active, Ordering::AcqRel) == active {
             return;
         }
@@ -45,20 +52,20 @@ impl RenderScheduler {
         self.dirty.store(false, Ordering::Release);
         self.scheduled.store(false, Ordering::Release);
         if active {
-            self.schedule();
+            self.schedule_render();
         }
     }
 
-    pub(super) fn schedule(self: &Arc<Self>) {
+    pub(crate) fn schedule_render(self: &Arc<Self>) {
         self.dirty.store(true, Ordering::Release);
         if !self.active.load(Ordering::Acquire) || self.scheduled.swap(true, Ordering::AcqRel) {
             return;
         }
         let generation = self.generation.load(Ordering::Acquire);
-        let scheduler = Arc::clone(self);
+        let renderer = Arc::clone(self);
         if !self
             .vsync
-            .request_animation_frame(move |target| scheduler.on_vsync(generation, target))
+            .request_animation_frame(move |target| renderer.on_vsync(generation, target))
             && self.generation.load(Ordering::Acquire) == generation
         {
             self.scheduled.store(false, Ordering::Release);
@@ -79,10 +86,8 @@ impl RenderScheduler {
         }
         // Keep `scheduled` set while the UI task is pending, so another grid
         // update cannot queue a second render.
-        let scheduler = Arc::clone(self);
-        let task: Box<dyn FnOnce() + Send> =
-            Box::new(move || scheduler.render_scheduled(generation, target));
-        post_task_to_ui(Box::into_raw(Box::new(task)) as usize);
+        let renderer = Arc::clone(self);
+        post_task_to_ui(move || renderer.render_scheduled(generation, target));
     }
 
     fn render_scheduled(self: &Arc<Self>, generation: u64, target: i64) {
@@ -96,7 +101,7 @@ impl RenderScheduler {
         if expired(target) {
             self.scheduled.store(false, Ordering::Release);
             self.dirty.store(true, Ordering::Release);
-            self.schedule();
+            self.schedule_render();
             return;
         }
         if !self.foreground.load(Ordering::Acquire) {
@@ -104,7 +109,16 @@ impl RenderScheduler {
             self.dirty.store(true, Ordering::Release);
             return;
         }
-        let outcome = (self.render)(target);
+        let mut outcome = RenderOutcome::Idle;
+        if let Some(view) = &self.target
+            && let Err(error) = view.dispatch(|view| {
+                outcome = view.frame(target)?;
+                Ok(())
+            })
+        {
+            eprintln!("Terminal frame: {error:#}");
+            outcome = RenderOutcome::Retry;
+        }
         self.scheduled.store(false, Ordering::Release);
         if outcome == RenderOutcome::Retry {
             self.dirty.store(true, Ordering::Release);
@@ -114,7 +128,7 @@ impl RenderScheduler {
 
     fn schedule_if_dirty(self: &Arc<Self>) {
         if self.dirty.load(Ordering::Acquire) {
-            self.schedule();
+            self.schedule_render();
         }
     }
 }

@@ -102,7 +102,9 @@ impl GlyphCache {
                 // Keep the existing renderer's averaged RGB coverage policy.
                 // Rasterization itself uses crossfont's platform defaults.
                 gray = bytes
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|p| ((u16::from(p[0]) + u16::from(p[1]) + u16::from(p[2])) / 3) as u8)
                     .collect::<Vec<_>>();
                 BitmapBuffer::Gray(&gray)

@@ -1,12 +1,10 @@
 use std::time::Instant;
 
-use crate::{frame::Viewport, terminal_session::TerminalHandle, terminal_view::NativeScrollState};
+use crate::terminal_core::grid::ScrollState;
 
 pub(super) struct State {
-    pub(super) terminal: Option<Box<TerminalHandle>>,
     pub(super) id: u32,
-    pub(super) last_scroll: Option<(u32, NativeScrollState)>,
-    pub(super) viewport: Viewport,
+    pub(super) last_scroll: Option<(u32, ScrollState)>,
     pub(super) attached: bool,
     pub(super) needs_focus: bool,
     pub(super) focus_pending: bool,
@@ -16,14 +14,8 @@ pub(super) struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            terminal: None,
             id: 0,
             last_scroll: None,
-            viewport: Viewport {
-                width: 0,
-                height: 0,
-                pixel_ratio: 1.,
-            },
             attached: false,
             needs_focus: true,
             focus_pending: false,
