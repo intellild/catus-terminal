@@ -48,25 +48,13 @@ fn terminal_replies_and_application_cursor_keys() {
 }
 
 #[test]
-fn grid_changes_notify_the_render_scheduler() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
-
+fn grid_revision_tracks_content_and_layout_changes() {
     let mut grid = grid(8, 3);
-    let changes = Arc::new(AtomicUsize::new(0));
-    let count = Arc::clone(&changes);
-    grid.set_on_change(Some(Arc::new(move || {
-        count.fetch_add(1, Ordering::Relaxed);
-    })));
-
+    let initial = grid.revision();
     grid.advance(b"content");
-    assert_eq!(changes.load(Ordering::Relaxed), 1);
+    assert_eq!(grid.revision(), initial + 1);
     grid.resize(GridSize::new(12, 4));
-    assert_eq!(changes.load(Ordering::Relaxed), 2);
-
-    grid.set_on_change(None);
-    grid.advance(b"ignored");
-    assert_eq!(changes.load(Ordering::Relaxed), 2);
+    assert_eq!(grid.revision(), initial + 2);
+    grid.resize(GridSize::new(12, 4));
+    assert_eq!(grid.revision(), initial + 2);
 }

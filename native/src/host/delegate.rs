@@ -4,11 +4,12 @@ use crate::{
     terminal_session::TerminalSessionCommand,
 };
 use anyhow::Result;
+use std::sync::Arc;
 
 pub(crate) trait HostDelegate: Send + Sync {
     fn create_session(
         &self,
         command: Option<TerminalSessionCommand>,
         size: GridSize,
-    ) -> Result<TerminalSession>;
+    ) -> Result<Arc<TerminalSession>>;
 }

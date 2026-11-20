@@ -1,6 +1,5 @@
 //! macOS Lynx terminal bridge; shared session logic prepares the latest grid.
-use crate::terminal_session::TerminalHandle;
-use crate::terminal_view::{RenderOutcome, SnapshotOutcome};
+use crate::renderer::{PreparedFrame, RenderOutcome};
 use anyhow::Result;
 
 pub(super) mod ffi {
@@ -31,41 +30,13 @@ pub(super) mod ffi {
     }
 }
 
-impl TerminalHandle {
-    pub(super) fn cursor_rect(&self) -> Result<crate::frame::CursorRect> {
-        use anyhow::Context;
-        let rendering = self
-            .session
-            .rendering
-            .try_lock()
-            .map_err(|_| anyhow::anyhow!("Terminal renderer busy"))?;
-        let state = rendering.as_ref().context("Waiting for terminal layout")?;
-        let (cw, ch) = state.renderer.cell_size(&state.viewport)?;
-        let ratio = state.viewport.pixel_ratio;
-        let pad = (8. * ratio).round();
-        let grid = self
-            .session
-            .core
-            .try_snapshot()?
-            .context("Terminal grid busy")?;
-        let (row, column) = grid.insertion_point.unwrap_or_default();
-        Ok(crate::frame::CursorRect {
-            x: (pad + column as f32 * cw) / ratio,
-            y: (pad + row as f32 * ch) / ratio,
-            width: cw / ratio,
-            height: ch / ratio,
-        })
-    }
-}
-
 /// Render the session into the view's CAMetalLayer and present the drawable.
 /// The layer is configured once; expired frames release their drawable without
 /// presenting so the grid stays dirty for the next frame.
 pub(super) fn render_layer(
-    terminal: &TerminalHandle,
+    frame: &mut PreparedFrame<'_>,
     layer: &objc2_quartz_core::CAMetalLayer,
     layer_configured: &std::cell::Cell<bool>,
-    deadline: i64,
 ) -> Result<RenderOutcome> {
     use anyhow::Context;
     use objc2::{
@@ -76,34 +47,27 @@ pub(super) fn render_layer(
     use objc2_metal::{MTLPixelFormat, MTLTexture};
 
     let mut drawable: Option<Retained<AnyObject>> = None;
-    match terminal.render_snapshot(deadline, |renderer, viewport, snapshot| {
-        renderer.render_grid(viewport, snapshot, deadline, |device| {
-            if !layer_configured.get() {
-                let hal = unsafe { device.as_hal::<wgpu::hal::api::Metal>() }
-                    .context("Terminal requires Metal")?;
-                let raw_device = hal.raw_device();
-                unsafe {
-                    let _: () = msg_send![layer, setDevice: &**raw_device];
-                    let _: () = msg_send![layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
-                    let _: () = msg_send![layer, setFramebufferOnly: true];
-                }
-                layer_configured.set(true);
+    let drawn = frame.draw(crate::text::TargetOrigin::TopLeft, |device, viewport| {
+        if !layer_configured.get() {
+            let hal = unsafe { device.as_hal::<wgpu::hal::api::Metal>() }
+                .context("Terminal requires Metal")?;
+            let raw_device = hal.raw_device();
+            unsafe {
+                let _: () = msg_send![layer, setDevice: &**raw_device];
+                let _: () = msg_send![layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm];
+                let _: () = msg_send![layer, setFramebufferOnly: true];
             }
-            drawable = unsafe { msg_send![layer, nextDrawable] };
-            let target = drawable
-                .as_ref()
-                .context("Terminal Metal drawable unavailable")?;
-            let texture: Retained<ProtocolObject<dyn MTLTexture>> =
-                unsafe { msg_send![&**target, texture] };
-            unsafe { super::surface::import_texture(device, texture, viewport) }
-        })
-    })? {
-        SnapshotOutcome::Drawn => {}
-        SnapshotOutcome::Idle => return Ok(RenderOutcome::Idle),
-        SnapshotOutcome::Deferred => return Ok(RenderOutcome::Retry),
-    }
-    if crate::frame::expired(deadline) {
-        terminal.invalidate_frame();
+            layer_configured.set(true);
+        }
+        drawable = unsafe { msg_send![layer, nextDrawable] };
+        let target = drawable
+            .as_ref()
+            .context("Terminal Metal drawable unavailable")?;
+        let texture: Retained<ProtocolObject<dyn MTLTexture>> =
+            unsafe { msg_send![&**target, texture] };
+        unsafe { super::surface::import_texture(device, texture, viewport) }
+    })?;
+    if !drawn || frame.expired() {
         return Ok(RenderOutcome::Retry);
     }
     let drawable = drawable.context("Terminal Metal drawable unavailable")?;

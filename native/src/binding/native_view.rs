@@ -11,6 +11,7 @@ use crate::binding::{
     protocol::{ElementName, Event, Method},
 };
 use anyhow::{Context, Result, bail, ensure};
+use arc_swap::ArcSwapWeak;
 use std::{
     ffi::{CStr, c_char, c_void},
     marker::PhantomData,
@@ -225,6 +226,7 @@ pub struct Target<T> {
     state: Arc<State>,
     _type: PhantomData<fn() -> T>,
 }
+
 impl<T> Clone for Target<T> {
     fn clone(&self) -> Self {
         Self {
@@ -254,6 +256,36 @@ impl<T: NativeView> Target<T> {
         })
     }
 }
+
+/// Routes window lifecycle events to the currently attached UI element.
+pub(crate) struct AttachedTarget<T> {
+    state: ArcSwapWeak<State>,
+    _type: PhantomData<fn() -> T>,
+}
+impl<T> Default for AttachedTarget<T> {
+    fn default() -> Self {
+        Self {
+            state: ArcSwapWeak::default(),
+            _type: PhantomData,
+        }
+    }
+}
+impl<T> AttachedTarget<T> {
+    pub(crate) fn attach(&self, target: &Target<T>) {
+        self.state.store(Arc::downgrade(&target.state));
+    }
+    pub(crate) fn detach(&self, target: &Target<T>) {
+        self.state
+            .compare_and_swap(&target.state, std::sync::Weak::new());
+    }
+    pub(crate) fn current(&self) -> Option<Target<T>> {
+        self.state.load().upgrade().map(|state| Target {
+            state,
+            _type: PhantomData,
+        })
+    }
+}
+
 struct Data<T> {
     state: Arc<State>,
     value: Option<T>,

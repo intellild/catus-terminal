@@ -1,19 +1,10 @@
 use super::*;
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
 
 use objc2::{class, msg_send, runtime::AnyObject};
 use objc2_app_kit::{NSWindow, NSWindowDidExposeNotification};
 use objc2_foundation::NSNotificationCenter;
 
 use super::super::visibility::WindowVisibility;
-use crate::terminal_view::RenderOutcome;
-
-fn noop_schedule() -> Arc<dyn Fn() + Send + Sync> {
-    Arc::new(|| {})
-}
 
 pub(crate) fn run_view_lifecycle_tests() {
     let mtm = MainThreadMarker::new().expect("AppKit tests run on main");
@@ -28,7 +19,7 @@ pub(crate) fn run_view_lifecycle_tests() {
         request_focus: None,
         register_ime: None,
     };
-    let view = unsafe { create_mac_terminal_view(&host, noop_schedule()) }.unwrap();
+    let view = unsafe { create_mac_terminal_view(&host, |_| Ok(())) }.unwrap();
     assert!(view.uses_osr(), "a parent without NSWindow requires OSR");
     view.attach();
     view.set_osr(false);
@@ -59,8 +50,7 @@ pub(crate) fn run_view_lifecycle_tests() {
         parent: Retained::as_ptr(&flipped) as usize,
         ..host
     };
-    let flipped_child =
-        unsafe { create_mac_terminal_view(&flipped_host, noop_schedule()) }.unwrap();
+    let flipped_child = unsafe { create_mac_terminal_view(&flipped_host, |_| Ok(())) }.unwrap();
     flipped_child.layout(10., 20., 200., 100., 1.);
     assert_eq!(
         flipped_child.input.frame().origin,
@@ -86,34 +76,40 @@ fn hidden_window_reports_idle() {
         request_focus: None,
         register_ime: None,
     };
-    let view = unsafe { create_mac_terminal_view(&host, noop_schedule()) }.unwrap();
+    let view = unsafe { create_mac_terminal_view(&host, |_| Ok(())) }.unwrap();
     view.attach();
     view.layout(0., 0., 200., 100., 1.);
-    assert_eq!(
-        view.render_native(i64::MAX, false).unwrap(),
-        RenderOutcome::Idle
-    );
+    assert!(!view.can_present(false));
+    assert!(view.can_present(true));
     view.destroy();
 }
 
 fn visibility_notifications_schedule_and_detach() {
     let window: Retained<NSWindow> = unsafe { msg_send![class!(NSWindow), new] };
-    let calls = Arc::new(AtomicUsize::new(0));
-    let counter = Arc::clone(&calls);
-    let visibility = WindowVisibility::new(Arc::new(move || {
-        counter.fetch_add(1, Ordering::Relaxed);
-    }));
+    let calls = Rc::new(Cell::new(0));
+    let counter = Rc::clone(&calls);
+    let state = InputState::new(
+        None,
+        move |event| {
+            if matches!(event, InputEvent::Redraw) {
+                counter.set(counter.get() + 1);
+            }
+            Ok(())
+        },
+        || {},
+    );
+    let visibility = WindowVisibility::new(Rc::downgrade(&state));
     visibility.observe(Some(window.clone()));
     let object: &AnyObject = unsafe { &*Retained::as_ptr(&window).cast::<AnyObject>() };
     unsafe {
         NSNotificationCenter::defaultCenter()
             .postNotificationName_object(NSWindowDidExposeNotification, Some(object));
     }
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.get(), 1);
     visibility.clear();
     unsafe {
         NSNotificationCenter::defaultCenter()
             .postNotificationName_object(NSWindowDidExposeNotification, Some(object));
     }
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.get(), 1);
 }

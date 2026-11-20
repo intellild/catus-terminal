@@ -9,11 +9,13 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native-view"]
-native-view = ["dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
-native-input-tests = ["native-view"]
+native-view = ["dep:arc-swap", "dep:once_cell", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
+# The standalone AppKit test executable has no Node or Lynx host for addon registration.
+native-input-tests = ["native-view", "napi-derive/noop"]
 
 [dependencies]
 anyhow = "1.0"
+arc-swap = { version = "1", features = ["weak"], optional = true }
 napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols", "async"] }
 napi-derive = "=3.6.10"
 cxx = "1.0"
@@ -21,6 +23,7 @@ alacritty_terminal = { version = "=0.26.0", default-features = false }
 portable-pty = "=0.9.0"
 unicode-width = "0.2.2"
 wgpu = { version = "=30.0.1", default-features = false, features = ["std", "wgsl"], optional = true }
+once_cell = { version = "1", optional = true }
 pollster = { version = "0.4", optional = true }
 crossfont = { version = "=0.9.0", optional = true }
 russh-sftp = "=3.0.1"

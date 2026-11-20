@@ -5,28 +5,20 @@ use crate::{
         pty::{WriterMessage, message_data},
         session::TerminalSession,
     },
-    terminal_session::Session,
 };
-use std::sync::{Arc, Mutex};
+
 use tokio::sync::mpsc::UnboundedReceiver;
 
 fn terminal(
     output: &[u8],
     mouse: MouseState,
-) -> (TerminalHandle, UnboundedReceiver<WriterMessage>) {
-    let (core, input) = TerminalSession::recording(output);
-    (
-        TerminalHandle {
-            session: Arc::new(Session {
-                core,
-                // Cancellation must work after rendering/layout have gone away.
-                rendering: Mutex::new(None),
-            }),
-            preedit: Arc::new(Mutex::new(String::new())),
-            mouse: Arc::new(Mutex::new(mouse)),
-        },
-        input,
-    )
+) -> (
+    TerminalSession,
+    MouseState,
+    UnboundedReceiver<WriterMessage>,
+) {
+    let (session, input) = TerminalSession::recording(output);
+    (session, mouse, input)
 }
 
 fn cancel() -> NativeMouseEvent {
@@ -54,7 +46,7 @@ fn cancel_releases_the_stored_button_without_coordinates_or_layout_once() {
         ),
         (b"\x1b[?1002h".as_slice(), b"\x1b[M3(%".as_slice()),
     ] {
-        let (handle, mut input) = terminal(
+        let (session, mut mouse, mut input) = terminal(
             mode,
             MouseState {
                 button: 1,
@@ -69,21 +61,20 @@ fn cancel_releases_the_stored_button_without_coordinates_or_layout_once() {
         );
         let mut event = cancel();
         event.buttons = MouseButton::Secondary.into();
-        handle.mouse_input(&event).unwrap();
+        mouse.input(&session, None, &event).unwrap();
         assert_eq!(message_data(input.try_recv().unwrap()), expected);
-        let state = handle.mouse.lock().unwrap();
-        assert_eq!(state.button, 3);
-        assert_eq!(state.remainder, 0.);
-        assert!(state.click.is_none());
-        drop(state);
-        handle.mouse_input(&event).unwrap();
+        assert_eq!(mouse.button, 3);
+        assert_eq!(mouse.remainder, 0.);
+        assert!(mouse.click.is_none());
+        mouse.input(&session, None, &event).unwrap();
         assert!(
             input.try_recv().is_err(),
             "a repeated cancel must not report another release"
         );
     }
-    let (handle, mut input) = terminal(b"\x1b[?1002h\x1b[?1006h", MouseState::default());
-    handle.mouse_input(&cancel()).unwrap();
+    let (session, mut mouse, mut input) =
+        terminal(b"\x1b[?1002h\x1b[?1006h", MouseState::default());
+    mouse.input(&session, None, &cancel()).unwrap();
     assert!(input.try_recv().is_err(), "no press means no release");
 }
 
@@ -93,7 +84,7 @@ fn cancelling_a_shift_selection_does_not_report_or_extend_it() {
         shift: true,
         ..MouseModifiers::default()
     };
-    let (handle, mut input) = terminal(
+    let (session, mut mouse, mut input) = terminal(
         b"\x1b[?1002h\x1b[?1006hhello",
         MouseState {
             button: 0,
@@ -102,27 +93,22 @@ fn cancelling_a_shift_selection_does_not_report_or_extend_it() {
             ..MouseState::default()
         },
     );
-    handle
-        .session
-        .core
+    session
         .pointer(PointerAction::Down, 0, 1, false, 2, 0, shift)
         .unwrap();
     let mut event = cancel();
     event.shift = false;
-    handle.mouse_input(&event).unwrap();
+    mouse.input(&session, None, &event).unwrap();
     assert!(
         input.try_recv().is_err(),
         "Shift selection never reported a press"
     );
-    assert_eq!(
-        handle.session.core.selected_text().as_deref(),
-        Some("hello")
-    );
+    assert_eq!(session.selected_text().as_deref(), Some("hello"));
 }
 
 #[test]
 fn failed_release_still_clears_the_local_press() {
-    let (handle, _input) = terminal(
+    let (session, mut mouse, _input) = terminal(
         b"\x1b[?1002h\x1b[?1006h",
         MouseState {
             button: 0,
@@ -130,9 +116,9 @@ fn failed_release_still_clears_the_local_press() {
             ..MouseState::default()
         },
     );
-    handle.session.core.close();
-    assert!(handle.mouse_input(&cancel()).is_err());
-    assert_eq!(handle.mouse.lock().unwrap().button, 3);
-    assert_eq!(handle.mouse.lock().unwrap().remainder, 0.);
-    assert!(handle.mouse_input(&cancel()).is_ok());
+    session.close();
+    assert!(mouse.input(&session, None, &cancel()).is_err());
+    assert_eq!(mouse.button, 3);
+    assert_eq!(mouse.remainder, 0.);
+    assert!(mouse.input(&session, None, &cancel()).is_ok());
 }

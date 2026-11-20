@@ -12,7 +12,7 @@ impl HostDelegate for TmuxHostDelegate {
         &self,
         command: Option<TerminalSessionCommand>,
         size: GridSize,
-    ) -> Result<TerminalSession> {
+    ) -> Result<Arc<TerminalSession>> {
         let command = command.context("Missing tmux host command")?;
         let options = command.tmux.context("Missing tmux host options")?;
         TerminalSession::command_with_delegate(

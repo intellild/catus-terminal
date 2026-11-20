@@ -33,9 +33,9 @@ fn hosts_own_membership_and_numeric_handles_remain_globally_unique() {
     let retained = hosts.session(1).unwrap();
     hosts.close_session(1);
     assert!(hosts.session(1).is_err());
-    assert!(retained.core.exited());
+    assert!(retained.exited());
     assert!(!hosts.hosts.contains_key("first"));
-    assert!(!hosts.session(2).unwrap().core.exited());
+    assert!(!hosts.session(2).unwrap().exited());
     hosts.detach_session(2);
     assert!(hosts.hosts.is_empty());
     assert!(hosts.owners.is_empty());
@@ -105,11 +105,11 @@ impl Drop for Server {
 fn wait(session: &Session, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(8);
     while !condition() {
-        assert!(session.core.error().is_none(), "{:?}", session.core.error());
+        assert!(session.error().is_none(), "{:?}", session.error());
         assert!(
             Instant::now() < deadline,
             "Host timed out: {}",
-            session.core.snapshot().text()
+            session.snapshot().text()
         );
         thread::sleep(Duration::from_millis(10));
     }
@@ -127,30 +127,23 @@ fn changing_host_backend_keeps_existing_sessions_and_tmux_close_preserves_the_se
     let plain = hosts.session(1).unwrap();
     hosts.create_session(2, Some(server.command())).unwrap();
     let tmux = hosts.session(2).unwrap();
-    wait(&tmux, || tmux.core.ready());
+    wait(&tmux, || tmux.ready());
     hosts.create_session(3, Some(shell("first"))).unwrap();
     assert_eq!(hosts.hosts["first"].sessions.len(), 3);
     plain
-        .core
         .write(b"printf 'PLAIN_BACKEND\\n'\r".to_vec())
         .unwrap();
-    wait(&plain, || {
-        plain.core.snapshot().text().contains("PLAIN_BACKEND")
-    });
-    tmux.core
-        .write(b"printf 'TMUX_BACKEND\\n'\r".to_vec())
-        .unwrap();
-    wait(&tmux, || {
-        tmux.core.snapshot().text().contains("TMUX_BACKEND")
-    });
-    assert!(!plain.core.snapshot().text().contains("TMUX_BACKEND"));
+    wait(&plain, || plain.snapshot().text().contains("PLAIN_BACKEND"));
+    tmux.write(b"printf 'TMUX_BACKEND\\n'\r".to_vec()).unwrap();
+    wait(&tmux, || tmux.snapshot().text().contains("TMUX_BACKEND"));
+    assert!(!plain.snapshot().text().contains("TMUX_BACKEND"));
     hosts.detach_session(2);
     assert!(hosts.session(2).is_err());
     assert!(server.run(&["has-session", "-t", "test"]).status.success());
     hosts.create_session(2, Some(server.command())).unwrap();
     let reattached = hosts.session(2).unwrap();
     wait(&reattached, || {
-        reattached.core.ready() && reattached.core.snapshot().text().contains("TMUX_BACKEND")
+        reattached.ready() && reattached.snapshot().text().contains("TMUX_BACKEND")
     });
     hosts.close_session(2);
     // Closing a tab detaches the client; the shared session keeps running until

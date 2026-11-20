@@ -191,7 +191,9 @@ fn gpu_upload_page_rollover_clear_and_stale_handles() {
         packed
     }
     let expected: Vec<u8> = rgb
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| ((u16::from(p[0]) + u16::from(p[1]) + u16::from(p[2])) / 3) as u8)
         .collect();
     assert_eq!(read(&device, &queue, &atlas, &first), expected);

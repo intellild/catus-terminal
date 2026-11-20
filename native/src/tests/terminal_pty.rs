@@ -13,7 +13,9 @@ impl TerminalSession {
         grid.advance(output);
         (
             Self {
-                grid: Arc::new(Mutex::new(grid)),
+                grid: Mutex::new(grid),
+                #[cfg(feature = "native-view")]
+                renderer: Default::default(),
                 pty: Pty::recording(tx, Arc::new(PlainPtyDelegate)),
                 shell: "recording".into(),
             },
@@ -76,6 +78,10 @@ fn pty_shell_round_trip_resize_and_shutdown() {
     let terminal =
         TerminalSession::spawn(command, GridSize::new(80, 24), "/bin/sh".into()).unwrap();
     terminal.resize(GridSize::new(92, 28)).unwrap();
+    #[cfg(feature = "native-view")]
+    let renderer = Renderer::offscreen();
+    #[cfg(feature = "native-view")]
+    terminal.attach(Arc::downgrade(&renderer));
     terminal
         .write(b"printf '\\033[32mPTY_OK\\033[0m\\n'; stty size\r".to_vec())
         .unwrap();
@@ -96,6 +102,14 @@ fn pty_shell_round_trip_resize_and_shutdown() {
         }
         assert!(Instant::now() < deadline, "{}", snapshot.text());
         thread::sleep(Duration::from_millis(10));
+    }
+    #[cfg(feature = "native-view")]
+    while !renderer.take_dirty() {
+        assert!(
+            Instant::now() < deadline,
+            "PTY output did not request a render"
+        );
+        thread::yield_now();
     }
     terminal.write(b"exit\r".to_vec()).unwrap();
     while !terminal.exited() {

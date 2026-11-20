@@ -1,6 +1,7 @@
 //! Schedules a frame when the host window becomes visible again.
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, rc::Weak};
 
+use super::input_view::{InputEvent, InputState};
 use objc2::{
     DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, runtime::AnyObject, sel,
 };
@@ -13,7 +14,7 @@ use objc2_foundation::{
 };
 
 struct ObserverIvars {
-    schedule: Arc<dyn Fn() + Send + Sync>,
+    input: Weak<InputState>,
 }
 
 define_class!(
@@ -28,13 +29,13 @@ define_class!(
     impl VisibilityObserver {
         #[unsafe(method(windowVisibilityChanged:))]
         fn changed(&self, _notification: &NSNotification) {
-            (self.ivars().schedule)();
+            if let Some(input) = self.ivars().input.upgrade() { input.emit(InputEvent::Redraw); }
         }
     }
 );
 
 pub(super) struct WindowVisibility {
-    schedule: Arc<dyn Fn() + Send + Sync>,
+    input: Weak<InputState>,
     observed: RefCell<Option<ObservedWindow>>,
 }
 
@@ -44,9 +45,9 @@ struct ObservedWindow {
 }
 
 impl WindowVisibility {
-    pub(super) fn new(schedule: Arc<dyn Fn() + Send + Sync>) -> Self {
+    pub(super) fn new(input: Weak<InputState>) -> Self {
         Self {
-            schedule,
+            input,
             observed: RefCell::new(None),
         }
     }
@@ -68,7 +69,7 @@ impl WindowVisibility {
         let mtm =
             MainThreadMarker::new().expect("Terminal visibility observers require the UI thread");
         let allocated = VisibilityObserver::alloc(mtm).set_ivars(ObserverIvars {
-            schedule: Arc::clone(&self.schedule),
+            input: self.input.clone(),
         });
         let observer: Retained<VisibilityObserver> = unsafe { msg_send![super(allocated), init] };
         let object: &AnyObject = unsafe { &*Retained::as_ptr(&observer).cast::<AnyObject>() };

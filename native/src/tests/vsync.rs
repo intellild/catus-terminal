@@ -38,3 +38,23 @@ fn detaching_rejects_new_requests() {
     vsync.detach();
     assert!(!vsync.request_animation_frame(|_| {}));
 }
+
+#[test]
+fn a_request_posted_before_runtime_reattach_reports_cancellation() {
+    let vsync = VsyncObserver::default();
+    let observer = NonNull::<RawObserver>::dangling().as_ptr();
+    vsync.attach(observer);
+    let (send, receive) = std::sync::mpsc::channel();
+    let request = Box::new(Request {
+        inner: Arc::clone(&vsync.inner),
+        observer,
+        epoch: vsync.inner.epoch.load(Ordering::Acquire),
+        id: 1,
+        callback: Box::new(move |target| send.send(target).unwrap()),
+    });
+    vsync.detach();
+    vsync.attach(observer);
+    unsafe { start_request(Box::into_raw(request).cast()) };
+    assert_eq!(receive.try_recv().unwrap(), 0);
+    assert!(host::take_frame_requests().is_empty());
+}

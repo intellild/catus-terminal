@@ -48,7 +48,9 @@ fn coretext_fallback_color_and_real_font_metrics() {
     };
     assert!(
         bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|p| p[..3].iter().all(|&c| c <= p[3]))
     );
 }

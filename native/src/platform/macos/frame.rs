@@ -30,28 +30,21 @@ unsafe extern "C" {
     );
 }
 
-/// Enqueue a boxed `FnOnce() + Send` on the main queue. The context is the thin
-/// pointer produced by `Box::into_raw(Box::new(task))`.
-pub(crate) fn post_task_to_ui(context: usize) {
-    let context = context as *mut c_void;
-    if context.is_null() {
-        return;
-    }
+/// Transfer a task to the macOS main queue.
+pub(crate) fn post_task_to_ui<F: FnOnce() + Send + 'static>(task: F) {
+    let context = Box::into_raw(Box::new(task)).cast();
     // SAFETY: libdispatch copies the context pointer and invokes the callback on
     // the main queue. dispatch_ui_task takes ownership of exactly that box.
     unsafe {
         let queue = std::ptr::addr_of!(_dispatch_main_q) as DispatchQueue;
-        dispatch_async_f(queue, context, dispatch_ui_task);
+        dispatch_async_f(queue, context, dispatch_ui_task::<F>);
     }
 }
 
-unsafe extern "C" fn dispatch_ui_task(context: *mut c_void) {
-    if context.is_null() {
-        return;
-    }
+unsafe extern "C" fn dispatch_ui_task<F: FnOnce()>(context: *mut c_void) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: post_task_to_ui transfers exactly one boxed task to this call.
-        let task = unsafe { Box::from_raw(context.cast::<Box<dyn FnOnce() + Send>>()) };
+        let task = unsafe { Box::from_raw(context.cast::<F>()) };
         task();
     }));
 }

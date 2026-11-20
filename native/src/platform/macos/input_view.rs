@@ -32,6 +32,7 @@ pub(super) enum InputEvent {
     Preedit(String),
     Mouse(NativeMouseEvent),
     Copy,
+    Redraw,
 }
 
 pub(super) struct InputState {
@@ -59,7 +60,7 @@ impl InputState {
             selection: Cell::new(NSRange::new(NSNotFound as usize, 0)),
         })
     }
-    fn emit(&self, event: InputEvent) {
+    pub(super) fn emit(&self, event: InputEvent) {
         if let Err(error) = (self.emit)(event) {
             eprintln!("Terminal input: {error:#}");
         }

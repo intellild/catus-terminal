@@ -30,3 +30,27 @@ impl Viewport {
 pub(crate) fn expired(deadline: i64) -> bool {
     deadline <= crate::platform::monotonic_now_ns()
 }
+
+#[derive(Clone, Copy)]
+pub(crate) struct CellLayout {
+    pub(crate) size: crate::terminal_core::grid::GridSize,
+    pub(crate) geometry: CellGeometry,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct CellGeometry {
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) padding: f32,
+}
+
+impl CellGeometry {
+    pub(crate) fn cursor_rect(self, (row, column): (usize, usize)) -> CursorRect {
+        CursorRect {
+            x: self.padding + column as f32 * self.width,
+            y: self.padding + row as f32 * self.height,
+            width: self.width,
+            height: self.height,
+        }
+    }
+}

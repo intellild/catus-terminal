@@ -68,8 +68,8 @@ fn numeric_sessions_are_retained_until_explicit_release() {
     assert!(session(0).is_err());
     close_terminal_session(first);
     assert!(session(first).is_err());
-    assert!(retained.core.exited());
-    assert!(retained.core.write(b"x".to_vec()).is_err());
+    assert!(retained.exited());
+    assert!(retained.write(b"x".to_vec()).is_err());
     assert!(session(second).is_ok());
     close_terminal_session(first);
     close_terminal_session(second);
@@ -77,53 +77,40 @@ fn numeric_sessions_are_retained_until_explicit_release() {
 
 #[cfg(feature = "native-view")]
 #[test]
-fn layout_resizes_grid_and_session_keeps_renderer_across_native_handles() {
-    use crate::frame::Viewport;
-    let id = 1003;
-    create_session_with_command(id, None).unwrap();
-    let handle = acquire_terminal(id).unwrap();
-    assert!(handle.session.rendering.lock().unwrap().is_none());
-    let small = Viewport {
-        width: 512,
-        height: 128,
-        pixel_ratio: 1.,
-    };
-    handle.resize_viewport(&small).unwrap();
-    let state = handle.session.rendering.lock().unwrap();
-    let renderer = &state.as_ref().unwrap().renderer;
-    let pointer = &**renderer as *const _;
-    let grid_size = renderer.grid_size(&small).unwrap();
-    drop(state);
-    let snapshot = handle.session.core.snapshot();
-    assert_eq!(snapshot.size.columns, grid_size.columns);
-    assert_eq!(snapshot.size.rows, grid_size.rows);
-    drop(handle);
-    let rebound = acquire_terminal(id).unwrap();
-    let larger = Viewport {
-        width: 1024,
-        height: 256,
-        ..small
-    };
-    rebound.resize_viewport(&larger).unwrap();
-    let state = rebound.session.rendering.lock().unwrap();
-    assert_eq!(&*state.as_ref().unwrap().renderer as *const _, pointer);
-    let larger_size = state.as_ref().unwrap().renderer.grid_size(&larger).unwrap();
-    drop(state);
-    assert!(larger_size.columns > grid_size.columns);
-    assert!(larger_size.rows > grid_size.rows);
-    assert_eq!(
-        rebound.session.core.snapshot().size.columns,
-        larger_size.columns
-    );
-    assert_eq!(rebound.session.core.snapshot().size.rows, larger_size.rows);
-    assert!(
-        rebound
-            .resize_viewport(&Viewport { width: 0, ..small })
-            .is_err()
-    );
-    assert_eq!(rebound.viewport().unwrap(), larger);
-    close_terminal_session(id);
-    assert!(acquire_terminal(id).is_err());
+fn only_the_attached_renderer_receives_grid_changes() {
+    use crate::{renderer::Renderer, terminal_core::grid::GridSize};
+    let (session, _input) = Session::recording(b"");
+    let first = Renderer::offscreen();
+    let second = Renderer::offscreen();
+    let old = Arc::downgrade(&first);
+    let current = Arc::downgrade(&second);
+    session.attach(old.clone());
+    session.resize(GridSize::new(90, 25)).unwrap();
+    assert!(first.take_dirty());
+    let (done, rebound) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        session.with_grid_locked(|| {
+            scope.spawn(|| {
+                session.attach(current.clone());
+                session.detach(&old);
+                let _ = done.send(());
+            });
+            rebound
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .expect("Renderer rebinding waited for the grid lock");
+        });
+    });
+    session.resize(GridSize::new(90, 26)).unwrap();
+    assert!(second.take_dirty());
+    assert!(!first.take_dirty());
+    session.detach(&current);
+    session.resize(GridSize::new(90, 27)).unwrap();
+    assert!(!second.take_dirty());
+
+    session.attach(current.clone());
+    drop(second);
+    assert!(current.upgrade().is_none());
+    session.resize(GridSize::new(90, 28)).unwrap();
 }
 
 #[test]
@@ -149,7 +136,7 @@ fn configured_command_runs_in_the_requested_directory() {
         .unwrap()
         .to_string_lossy()
         .into_owned();
-    while !session.core.snapshot().text().contains(&expected) {
+    while !session.snapshot().text().contains(&expected) {
         assert!(
             std::time::Instant::now() < deadline,
             "Configured PTY command did not run in {expected}"

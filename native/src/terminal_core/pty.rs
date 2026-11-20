@@ -3,6 +3,7 @@ mod delegate;
 mod plain;
 mod tmux;
 use super::grid::{GridSize, TerminalGrid};
+use super::session::TerminalSession;
 use super::tmux::TmuxSessionInfo;
 use anyhow::{Context, Result, anyhow};
 pub(crate) use delegate::PtyDelegate;
@@ -12,7 +13,7 @@ use std::{
     future::Future,
     io::{Read, Write},
     sync::{
-        Arc, LazyLock,
+        Arc, LazyLock, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -25,7 +26,7 @@ use tokio::{
         Mutex,
         mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender, channel, unbounded_channel},
     },
-    task::JoinHandle,
+    task::AbortHandle,
 };
 
 type PtyError = Arc<dyn std::error::Error + Send + Sync>;
@@ -53,6 +54,12 @@ enum ReadEvent {
     Data(Vec<u8>),
     Eof,
     Error(PtyError),
+}
+
+/// Channels for consuming PTY output and sending parser replies.
+pub(super) struct PtyOutput {
+    events: Receiver<ReadEvent>,
+    writer: WriterSender,
 }
 
 /// Writer-thread commands. `Close` makes the blocking writer wait out the
@@ -93,15 +100,15 @@ pub(crate) struct Pty {
     exited: Arc<AtomicBool>,
     error: Arc<Mutex<Option<PtyError>>>,
     delegate: Arc<dyn PtyDelegate>,
-    parser: Mutex<Option<JoinHandle<()>>>,
+    parser: OnceLock<AbortHandle>,
 }
 impl Pty {
     pub(super) fn spawn(
         mut command: CommandBuilder,
         size: GridSize,
-        shell: String,
+        shell: &str,
         delegate: Arc<dyn PtyDelegate>,
-    ) -> Result<(Self, Arc<Mutex<TerminalGrid>>)> {
+    ) -> Result<(Self, TerminalGrid, PtyOutput)> {
         delegate.configure_command(&mut command);
         let pair = native_pty_system()
             .openpty(pty_size(size))
@@ -125,7 +132,7 @@ impl Pty {
         } else {
             write_tx.clone()
         };
-        let grid = Arc::new(Mutex::new(TerminalGrid::new(size, replies)));
+        let grid = TerminalGrid::new(size, replies);
         let exited = Arc::new(AtomicBool::new(false));
         let error: Arc<Mutex<Option<PtyError>>> = Arc::new(Mutex::new(None));
 
@@ -145,27 +152,34 @@ impl Pty {
             .spawn(move || read_loop(reader, read_tx, read_exited))
             .context("Start PTY reader thread")?;
 
-        let parser = RUNTIME.spawn({
-            let grid = grid.clone();
-            let delegate = delegate.clone();
-            let write_tx = write_tx.clone();
-            let error = error.clone();
-            let exited = exited.clone();
-            async move {
-                parse_loop(read_rx, grid, delegate, write_tx, error, exited).await;
-            }
-        });
-
-        let session = Self {
+        let output = PtyOutput {
+            events: read_rx,
+            writer: write_tx.clone(),
+        };
+        let pty = Self {
             master: Mutex::new(Some(pair.master)),
             child: Mutex::new(Some(child)),
             input: Mutex::new(Some(write_tx)),
             exited,
             error,
             delegate,
-            parser: Mutex::new(Some(parser)),
+            parser: OnceLock::new(),
         };
-        Ok((session, grid))
+        Ok((pty, grid, output))
+    }
+
+    pub(super) fn start_parser(&self, session: Weak<TerminalSession>, output: PtyOutput) {
+        self.parser
+            .get_or_init(|| RUNTIME.spawn(output.parse(session)).abort_handle());
+    }
+
+    pub(super) async fn advance(
+        &self,
+        bytes: &[u8],
+        grid: &mut TerminalGrid,
+        writer: &WriterSender,
+    ) -> Result<()> {
+        self.delegate.advance(bytes, grid, writer).await
     }
 
     pub(super) async fn write(&self, bytes: Vec<u8>) -> Result<()> {
@@ -226,7 +240,7 @@ impl Pty {
             exited: Arc::new(AtomicBool::new(false)),
             error: Arc::new(Mutex::new(None)),
             delegate,
-            parser: Mutex::new(None),
+            parser: OnceLock::new(),
         }
     }
 
@@ -261,47 +275,62 @@ impl Pty {
     }
 
     async fn close_transport(&self, preserve: bool) {
-        let grace = {
-            let input = self.input.lock().await;
-            match input.as_ref() {
-                Some(tx) => {
-                    let grace = self.delegate.close(preserve, tx).await;
-                    // Keep the writer fd open for the grace period while the
-                    // shell consumes queued commands, then let it exit.
-                    let _ = tx.send(WriterMessage::Close(grace));
-                    grace
-                }
-                None => Duration::ZERO,
-            }
-        };
-        let child = self.child.lock().await.take();
-        if let Some(mut child) = child {
-            // portable-pty's Unix kill waits briefly after SIGHUP. Keep both it
-            // and reaping off the UI and async parser threads.
-            RUNTIME.spawn_blocking(move || {
-                let deadline = Instant::now() + grace;
-                while Instant::now() < deadline {
-                    if matches!(child.try_wait(), Ok(Some(_))) {
-                        return;
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                let _ = child.kill();
-                let _ = child.wait();
-            });
-        }
-        self.input.lock().await.take();
-        self.master.lock().await.take();
-        self.exited.store(true, Ordering::Release);
-        if let Some(parser) = self.parser.lock().await.take() {
+        let mut input = self.input.lock().await;
+        let Some(tx) = input.take() else { return };
+        if let Some(parser) = self.parser.get() {
             parser.abort();
         }
+        let child = self.child.lock().await.take();
+        shutdown(&*self.delegate, tx, child, preserve).await;
+        self.master.lock().await.take();
+        self.exited.store(true, Ordering::Release);
     }
 }
+
+async fn shutdown(
+    delegate: &dyn PtyDelegate,
+    tx: WriterSender,
+    child: Option<Box<dyn Child + Send + Sync>>,
+    preserve: bool,
+) {
+    let grace = delegate.close(preserve, &tx).await;
+    let _ = tx.send(WriterMessage::Close(grace));
+    if let Some(mut child) = child {
+        RUNTIME.spawn_blocking(move || {
+            let deadline = Instant::now() + grace;
+            while Instant::now() < deadline {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+        });
+    }
+}
+
 impl Drop for Pty {
     fn drop(&mut self) {
-        // Drop runs on UI, Node or test threads; the parser task never owns Pty.
-        block_on(self.detach());
+        let Some(tx) = self.input.get_mut().take() else {
+            return;
+        };
+        if let Some(parser) = self.parser.get() {
+            parser.abort();
+        }
+        let child = self.child.get_mut().take();
+        let master = self.master.get_mut().take();
+        let delegate = self.delegate.clone();
+        let detach = async move {
+            shutdown(&*delegate, tx, child, true).await;
+            drop(master);
+        };
+        // The last session reference can be released by the async parser.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            RUNTIME.spawn(detach);
+        } else {
+            block_on(detach);
+        }
     }
 }
 
@@ -369,40 +398,35 @@ fn read_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ReadEvent>, exited: Ar
     exited.store(true, Ordering::Release);
 }
 
-async fn parse_loop(
-    mut rx: Receiver<ReadEvent>,
-    grid: Arc<Mutex<TerminalGrid>>,
-    delegate: Arc<dyn PtyDelegate>,
-    tx: WriterSender,
-    error: Arc<Mutex<Option<PtyError>>>,
-    exited: Arc<AtomicBool>,
-) {
-    while let Some(event) = rx.recv().await {
-        match event {
-            ReadEvent::Data(bytes) => {
-                let result = {
-                    let mut grid = grid.lock().await;
-                    delegate.advance(&bytes, &mut grid, &tx).await
-                };
-                if let Err(err) = result {
-                    *error.lock().await = Some(
-                        err.context("Process terminal output")
-                            .into_boxed_dyn_error()
-                            .into(),
-                    );
-                    break;
+impl PtyOutput {
+    async fn parse(mut self, session: Weak<TerminalSession>) {
+        loop {
+            let event = self.events.recv().await;
+            let Some(session) = session.upgrade() else {
+                return;
+            };
+            let error = match event {
+                Some(ReadEvent::Data(bytes)) => {
+                    match session.process_output(&bytes, &self.writer).await {
+                        Ok(()) => continue,
+                        Err(err) => Some(
+                            err.context("Process terminal output")
+                                .into_boxed_dyn_error()
+                                .into(),
+                        ),
+                    }
                 }
+                Some(ReadEvent::Error(err)) => Some(err),
+                Some(ReadEvent::Eof) | None => None,
+            };
+            if let Some(error) = error {
+                *session.pty.error.lock().await = Some(error);
             }
-            ReadEvent::Eof => break,
-            ReadEvent::Error(err) => {
-                *error.lock().await = Some(err);
-                break;
-            }
+            let _ = self.writer.send(WriterMessage::Close(Duration::ZERO));
+            session.pty.exited.store(true, Ordering::Release);
+            return;
         }
     }
-    // The read side is finished; let the blocking writer exit as well.
-    let _ = tx.send(WriterMessage::Close(Duration::ZERO));
-    exited.store(true, Ordering::Release);
 }
 
 fn pty_size(size: GridSize) -> PtySize {
