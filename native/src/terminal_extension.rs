@@ -8,23 +8,23 @@ use std::{
 };
 
 use napi::sys::napi_env;
+use tokio::sync::watch;
 
 use crate::{
     binding::{
         VsyncObserver,
         extension::{self, Extension, LynxView},
-        native_view::{self, AttachedTarget},
+        native_view,
         protocol::{ElementName, ExtensionName},
     },
     native_terminal_view::NativeTerminalView,
-    platform::post_task_to_ui,
 };
 
 pub(crate) struct TerminalExtension {
     pub(crate) lynx_view: OnceLock<usize>,
     pub(crate) vsync: VsyncObserver,
     pub(crate) foreground: Arc<AtomicBool>,
-    pub(crate) attached_element: Arc<AttachedTarget<NativeTerminalView>>,
+    pub(crate) resume: watch::Sender<()>,
 }
 
 impl Default for TerminalExtension {
@@ -33,27 +33,8 @@ impl Default for TerminalExtension {
             lynx_view: OnceLock::new(),
             vsync: VsyncObserver::default(),
             foreground: Arc::new(AtomicBool::new(true)),
-            attached_element: Arc::default(),
+            resume: watch::Sender::new(()),
         }
-    }
-}
-
-impl TerminalExtension {
-    fn notify_resume(&self) {
-        if self.lynx_view.get().is_none() {
-            return;
-        }
-        let attached_element = Arc::clone(&self.attached_element);
-        post_task_to_ui(move || {
-            if let Some(element) = attached_element.current()
-                && let Err(error) = element.dispatch(|view| {
-                    view.invalidate_frame();
-                    Ok(())
-                })
-            {
-                eprintln!("Resume terminal view: {error:#}");
-            }
-        });
     }
 }
 
@@ -72,12 +53,12 @@ impl Extension for TerminalExtension {
     }
 
     fn on_runtime_attach(&self, _env: napi_env) {
-        self.notify_resume();
+        self.resume.send_replace(());
     }
 
     fn on_enter_foreground(&self) {
         self.foreground.store(true, Ordering::Release);
-        self.notify_resume();
+        self.resume.send_replace(());
     }
 
     fn on_enter_background(&self) {

@@ -146,7 +146,9 @@ Rust `Host` 强引用自己所属的 session；全局 `Hosts` 只维护 host 和
 每个 `NativeTerminalView` 持有一个 `Arc<Renderer>`，管理 viewport、绘制缓存和鼠标状态。
 element 在 attach 时将 renderer 的弱引用交给当前 session，detach 或切换 session 时解除旧绑定。
 element 工厂在创建时借用 `TerminalExtension`，从中取得平台所需的 Lynx view 句柄及 renderer 所需的 VSync 和前台状态。
-`TerminalExtension` 将 runtime attach 和窗口回前台事件投递到 UI 线程，通过共享的 `AttachedTarget` 找到当时仍挂载的 element 并请求重绘。
+`TerminalExtension` 在 runtime attach 或窗口回到前台时通过窗口自己的 Tokio watch 通道发送恢复通知。
+terminal element 在 attach 时开始监听，收到通知后直接调用 `Renderer::schedule_render()`，detach 时取消监听。
+VSync 到达后才投递到 UI 线程，element 在绘制时检查恢复通知，即使网格未变化也会重绘。
 `TerminalContent` 保存当前 session 和 IME 组合文本，生成带组合文本的网格快照。
 AppKit 把输入和窗口重绘事件送回 element，由 element 请求绘制并向平台提交准备好的帧。
 session 直接持有 `ArcSwapWeak<Renderer>`。PTY parser 等待输出时只保留 `Weak<TerminalSession>`，
@@ -236,13 +238,13 @@ NativeTerminalView ──Arc──→ Renderer ←──Weak── 已绑定的 
 渲染是事件驱动的：terminal 网格更新、terminal-id 切换、layout/resize、attach 和
 foreground 恢复时调用 `schedule_render`。它通过绑定层请求一次与 VSync 同步的渲染，
 VSync 回调只把这个 view 的 target deadline 投递到 UI，再由该 view 调用自己的
-`frame(deadline)`。同一 view 同时只有一个 VSync 请求和一个待处理 UI 渲染；
-UI 忙或 deadline 过期时直接丢弃，不补帧、不排队，也不维持常驻 RAF 循环。
-渲染结果区分 presented / idle / retry：idle 直接清 dirty、不再重排 VSync；
-retry 才保留 dirty 并请求下一帧。嵌入模式在窗口不可见、最小化或被遮挡时返回 idle，
+`frame(deadline)`。每个 renderer 从请求 VSync 到 UI 绘制结束最多有一帧在途。
+等待期间重新挂载、切换 session 或收到 PTY 输出都会复用这一帧，UI 绘制时读取最新绑定和网格。
+VSync 回调或 UI 绘制开始前发现 deadline 已过就丢弃该帧。尚未呈现的内容保留更新标记，在新的 VSync 时读取最新状态。
+绘制期间收到的新更新会触发下一帧，返回 retry 也会重新调度。嵌入模式在窗口不可见、最小化或被遮挡时返回 idle，
 并观察 NSWindow 的 occlusion / deminiaturize / expose 通知，窗口重新可见后重新 schedule。
-`on_runtime_detach`、view/extension 销毁会取消 pending 请求；后台保留 dirty 状态，
-foreground 恢复时重新 schedule。Lynx 以 0 target 取消未完成的请求。
+element detach 会停止绘制，在途请求由回调释放。Lynx 以 0 target 取消未完成的 VSync 请求。
+窗口回到前台时重新请求绘制。
 deadline 直接来自 VSync 的 monotonic target，不再经过 JS timestamp 或 N-API 预算。
 `renderFrame` 保留为显式入口。
 原 native RAF 调查见 [验证文档](../docs/terminal-native-raf-verification.md)。

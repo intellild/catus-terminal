@@ -6,21 +6,18 @@ use std::{
     cell::{Cell, RefCell},
     sync::Arc,
 };
+use tokio::task::JoinHandle;
 
 use crate::{
-    binding::native_view::{AttachedTarget, Handle, Target},
+    binding::native_view::Handle,
     platform::TerminalPlatform,
-};
-
-use crate::{
     renderer::{DrawState, Renderer},
     terminal_content::TerminalContent,
 };
 use state::State;
 
 pub(crate) struct NativeTerminalView {
-    attached_element: Arc<AttachedTarget<Self>>,
-    target: Target<Self>,
+    resume_task: Cell<Option<JoinHandle<()>>>,
     handle: Handle,
     platform: Box<TerminalPlatform>,
     renderer: Arc<Renderer>,

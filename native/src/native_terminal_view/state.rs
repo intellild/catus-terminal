@@ -1,8 +1,10 @@
 use std::time::Instant;
+use tokio::sync::watch;
 
 use crate::terminal_core::grid::ScrollState;
 
 pub(super) struct State {
+    pub(super) resume: watch::Receiver<()>,
     pub(super) id: u32,
     pub(super) last_scroll: Option<(u32, ScrollState)>,
     pub(super) attached: bool,
@@ -11,9 +13,10 @@ pub(super) struct State {
     pub(super) renderer_retry: Option<Instant>,
     pub(super) error: String,
 }
-impl Default for State {
-    fn default() -> Self {
+impl State {
+    pub(super) fn new(resume: watch::Receiver<()>) -> Self {
         Self {
+            resume,
             id: 0,
             last_scroll: None,
             attached: false,

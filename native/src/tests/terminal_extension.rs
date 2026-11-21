@@ -2,6 +2,28 @@ use super::*;
 use crate::binding::extension::tests as host;
 
 #[test]
+fn runtime_attach_and_foreground_notify_only_their_windows_listeners() {
+    let window = TerminalExtension::default();
+    let other_window = TerminalExtension::default();
+    let mut first = window.resume.subscribe();
+    let mut second = window.resume.subscribe();
+    let other = other_window.resume.subscribe();
+
+    window.on_runtime_attach(std::ptr::null_mut());
+    assert!(first.borrow_and_update().has_changed());
+    assert!(second.borrow_and_update().has_changed());
+    drop(first);
+
+    window.on_enter_background();
+    assert!(!window.foreground.load(Ordering::Acquire));
+    assert!(!second.has_changed().unwrap());
+    window.on_enter_foreground();
+    assert!(window.foreground.load(Ordering::Acquire));
+    assert!(second.has_changed().unwrap());
+    assert!(!other.has_changed().unwrap());
+}
+
+#[test]
 fn terminal_factory_borrows_the_window_extension() {
     register_terminal_extension();
     let registration = host::take_registration();

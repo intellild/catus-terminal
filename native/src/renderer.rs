@@ -13,7 +13,7 @@ use anyhow::{Context, Result, anyhow};
 use once_cell::sync::OnceCell;
 use std::sync::{
     Arc, Mutex, MutexGuard,
-    atomic::{AtomicBool, AtomicU64},
+    atomic::{AtomicBool, AtomicU8},
 };
 
 // A failed device/pipeline initialization must not be cached for the process:
@@ -27,11 +27,8 @@ pub(crate) struct Renderer {
     foreground: Arc<AtomicBool>,
     target: Option<Target<NativeTerminalView>>,
     active: AtomicBool,
-    dirty: AtomicBool,
-    /// One render is in flight: waiting for VSync or for the UI task to run.
-    scheduled: AtomicBool,
-    /// Invalidates callbacks from a previous active/inactive transition.
-    generation: AtomicU64,
+    /// Tracks pending updates and the single in-flight VSync/UI callback.
+    frame_state: AtomicU8,
 }
 
 struct GpuContext {
