@@ -1,20 +1,20 @@
 //! Lynx/AppKit host adaptation; the shared element never handles OS pointers.
+use super::input_view::InputEvent;
 use super::terminal::ffi::{NativeMouseEvent, NativeViewHost};
 use super::view::{MacTerminalView, create_mac_terminal_view};
+use crate::native_terminal_view::NativeTerminalView;
 use crate::{
-    binding::native_view::{Handle, MotionEvent, RawView},
+    binding::native_view::{Handle, MotionEvent, RawView, Target},
     binding::types::{MotionKind, SignalKind},
     binding::{extension::LynxView, host},
-    frame::Viewport,
-    terminal_view::RenderOutcome,
+    renderer::{PreparedFrame, RenderOutcome},
 };
 use anyhow::Result;
-use std::sync::Arc;
 
 pub(crate) fn create_terminal_platform(
     view: usize,
     handle: &Handle,
-    schedule: Arc<dyn Fn() + Send + Sync>,
+    target: Target<NativeTerminalView>,
 ) -> Result<Box<MacTerminalView>> {
     let view = view as *mut LynxView;
     // SAFETY: Native view factories run on UI while their Lynx view is alive.
@@ -27,7 +27,7 @@ pub(crate) fn create_terminal_platform(
                 request_focus: Some(request_focus),
                 register_ime: Some(register_ime),
             },
-            schedule,
+            move |event| target.dispatch(|element| element.platform_event(event)),
         )
     }
 }
@@ -42,17 +42,16 @@ unsafe extern "C" fn register_ime(view: usize, handler: usize, opaque: usize) {
     }
 }
 impl MacTerminalView {
-    pub(crate) fn render(
+    pub(crate) fn present(
         &self,
         handle: &Handle,
-        viewport: &Viewport,
-        deadline: i64,
-        force: bool,
+        frame: &mut PreparedFrame<'_>,
     ) -> Result<RenderOutcome> {
-        if !self.uses_osr() {
-            return self.render_native(deadline, force);
+        if self.uses_osr() {
+            self.present_osr(handle, frame)
+        } else {
+            self.present_native(frame)
         }
-        self.render_osr(handle, viewport, deadline)
     }
     pub(crate) fn motion_event(&self, handle: &Handle, event: &MotionEvent) -> Result<()> {
         if event.kind == MotionKind::Down {
@@ -86,6 +85,39 @@ impl MacTerminalView {
             alt: event.alt,
             clicks: 0,
         });
+        Ok(())
+    }
+}
+
+impl NativeTerminalView {
+    fn platform_event(&self, event: InputEvent) -> Result<()> {
+        let Ok(session) = self.session() else {
+            return Ok(());
+        };
+        match event {
+            InputEvent::Redraw => self.invalidate_frame(),
+            InputEvent::Preedit(text) => self.set_preedit(text),
+            InputEvent::Text(text) => session.write(text.into_bytes())?,
+            InputEvent::Paste(text) => session.paste(&text)?,
+            InputEvent::Key { key, control, alt } => session.key(&key, control, alt)?,
+            InputEvent::Mouse(event) => {
+                self.mouse
+                    .borrow_mut()
+                    .input(&session, self.cell_geometry(), &event)?;
+            }
+            InputEvent::Copy => {
+                if let Some(text) = session.selected_text() {
+                    let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+                    board.clearContents();
+                    unsafe {
+                        board.setString_forType(
+                            &objc2_foundation::NSString::from_str(&text),
+                            objc2_app_kit::NSPasteboardTypeString,
+                        );
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

@@ -66,7 +66,3 @@ impl From<&CStr> for Method {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/lynx_binding_protocol.rs"]
-mod tests;

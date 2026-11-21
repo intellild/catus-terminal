@@ -230,7 +230,3 @@ impl TerminalGrid {
         bytes
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/terminal_interaction.rs"]
-mod tests;

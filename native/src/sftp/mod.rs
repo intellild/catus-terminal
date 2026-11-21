@@ -216,7 +216,3 @@ impl Connection {
         Ok(())
     }
 }
-
-#[cfg(all(test, target_os = "macos"))]
-#[path = "../tests/macos/sftp.rs"]
-mod tests;

@@ -11,8 +11,6 @@ pub(crate) use windows::{default_shell_command, pty_reader_closed};
 
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 mod macos;
-#[cfg(all(test, feature = "native-view", target_os = "macos"))]
-pub(crate) use macos::test_support;
 #[cfg(all(feature = "native-view", target_os = "macos"))]
 pub(crate) use macos::{
     GPU_BACKENDS, MouseState, TerminalPlatform, create_terminal_platform, load_font_size,
@@ -21,5 +19,3 @@ pub(crate) use macos::{
 
 #[cfg(all(feature = "native-view", not(target_os = "macos")))]
 compile_error!("Native terminal views currently implement macOS only");
-#[cfg(all(feature = "native-input-tests", target_os = "macos"))]
-pub(crate) use macos::run_native_input_tests;

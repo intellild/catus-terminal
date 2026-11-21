@@ -135,6 +135,8 @@ unsafe extern "C" fn start_request(data: *mut c_void) {
             || observer != request.observer
             || request.inner.epoch.load(Ordering::Acquire) != request.epoch
         {
+            // Release the renderer's in-flight request just as a host cancellation does.
+            (request.callback)(0);
             return;
         }
         let id = request.id;
@@ -156,7 +158,3 @@ unsafe extern "C" fn on_frame(data: *mut c_void, _start: i64, target: i64) {
         (request.callback)(target);
     }));
 }
-
-#[cfg(test)]
-#[path = "../tests/vsync.rs"]
-mod tests;

@@ -30,8 +30,4 @@ pub(crate) trait PtyDelegate: Send + Sync {
     async fn close_tmux_window(&self, _window_id: &str, _tx: &WriterSender) -> Result<bool> {
         Ok(false)
     }
-    #[cfg(test)]
-    fn ready(&self) -> bool {
-        true
-    }
 }

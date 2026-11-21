@@ -1,16 +1,35 @@
-//! One lazily initialized GPU/atlas context, with independent per-session drawing state.
+//! One lazily initialized GPU/atlas context, with UI-thread drawing state per native element.
+mod scheduler;
+use crate::{
+    binding::{VsyncObserver, native_view::Target},
+    native_terminal_view::NativeTerminalView,
+};
 use crate::{
     frame::Viewport,
-    terminal_core::grid::{GridSize, GridSnapshot},
+    terminal_core::grid::GridSnapshot,
     text::{GlyphRenderer, SharedGlyphs},
 };
 use anyhow::{Context, Result, anyhow};
-use std::sync::{Arc, Mutex, MutexGuard};
+use once_cell::sync::OnceCell;
+use std::sync::{
+    Arc, Mutex, MutexGuard,
+    atomic::{AtomicBool, AtomicU8},
+};
 
 // A failed device/pipeline initialization must not be cached for the process:
 // a transient Metal failure on the first frame would otherwise keep the
 // terminal blank until the app restarts. Retry on the next renderer request.
-static GPU: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
+static GPU: OnceCell<GpuContext> = OnceCell::new();
+
+/// Coalesces grid/state changes into one VSync-synchronized render.
+pub(crate) struct Renderer {
+    vsync: VsyncObserver,
+    foreground: Arc<AtomicBool>,
+    target: Option<Target<NativeTerminalView>>,
+    active: AtomicBool,
+    /// Tracks pending updates and the single in-flight VSync/UI callback.
+    frame_state: AtomicU8,
+}
 
 struct GpuContext {
     device: wgpu::Device,
@@ -43,6 +62,10 @@ impl GpuContext {
             glyphs: Mutex::new(glyphs),
         })
     }
+    fn measure_cells(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
+        let mut shared = self.glyphs()?;
+        GlyphRenderer::measure_cells(&mut shared, viewport)
+    }
     fn glyphs(&self) -> Result<MutexGuard<'_, SharedGlyphs>> {
         self.glyphs
             .lock()
@@ -57,62 +80,112 @@ struct RenderedGrid {
     generation: u64,
 }
 
-pub struct TerminalRenderer {
-    gpu: Arc<GpuContext>,
+/// Mutable instance buffers and the last frame belong to the element's UI thread.
+#[derive(Default)]
+pub(crate) struct DrawState {
     glyphs: GlyphRenderer,
     rendered_grid: Option<RenderedGrid>,
 }
 
-fn shared_gpu() -> Result<Arc<GpuContext>> {
-    let mut gpu = GPU.lock().unwrap_or_else(|error| error.into_inner());
-    if let Some(existing) = gpu.as_ref() {
-        return Ok(existing.clone());
-    }
-    // Hold the lock while initializing so concurrent requests share one device.
-    let created = Arc::new(GpuContext::new()?);
-    *gpu = Some(created.clone());
-    Ok(created)
-}
-
-pub(crate) fn create_terminal_renderer() -> Result<Box<TerminalRenderer>> {
-    let gpu = shared_gpu()?;
-    Ok(Box::new(TerminalRenderer {
-        gpu,
-        glyphs: GlyphRenderer::default(),
-        rendered_grid: None,
-    }))
-}
-
-impl TerminalRenderer {
-    pub(crate) fn invalidate_grid(&mut self) {
+impl DrawState {
+    pub(crate) fn invalidate(&mut self) {
         self.rendered_grid = None;
     }
-    pub(crate) fn cell_size(&self, viewport: &Viewport) -> Result<(f32, f32)> {
-        let mut shared = self
-            .gpu
-            .glyphs
-            .try_lock()
-            .map_err(|_| anyhow!("Glyph cache busy"))?;
-        let metrics = shared.cache.metrics(viewport.font_pixels()?)?;
-        Ok((
-            metrics.average_advance.round().max(1.) as f32,
-            metrics.line_height.round().max(1.) as f32,
-        ))
+}
+
+/// A single borrow of the element's drawing state while preparing or painting a frame.
+pub(crate) struct GridPainter<'a> {
+    gpu: &'static GpuContext,
+    state: &'a mut DrawState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenderOutcome {
+    Presented,
+    Idle,
+    Retry,
+}
+
+/// A prepared frame owns its snapshot, so presentation never borrows the element's content.
+pub(crate) struct PreparedFrame<'a> {
+    painter: GridPainter<'a>,
+    pub(crate) viewport: Viewport,
+    snapshot: GridSnapshot,
+    deadline: i64,
+}
+impl PreparedFrame<'_> {
+    pub(crate) fn insertion_point(&self) -> (usize, usize) {
+        self.snapshot.insertion_point.unwrap_or_default()
     }
-    pub(crate) fn grid_size(&self, viewport: &Viewport) -> Result<GridSize> {
-        let mut shared = self.gpu.glyphs()?;
-        GlyphRenderer::grid_size(&mut shared, viewport)
+    pub(crate) fn draw(
+        &mut self,
+        origin: crate::text::TargetOrigin,
+        texture: impl FnOnce(&wgpu::Device, &Viewport) -> Result<wgpu::Texture>,
+    ) -> Result<bool> {
+        let viewport = &self.viewport;
+        self.painter.render_grid_with_origin(
+            viewport,
+            &self.snapshot,
+            self.deadline,
+            origin,
+            |device| texture(device, viewport),
+        )
     }
-    #[cfg(test)]
-    pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool> {
-        Ok(self.rendered_grid
-            != Some(RenderedGrid {
-                revision,
-                viewport: *viewport,
-                generation: self.gpu.glyphs()?.cache.atlas.generation(),
-            }))
+    pub(crate) fn expired(&self) -> bool {
+        crate::frame::expired(self.deadline)
+    }
+}
+
+pub(crate) enum FramePreparation<'a> {
+    Ready(PreparedFrame<'a>),
+    Idle,
+    Deferred,
+}
+
+impl Renderer {
+    pub(crate) fn prepare_frame<'a>(
+        &self,
+        drawing: &'a mut DrawState,
+        content: &crate::terminal_content::TerminalContent,
+        viewport: Viewport,
+        deadline: i64,
+    ) -> Result<FramePreparation<'a>> {
+        if crate::frame::expired(deadline) {
+            return Ok(FramePreparation::Deferred);
+        }
+        let Some(revision) = content.session.try_revision()? else {
+            return Ok(FramePreparation::Deferred);
+        };
+        let painter = self.painter(drawing)?;
+        match painter.try_needs_grid(revision, &viewport)? {
+            Some(true) => (),
+            Some(false) => return Ok(FramePreparation::Idle),
+            None => return Ok(FramePreparation::Deferred),
+        }
+        let Some(snapshot) = content.try_snapshot()? else {
+            return Ok(FramePreparation::Deferred);
+        };
+        Ok(FramePreparation::Ready(PreparedFrame {
+            painter,
+            viewport,
+            snapshot,
+            deadline,
+        }))
     }
 
+    pub(crate) fn measure_cells(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
+        GPU.get_or_try_init(GpuContext::new)?
+            .measure_cells(viewport)
+    }
+    pub(crate) fn painter<'a>(&self, state: &'a mut DrawState) -> Result<GridPainter<'a>> {
+        Ok(GridPainter {
+            gpu: GPU.get_or_try_init(GpuContext::new)?,
+            state,
+        })
+    }
+}
+
+impl GridPainter<'_> {
     pub(crate) fn try_needs_grid(
         &self,
         revision: u64,
@@ -120,7 +193,7 @@ impl TerminalRenderer {
     ) -> Result<Option<bool>> {
         match self.gpu.glyphs.try_lock() {
             Ok(shared) => Ok(Some(
-                self.rendered_grid
+                self.state.rendered_grid
                     != Some(RenderedGrid {
                         revision,
                         viewport: *viewport,
@@ -136,22 +209,6 @@ impl TerminalRenderer {
 
     // The platform adapter supplies the texture only after idle/busy checks.
     // Submitted GPU work completes before returning a borrowed native target.
-    pub(crate) fn render_grid(
-        &mut self,
-        viewport: &Viewport,
-        grid: &GridSnapshot,
-        deadline: i64,
-        prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
-    ) -> Result<bool> {
-        self.render_grid_with_origin(
-            viewport,
-            grid,
-            deadline,
-            crate::text::TargetOrigin::TopLeft,
-            prepare_target,
-        )
-    }
-
     pub(crate) fn render_grid_with_origin(
         &mut self,
         viewport: &Viewport,
@@ -160,7 +217,7 @@ impl TerminalRenderer {
         origin: crate::text::TargetOrigin,
         prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
     ) -> Result<bool> {
-        self.glyphs.origin = origin;
+        self.state.glyphs.origin = origin;
         if crate::frame::expired(deadline) {
             return Ok(false);
         }
@@ -182,17 +239,6 @@ impl TerminalRenderer {
         )
     }
 
-    #[cfg(test)]
-    fn render_into(
-        &mut self,
-        target: &wgpu::TextureView,
-        viewport: &Viewport,
-        grid: &GridSnapshot,
-    ) -> Result<()> {
-        self.render_into_before(target, viewport, grid, None)
-            .map(|_| ())
-    }
-
     fn render_into_before(
         &mut self,
         target: &wgpu::TextureView,
@@ -200,7 +246,7 @@ impl TerminalRenderer {
         grid: &GridSnapshot,
         deadline: Option<i64>,
     ) -> Result<bool> {
-        let gpu = &self.gpu;
+        let gpu = self.gpu;
         let mut shared = if deadline.is_some() {
             match gpu.glyphs.try_lock() {
                 Ok(shared) => shared,
@@ -217,7 +263,7 @@ impl TerminalRenderer {
         }
         let validation = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let mut result = self.glyphs.draw_grid(
+        let mut result = self.state.glyphs.draw_grid(
             &gpu.device,
             &gpu.queue,
             &mut encoder,
@@ -252,16 +298,16 @@ impl TerminalRenderer {
             // draw_grid can create glyph handles whose uploads are in the
             // discarded encoder. Invalidate them rather than exposing stale data.
             shared.clear();
-            self.rendered_grid = None;
+            self.state.rendered_grid = None;
             return Ok(false);
         }
         if deadline.is_some_and(crate::frame::expired) {
             // Submitted GPU work has finished, so the borrowed buffer is safe,
             // but it is too late to present. Leave this session dirty.
-            self.rendered_grid = None;
+            self.state.rendered_grid = None;
             return Ok(false);
         }
-        self.rendered_grid = Some(RenderedGrid {
+        self.state.rendered_grid = Some(RenderedGrid {
             revision: grid.revision,
             viewport: *viewport,
             generation: shared.cache.atlas.generation(),
@@ -269,14 +315,3 @@ impl TerminalRenderer {
         Ok(true)
     }
 }
-
-#[cfg(test)]
-#[path = "tests/renderer_support.rs"]
-pub(crate) mod test_support;
-
-#[cfg(test)]
-use std::time::Duration;
-
-#[cfg(test)]
-#[path = "tests/renderer.rs"]
-mod tests;

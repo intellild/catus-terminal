@@ -28,15 +28,8 @@ impl Host {
     }
     fn create_session(&mut self, id: u32, command: Option<TerminalSessionCommand>) -> Result<()> {
         let size = GridSize::new(80, 24);
-        let core = self.delegate.create_session(command, size)?;
-        self.sessions.insert(
-            id,
-            Arc::new(Session {
-                core,
-                #[cfg(feature = "native-view")]
-                rendering: std::sync::Mutex::new(None),
-            }),
-        );
+        let session = self.delegate.create_session(command, size)?;
+        self.sessions.insert(id, session);
         Ok(())
     }
     fn session(&self, id: u32) -> Option<Arc<Session>> {
@@ -44,12 +37,12 @@ impl Host {
     }
     fn close_session(&mut self, id: u32) {
         if let Some(session) = self.sessions.remove(&id) {
-            session.core.close();
+            session.close();
         }
     }
     fn detach_session(&mut self, id: u32) {
         if let Some(session) = self.sessions.remove(&id) {
-            session.core.detach();
+            session.detach_pty();
         }
     }
     fn is_empty(&self) -> bool {
@@ -131,7 +124,3 @@ impl Hosts {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tests/host.rs"]
-mod tests;

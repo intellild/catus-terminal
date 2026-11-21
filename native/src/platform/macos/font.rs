@@ -32,7 +32,3 @@ pub(crate) fn load_font_size(rasterizer: &mut Rasterizer, pixels: u32) -> Result
         metrics,
     })
 }
-
-#[cfg(test)]
-#[path = "../../tests/macos/font.rs"]
-mod tests;

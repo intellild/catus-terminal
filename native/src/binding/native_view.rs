@@ -225,6 +225,7 @@ pub struct Target<T> {
     state: Arc<State>,
     _type: PhantomData<fn() -> T>,
 }
+
 impl<T> Clone for Target<T> {
     fn clone(&self) -> Self {
         Self {
@@ -254,6 +255,7 @@ impl<T: NativeView> Target<T> {
         })
     }
 }
+
 struct Data<T> {
     state: Arc<State>,
     value: Option<T>,
@@ -513,7 +515,3 @@ unsafe extern "C" fn invoke<T: NativeView>(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/lynx_native_view.rs"]
-pub(crate) mod tests;

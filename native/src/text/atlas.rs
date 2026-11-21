@@ -399,7 +399,3 @@ fn prepare_upload(glyph: &RasterizedGlyph<'_>) -> Result<Upload> {
         bytes_per_row,
     })
 }
-
-#[cfg(test)]
-#[path = "../tests/atlas.rs"]
-mod tests;

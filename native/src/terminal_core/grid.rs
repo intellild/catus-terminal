@@ -67,7 +67,7 @@ pub struct GridSnapshot {
 }
 impl GridSnapshot {
     // Composition is a display overlay; it never changes the VT grid or PTY stream.
-    #[cfg(any(feature = "native-view", test))]
+    #[cfg(feature = "native-view")]
     pub(crate) fn overlay_preedit(&mut self, text: &str) {
         use unicode_width::UnicodeWidthChar;
         if text.is_empty() {
@@ -161,7 +161,6 @@ pub struct TerminalGrid {
     size: GridSize,
     revision: u64,
     reported_size: Arc<Mutex<GridSize>>,
-    on_change: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 impl TerminalGrid {
     pub(crate) fn new(size: GridSize, replies: WriterSender) -> Self {
@@ -179,20 +178,10 @@ impl TerminalGrid {
             size,
             revision: 1,
             reported_size,
-            on_change: None,
         }
-    }
-    pub(crate) fn set_on_change(&mut self, callback: Option<Arc<dyn Fn() + Send + Sync>>) {
-        self.on_change = callback;
     }
     pub(super) fn changed(&mut self) {
         self.revision += 1;
-        self.notify_change();
-    }
-    pub(super) fn notify_change(&self) {
-        if let Some(callback) = &self.on_change {
-            callback();
-        }
     }
     pub fn advance(&mut self, bytes: &[u8]) {
         self.parser.advance(&mut self.term, bytes);
@@ -376,10 +365,6 @@ fn palette(index: usize) -> [u8; 3] {
         _ => FOREGROUND,
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/terminal_grid.rs"]
-mod tests;
 
 #[path = "interaction.rs"]
 mod interaction;

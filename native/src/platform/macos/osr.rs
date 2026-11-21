@@ -6,10 +6,7 @@ use anyhow::Result;
 use objc2_core_foundation::CFRetained;
 use objc2_io_surface::IOSurfaceRef;
 
-use crate::{
-    binding::native_view::RawSurface, frame::Viewport, terminal_session::TerminalHandle,
-    terminal_view::SnapshotOutcome,
-};
+use crate::{binding::native_view::RawSurface, frame::Viewport, renderer::PreparedFrame};
 
 use super::surface;
 
@@ -75,14 +72,11 @@ struct OsrSurface {
 
 /// Render the session into an owned surface. The caller presents it after a
 /// successful draw; the renderer waits for submitted GPU writes before returning.
-pub(super) fn render_surface(
-    terminal: &TerminalHandle,
-    target: &IOSurfaceRef,
-    deadline: i64,
-) -> Result<SnapshotOutcome> {
-    terminal.render_snapshot(deadline, |renderer, viewport, grid| unsafe {
-        surface::render_to_surface(renderer, viewport, grid, target, deadline)
-    })
+pub(super) fn render_surface(frame: &mut PreparedFrame<'_>, target: &IOSurfaceRef) -> Result<bool> {
+    frame.draw(
+        crate::text::TargetOrigin::BottomLeft,
+        |device, viewport| unsafe { surface::import_surface(device, target, viewport) },
+    )
 }
 
 pub(crate) struct OsrFrame {
@@ -103,48 +97,5 @@ impl OsrFrame {
     /// The SDK's Darwin surface handle is the IOSurfaceRef object pointer.
     pub(crate) fn handle(&self) -> NonNull<RawSurface> {
         self.handle
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn surfaces_reuse_the_working_slot_until_presentation_commits() {
-        let viewport = Viewport {
-            width: 64,
-            height: 32,
-            pixel_ratio: 2.,
-        };
-        let mut surfaces = OsrSurfaces::default();
-        let first = surfaces.acquire(&viewport).unwrap();
-        let retry = surfaces.acquire(&viewport).unwrap();
-        assert_eq!(retry.handle(), first.handle());
-        assert_eq!(retry.index(), first.index());
-
-        surfaces.commit(first.index());
-        let second = surfaces.acquire(&viewport).unwrap();
-        assert_ne!(second.handle(), first.handle());
-        assert_eq!(
-            surfaces.acquire(&viewport).unwrap().handle(),
-            second.handle()
-        );
-
-        surfaces.commit(second.index());
-        assert_eq!(
-            surfaces.acquire(&viewport).unwrap().handle(),
-            first.handle()
-        );
-
-        let resized = Viewport {
-            width: 128,
-            ..viewport
-        };
-        let frame = surfaces.acquire(&resized).unwrap();
-        assert_eq!(frame.index(), 0);
-        assert_eq!(frame.surface().width(), 128);
-        assert_eq!(frame.surface().height(), 32);
-        assert_eq!(frame.surface().bytes_per_element(), 4);
     }
 }

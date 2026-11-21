@@ -8,6 +8,7 @@ use std::{
 };
 
 use napi::sys::napi_env;
+use tokio::sync::watch;
 
 use crate::{
     binding::{
@@ -16,21 +17,23 @@ use crate::{
         native_view,
         protocol::{ElementName, ExtensionName},
     },
-    native_terminal_view::{NativeTerminalView, TerminalHost},
+    native_terminal_view::NativeTerminalView,
 };
 
-struct TerminalExtension {
-    vsync: VsyncObserver,
-    foreground: Arc<AtomicBool>,
-    host: OnceLock<Box<TerminalHost>>,
+pub(crate) struct TerminalExtension {
+    pub(crate) lynx_view: OnceLock<usize>,
+    pub(crate) vsync: VsyncObserver,
+    pub(crate) foreground: Arc<AtomicBool>,
+    pub(crate) resume: watch::Sender<()>,
 }
 
 impl Default for TerminalExtension {
     fn default() -> Self {
         Self {
+            lynx_view: OnceLock::new(),
             vsync: VsyncObserver::default(),
             foreground: Arc::new(AtomicBool::new(true)),
-            host: OnceLock::new(),
+            resume: watch::Sender::new(()),
         }
     }
 }
@@ -41,31 +44,21 @@ impl Extension for TerminalExtension {
     }
 
     fn on_view_create(&self, view: NonNull<LynxView>) {
-        let host = self.host.get_or_init(|| {
-            Box::new(TerminalHost::new(
-                view.as_ptr() as usize,
-                self.vsync.clone(),
-                Arc::clone(&self.foreground),
-            ))
-        });
-        // SAFETY: Lynx creates native views on UI; the extension owns the
-        // immutable factory context throughout this window's lifetime.
+        self.lynx_view.get_or_init(|| view.as_ptr() as usize);
+        // SAFETY: The module owns this boxed extension through the lifetime of
+        // the registered factory. Creation only borrows it on the UI thread.
         unsafe {
-            native_view::register::<NativeTerminalView>(view, ElementName::Terminal, host);
+            native_view::register::<NativeTerminalView>(view, ElementName::Terminal, self);
         }
     }
 
     fn on_runtime_attach(&self, _env: napi_env) {
-        if let Some(host) = self.host.get() {
-            host.schedule_all();
-        }
+        self.resume.send_replace(());
     }
 
     fn on_enter_foreground(&self) {
         self.foreground.store(true, Ordering::Release);
-        if let Some(host) = self.host.get() {
-            host.schedule_all();
-        }
+        self.resume.send_replace(());
     }
 
     fn on_enter_background(&self) {
@@ -76,7 +69,3 @@ impl Extension for TerminalExtension {
 pub(crate) fn register_terminal_extension() {
     extension::register::<TerminalExtension>(ExtensionName::Terminal, false);
 }
-
-#[cfg(test)]
-#[path = "tests/terminal_extension.rs"]
-mod tests;

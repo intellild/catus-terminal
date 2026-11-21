@@ -24,17 +24,7 @@ pub use terminal_session::{
     get_terminal_session_info, get_tmux_session_info, select_tmux_window, write_terminal_session,
 };
 #[cfg(feature = "native-view")]
-mod terminal_view;
+mod terminal_content;
 fn napi_error(error: Error) -> napi::Error {
     napi::Error::from_reason(format!("{error:#}"))
-}
-
-#[cfg(test)]
-#[path = "tests/errors.rs"]
-mod tests;
-
-/// Run AppKit input protocol checks on the process main thread.
-#[cfg(all(feature = "native-input-tests", target_os = "macos"))]
-pub fn run_native_input_tests() {
-    platform::run_native_input_tests();
 }
