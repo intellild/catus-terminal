@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -13,8 +14,12 @@ use crate::{
 
 use super::Renderer;
 
-const DIRTY: u8 = 1;
-const SCHEDULED: u8 = 2;
+bitflags! {
+    struct FrameState: u8 {
+        const DIRTY = 0b01;
+        const SCHEDULED = 0b10;
+    }
+}
 
 impl Renderer {
     pub(crate) fn new(
@@ -27,7 +32,7 @@ impl Renderer {
             foreground,
             target,
             active: AtomicBool::new(false),
-            frame_state: 0.into(),
+            frame_state: FrameState::empty().bits().into(),
         })
     }
 
@@ -38,7 +43,10 @@ impl Renderer {
     }
 
     pub(crate) fn schedule_render(self: &Arc<Self>) {
-        if self.frame_state.fetch_or(DIRTY, Ordering::AcqRel) & SCHEDULED == 0 {
+        let previous = self
+            .frame_state
+            .fetch_or(FrameState::DIRTY.bits(), Ordering::AcqRel);
+        if !FrameState::from_bits_retain(previous).contains(FrameState::SCHEDULED) {
             self.request_frame_if_dirty();
         }
     }
@@ -51,7 +59,12 @@ impl Renderer {
         while self.can_render()
             && self
                 .frame_state
-                .compare_exchange(DIRTY, SCHEDULED, Ordering::AcqRel, Ordering::Acquire)
+                .compare_exchange(
+                    FrameState::DIRTY.bits(),
+                    FrameState::SCHEDULED.bits(),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
                 .is_ok()
         {
             let renderer = Arc::clone(self);
@@ -62,7 +75,10 @@ impl Renderer {
                 return;
             }
             // Retry only if another update arrived while this request was in flight.
-            if self.frame_state.swap(DIRTY, Ordering::AcqRel) & DIRTY == 0 {
+            let previous = self
+                .frame_state
+                .swap(FrameState::DIRTY.bits(), Ordering::AcqRel);
+            if !FrameState::from_bits_retain(previous).contains(FrameState::DIRTY) {
                 return;
             }
         }
@@ -88,7 +104,8 @@ impl Renderer {
         }
         // This frame reads the current view and covers all updates up to here.
         // Updates arriving during the draw set DIRTY for the next frame.
-        self.frame_state.fetch_and(!DIRTY, Ordering::AcqRel);
+        self.frame_state
+            .fetch_and(!FrameState::DIRTY.bits(), Ordering::AcqRel);
         let mut outcome = RenderOutcome::Idle;
         if let Some(view) = &self.target
             && let Err(error) = view.dispatch(|view| {
@@ -104,9 +121,13 @@ impl Renderer {
 
     fn finish_frame(self: &Arc<Self>, outcome: RenderOutcome) {
         if outcome == RenderOutcome::Retry {
-            self.frame_state.fetch_or(DIRTY, Ordering::Release);
+            self.frame_state
+                .fetch_or(FrameState::DIRTY.bits(), Ordering::Release);
         }
-        if self.frame_state.fetch_and(!SCHEDULED, Ordering::AcqRel) & DIRTY != 0 {
+        let previous = self
+            .frame_state
+            .fetch_and(!FrameState::SCHEDULED.bits(), Ordering::AcqRel);
+        if FrameState::from_bits_retain(previous).contains(FrameState::DIRTY) {
             self.request_frame_if_dirty();
         }
     }

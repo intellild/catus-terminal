@@ -207,6 +207,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bindgen",
+ "bitflags 2.13.2",
  "crossfont",
  "cxx",
  "cxx-build",

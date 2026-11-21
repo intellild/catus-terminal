@@ -11,11 +11,12 @@ doctest = false
 
 [features]
 default = ["native-view"]
-native-view = ["dep:arc-swap", "dep:once_cell", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
+native-view = ["dep:arc-swap", "dep:bitflags", "dep:once_cell", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
 
 [dependencies]
 anyhow = "1.0"
 arc-swap = { version = "1", features = ["weak"], optional = true }
+bitflags = { version = "2", optional = true }
 napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols", "async"] }
 napi-derive = "=3.6.10"
 cxx = "1.0"
