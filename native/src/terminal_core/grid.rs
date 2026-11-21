@@ -1,12 +1,11 @@
 //! Terminal computation only: streaming VT parser -> an owned, GPU-independent grid.
-use super::pty::{WriterMessage, WriterSender};
 use alacritty_terminal::{
-    event::{Event, EventListener, WindowSize},
+    event::{Event, EventListener},
     grid::Dimensions,
     term::{Config, Term, TermMode, cell::Flags, color::Colors, point_to_viewport},
     vte::ansi::{Color, CursorShape, NamedColor, Processor, Rgb},
 };
-use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc::UnboundedSender;
 
 pub const BACKGROUND: [u8; 3] = [17, 20, 25];
 pub const FOREGROUND: [u8; 3] = [216, 222, 229];
@@ -128,30 +127,27 @@ impl GridSnapshot {
     }
 }
 
+pub(super) enum GridReply {
+    Text(String),
+    TextAreaSize,
+}
+
 struct Listener {
-    replies: WriterSender,
-    size: Arc<Mutex<GridSize>>,
+    replies: Option<UnboundedSender<GridReply>>,
 }
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
-        let reply = match event {
-            Event::PtyWrite(text) => text,
+        let Some(replies) = &self.replies else { return };
+        let message = match event {
+            Event::PtyWrite(text) => GridReply::Text(text),
             Event::ColorRequest(index, format) => {
                 let [r, g, b] = palette(index);
-                format(Rgb { r, g, b })
+                GridReply::Text(format(Rgb { r, g, b }))
             }
-            Event::TextAreaSizeRequest(format) => {
-                let size = *self.size.lock().unwrap();
-                format(WindowSize {
-                    num_cols: size.columns as u16,
-                    num_lines: size.rows as u16,
-                    cell_width: 0,
-                    cell_height: 0,
-                })
-            }
+            Event::TextAreaSizeRequest(_) => GridReply::TextAreaSize,
             _ => return,
         };
-        let _ = self.replies.send(WriterMessage::Data(reply.into_bytes()));
+        let _ = replies.send(message);
     }
 }
 
@@ -160,24 +156,14 @@ pub struct TerminalGrid {
     parser: Processor,
     size: GridSize,
     revision: u64,
-    reported_size: Arc<Mutex<GridSize>>,
 }
 impl TerminalGrid {
-    pub(crate) fn new(size: GridSize, replies: WriterSender) -> Self {
-        let reported_size = Arc::new(Mutex::new(size));
+    pub(super) fn new(size: GridSize, replies: Option<UnboundedSender<GridReply>>) -> Self {
         Self {
-            term: Term::new(
-                Config::default(),
-                &size,
-                Listener {
-                    replies,
-                    size: reported_size.clone(),
-                },
-            ),
+            term: Term::new(Config::default(), &size, Listener { replies }),
             parser: Processor::new(),
             size,
             revision: 1,
-            reported_size,
         }
     }
     pub(super) fn changed(&mut self) {
@@ -190,7 +176,6 @@ impl TerminalGrid {
     pub fn resize(&mut self, size: GridSize) {
         if self.size != size {
             self.term.resize(size);
-            *self.reported_size.lock().unwrap() = size;
             self.size = size;
             self.changed();
         }

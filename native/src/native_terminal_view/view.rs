@@ -89,7 +89,7 @@ impl NativeTerminalView {
     }
     fn bind(&self, next: Option<Arc<Session>>, attached: bool) -> Result<()> {
         if let (Some(session), Some(viewport)) = (&next, self.viewport.get()) {
-            session.resize(self.cells_for(&viewport)?.size)?;
+            self.resize_to_viewport(session, &viewport)?;
         }
         self.detach_session();
         self.content.replace(next.map(TerminalContent::new));
@@ -124,9 +124,19 @@ impl NativeTerminalView {
     pub(crate) fn cell_geometry(&self) -> Option<crate::frame::CellGeometry> {
         self.cells.get().map(|cells| cells.geometry)
     }
+    fn resize_to_viewport(&self, session: &Session, viewport: &Viewport) -> Result<()> {
+        let cells = self.cells_for(viewport)?;
+        let cell_width = (cells.geometry.width * viewport.pixel_ratio).round();
+        let cell_height = (cells.geometry.height * viewport.pixel_ratio).round();
+        session.resize_with_pixels(
+            cells.size,
+            (cell_width * cells.size.columns as f32) as u16,
+            (cell_height * cells.size.rows as f32) as u16,
+        )
+    }
     fn resize_session(&self, viewport: &Viewport) -> Result<()> {
         if let Some(content) = self.content.borrow().as_ref() {
-            content.session.resize(self.cells_for(viewport)?.size)?;
+            self.resize_to_viewport(&content.session, viewport)?;
         }
         Ok(())
     }
