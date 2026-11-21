@@ -2,7 +2,7 @@ use super::*;
 use crate::binding::extension::tests as host;
 
 #[test]
-fn rust_factory_registers_component_with_a_shared_vsync_handle() {
+fn terminal_factory_borrows_the_window_extension() {
     register_terminal_extension();
     let registration = host::take_registration();
     assert_eq!(registration.name, "CatusNativeTerminalElement");
@@ -18,9 +18,12 @@ fn rust_factory_registers_component_with_a_shared_vsync_handle() {
     assert!(native.creator.is_some());
 
     let vsync = unsafe {
-        host::with_extension(raw, |extension: &TerminalExtension| extension.vsync.clone())
+        host::with_extension(raw, |extension: &TerminalExtension| {
+            assert_eq!(native.opaque, std::ptr::from_ref(extension) as usize);
+            assert_eq!(extension.lynx_view.get().copied(), Some(native.view));
+            extension.vsync.clone()
+        })
     };
-    // The view host and extension share the same safe handle.
     assert!(!vsync.request_animation_frame(|_| {}));
 
     unsafe { callbacks.view_destroy.unwrap()(raw) };
