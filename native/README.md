@@ -31,7 +31,6 @@ native/
   src/terminal_extension.rs    Rust 组件注册和窗口生命周期
   src/native_terminal_view/
     mod.rs                     NativeTerminalView 对象和模块导出
-    host.rs                    TerminalHost 向已挂载的 element 转发窗口恢复事件
     state.rs                   当前会话 ID、挂载状态、滚动事件和焦点状态
     view.rs                    element 生命周期、layout、props、invoke 和事件
   src/binding/                共享 bindgen C ABI、Extension / NativeView trait 和 Value RAII
@@ -146,7 +145,8 @@ E2E preload 用 `CATUS_E2E_PTY`
 Rust `Host` 强引用自己所属的 session；全局 `Hosts` 只维护 host 和数字句柄的归属索引。
 每个 `NativeTerminalView` 持有一个 `Arc<Renderer>`，管理 viewport、绘制缓存和鼠标状态。
 element 在 attach 时将 renderer 的弱引用交给当前 session，detach 或切换 session 时解除旧绑定。
-`TerminalHost` 将 runtime attach 和窗口回前台事件投递到 UI 线程，由当时仍挂载的 element 请求重绘。
+element 工厂在创建时借用 `TerminalExtension`，从中取得平台所需的 Lynx view 句柄及 renderer 所需的 VSync 和前台状态。
+`TerminalExtension` 将 runtime attach 和窗口回前台事件投递到 UI 线程，通过共享的 `AttachedTarget` 找到当时仍挂载的 element 并请求重绘。
 `TerminalContent` 保存当前 session 和 IME 组合文本，生成带组合文本的网格快照。
 AppKit 把输入和窗口重绘事件送回 element，由 element 请求绘制并向平台提交准备好的帧。
 session 直接持有 `ArcSwapWeak<Renderer>`。PTY parser 等待输出时只保留 `Weak<TerminalSession>`，

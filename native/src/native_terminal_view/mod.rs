@@ -1,5 +1,4 @@
 //! Platform-independent Lynx terminal element lifecycle and session binding.
-mod host;
 mod state;
 mod view;
 
@@ -9,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    binding::native_view::{Handle, Target},
+    binding::native_view::{AttachedTarget, Handle, Target},
     platform::TerminalPlatform,
 };
 
@@ -19,10 +18,8 @@ use crate::{
 };
 use state::State;
 
-pub(crate) use host::TerminalHost;
-
 pub(crate) struct NativeTerminalView {
-    host: Arc<TerminalHost>,
+    attached_element: Arc<AttachedTarget<Self>>,
     target: Target<Self>,
     handle: Handle,
     platform: Box<TerminalPlatform>,

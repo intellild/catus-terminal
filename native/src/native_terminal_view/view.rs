@@ -15,22 +15,24 @@ use crate::{
     renderer::{FramePreparation, RenderOutcome, Renderer},
     terminal_content::TerminalContent,
     terminal_core::grid::ScrollState,
+    terminal_extension::TerminalExtension,
     terminal_session::{Session, session},
 };
 
-use super::{NativeTerminalView, host::TerminalHost, state::State};
+use super::{NativeTerminalView, state::State};
 
 impl ViewFactory for NativeTerminalView {
-    type Context = Arc<TerminalHost>;
-    fn create(handle: Handle, target: Target<Self>, host: &Arc<TerminalHost>) -> Result<Self> {
+    type Context = TerminalExtension;
+    fn create(handle: Handle, target: Target<Self>, extension: &TerminalExtension) -> Result<Self> {
+        let view = *extension.lynx_view.get().context("Missing Lynx view")?;
         let renderer = Renderer::new(
-            host.vsync.clone(),
-            Arc::clone(&host.foreground),
+            extension.vsync.clone(),
+            Arc::clone(&extension.foreground),
             Some(target.clone()),
         );
-        let platform = create_terminal_platform(host.view, &handle, target.clone())?;
+        let platform = create_terminal_platform(view, &handle, target.clone())?;
         Ok(Self {
-            host: Arc::clone(host),
+            attached_element: Arc::clone(&extension.attached_element),
             target,
             handle,
             platform,
@@ -236,14 +238,14 @@ impl NativeView for NativeTerminalView {
         self.platform.attach();
         let mut state = self.state.borrow_mut();
         state.attached = true;
-        self.host.element.attach(&self.target);
+        self.attached_element.attach(&self.target);
         self.attach_session();
         self.update_frames(&state);
         self.invalidate_frame();
         Ok(())
     }
     fn on_detach(&self) -> Result<()> {
-        self.host.element.detach(&self.target);
+        self.attached_element.detach(&self.target);
         self.platform.detach();
         self.detach_session();
         let mut state = self.state.borrow_mut();
@@ -252,7 +254,7 @@ impl NativeView for NativeTerminalView {
         Ok(())
     }
     fn on_destroy(&self) -> Result<()> {
-        self.host.element.detach(&self.target);
+        self.attached_element.detach(&self.target);
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
