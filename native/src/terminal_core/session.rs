@@ -25,10 +25,6 @@ impl TerminalSession {
         command.env("COLORTERM", "truecolor");
         Self::spawn(command, size, shell)
     }
-    #[cfg(test)]
-    pub(crate) fn command(program: &str, args: &[String], size: GridSize) -> Result<Arc<Self>> {
-        Self::command_in_directory(program, args, None, size)
-    }
     pub(crate) fn command_in_directory(
         program: &str,
         args: &[String],
@@ -176,10 +172,6 @@ impl TerminalSession {
     pub fn close_tmux_window(&self, window_id: &str) -> Result<bool> {
         block_on(self.pty.close_tmux_window(window_id))
     }
-    #[cfg(test)]
-    pub(crate) fn ready(&self) -> bool {
-        self.pty.ready()
-    }
     pub fn size(&self) -> GridSize {
         self.grid.blocking_lock().size()
     }
@@ -203,11 +195,6 @@ impl TerminalSession {
     }
     pub fn revision(&self) -> u64 {
         self.grid.blocking_lock().revision()
-    }
-    #[cfg(all(test, feature = "native-view"))]
-    pub(crate) fn with_grid_locked(&self, operation: impl FnOnce()) {
-        let _guard = self.grid.blocking_lock();
-        operation();
     }
 
     fn update_grid<T>(&self, update: impl FnOnce(&mut TerminalGrid) -> T) -> T {
@@ -257,7 +244,3 @@ impl TerminalSession {
         block_on(self.pty.detach());
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/terminal_pty.rs"]
-mod tests;

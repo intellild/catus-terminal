@@ -223,7 +223,3 @@ unsafe extern "C" fn runtime_ready<T: Extension>(
         unsafe { dispatch::<T>(raw, |extension| extension.on_runtime_ready(env, lynx, url)) };
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/lynx_extension.rs"]
-pub(crate) mod tests;

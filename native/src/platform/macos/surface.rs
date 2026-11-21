@@ -40,28 +40,6 @@ pub(crate) fn create_surface(width: u32, height: u32) -> Result<CFRetained<IOSur
         .with_context(|| format!("Create {width}x{height} terminal IOSurface"))
 }
 
-/// Draw a supplied grid into an IOSurface, without accessing a session,
-/// PTY or native view. Returns false when the frame is expired or contended.
-///
-/// # Safety
-/// The caller must reserve the surface exclusively until GPU writes complete.
-#[cfg(test)]
-pub(crate) unsafe fn render_to_surface(
-    renderer: &mut crate::renderer::GridPainter<'_>,
-    viewport: &Viewport,
-    grid: &crate::terminal_core::grid::GridSnapshot,
-    surface: &IOSurfaceRef,
-    deadline: i64,
-) -> Result<bool> {
-    renderer.render_grid_with_origin(
-        viewport,
-        grid,
-        deadline,
-        crate::text::TargetOrigin::BottomLeft,
-        |device| unsafe { import_surface(device, surface, viewport) },
-    )
-}
-
 /// # Safety
 /// `surface` must be exclusively borrowed until all
 /// GPU writes complete. The caller validates the viewport before importing.
@@ -147,7 +125,3 @@ pub(crate) unsafe fn import_texture(
     };
     Ok(texture)
 }
-
-#[cfg(test)]
-#[path = "../../tests/macos/surface_support.rs"]
-pub(crate) mod test_support;

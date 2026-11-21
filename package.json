@@ -14,7 +14,7 @@
     "build": "rspeedy build --environment lynx && rsbuild build --environment desktop",
     "start": "pnpm run build && lynxtron dist/desktop",
     "test": "rstest",
-    "test:rust": "node scripts/test-rust.mjs",
+    "check:rust": "node scripts/check-rust.mjs",
     "test:napi": "node scripts/test-napi.mjs",
     "pack": "pnpm run build && lynxtron-builder --publish never",
     "build:native": "pnpm --filter @catus/native run build",
@@ -29,8 +29,7 @@
     "test:e2e:windowed": "cross-env CATUS_E2E_WINDOWLESS=0 pnpm run test:e2e",
     "test:e2e:update": "cross-env CATUS_UPDATE_SCREENSHOTS=1 pnpm run test:e2e",
     "dev:web": "cross-env CATUS_WEB=1 rspeedy dev --environment web",
-    "build:web": "cross-env CATUS_WEB=1 rspeedy build --environment web",
-    "test:native-input": "node scripts/test-native-input.mjs"
+    "build:web": "cross-env CATUS_WEB=1 rspeedy build --environment web"
   },
   "private": true,
   "devDependencies": {

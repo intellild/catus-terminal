@@ -54,8 +54,4 @@ impl PtyDelegate for TmuxPtyDelegate {
     async fn close_tmux_window(&self, window_id: &str, tx: &WriterSender) -> Result<bool> {
         self.0.lock().await.close_window(window_id, tx)
     }
-    #[cfg(test)]
-    fn ready(&self) -> bool {
-        self.0.blocking_lock().ready()
-    }
 }

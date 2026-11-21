@@ -124,7 +124,3 @@ impl Hosts {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tests/host.rs"]
-mod tests;

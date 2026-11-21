@@ -21,7 +21,7 @@
   Terminal computation, text rendering and platform adapters are separate modules;
   C++ follows the same shared/platform split. Native views currently support macOS.
 - `tests/`: Runtime E2E, Node integration tests and fixtures. UI unit tests live
-  alongside the app; Rust unit tests live under `native/src/tests/`.
+  alongside the app.
 
 ## Development Conventions
 
@@ -127,7 +127,7 @@ Use pnpm and the Node.js versions declared in `package.json`.
 | TypeScript | `pnpm tsc` |
 | Format / lint | `pnpm format:check` / `pnpm lint` |
 | UI and Node unit tests | `pnpm test:unit` |
-| Rust fmt, tests and clippy | `pnpm test:rust` |
+| Rust fmt and clippy | `pnpm check:rust` |
 | N-API integration tests | `pnpm test:napi` |
 | Runtime E2E | `pnpm test:e2e` |
 

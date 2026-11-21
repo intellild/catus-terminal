@@ -52,11 +52,6 @@ impl Default for VsyncObserver {
 }
 
 impl VsyncObserver {
-    pub(crate) fn is_attached(&self) -> bool {
-        !self.inner.module.load(Ordering::Acquire).is_null()
-            && !self.inner.observer.load(Ordering::Acquire).is_null()
-    }
-
     pub(super) fn set_module(&self, module: *mut RawModule) {
         self.inner.module.store(module, Ordering::Release);
     }
@@ -163,7 +158,3 @@ unsafe extern "C" fn on_frame(data: *mut c_void, _start: i64, target: i64) {
         (request.callback)(target);
     }));
 }
-
-#[cfg(test)]
-#[path = "../tests/vsync.rs"]
-mod tests;

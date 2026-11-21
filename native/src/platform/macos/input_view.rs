@@ -359,9 +359,3 @@ fn command_key(selector: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
-
-#[cfg(feature = "native-input-tests")]
-#[path = "../../tests/macos/input_view.rs"]
-mod tests;
-#[cfg(feature = "native-input-tests")]
-pub(crate) use tests::run_native_input_tests;

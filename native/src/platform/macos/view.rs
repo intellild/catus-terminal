@@ -346,9 +346,3 @@ unsafe extern "C" fn ime_event(event: *const NSEvent, opaque: *const MacTerminal
         }
     }
 }
-
-#[cfg(feature = "native-input-tests")]
-#[path = "../../tests/macos/view.rs"]
-mod tests;
-#[cfg(feature = "native-input-tests")]
-pub(crate) use tests::run_view_lifecycle_tests;

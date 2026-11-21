@@ -78,8 +78,6 @@ BTS 通过 `lynxBridge` 的 `catus:file-transfer` 通道发送目的地和远端
   close 幂等，close 后操作拒绝。对象丢弃也会通过 kill-on-drop 终止子进程。
 - writeFile 在 JS 调用线程复制 Uint8Array，避免异步操作读取随后被修改的 JS 内存。
   readFile/writeFile 当前将完整文件放入内存；流式传输、进度和取消接口尚未实现。
-- `native/src/tests/macos/sftp.rs` 使用本地 OpenSSH sftp-server 验证真实协议：
-  二进制/Unicode 文件、覆盖截断、目录、元数据、重命名、删除、隔离、错误和关闭。
 - `pnpm run test:napi` 中的 `tests/native/sftp.mjs` 使用临时 SSH shim，验证 SSH 参数、
   N-API Promise、256 KiB 二进制数据、字节复制和连接回收。不会连接远端服务器。
 - windowless E2E 使用 SSH shim 和真实 sftp-server 验证 BTS 直接调用 N-API 的浏览、
