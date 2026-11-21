@@ -13,6 +13,9 @@ use crate::{
 
 use super::Renderer;
 
+const DIRTY: u8 = 1;
+const SCHEDULED: u8 = 2;
+
 impl Renderer {
     pub(crate) fn new(
         vsync: VsyncObserver,
@@ -24,9 +27,7 @@ impl Renderer {
             foreground,
             target,
             active: AtomicBool::new(false),
-            dirty: AtomicBool::new(false),
-            scheduled: AtomicBool::new(false),
-            generation: 0.into(),
+            frame_state: 0.into(),
         })
     }
 
@@ -41,74 +42,68 @@ impl Renderer {
 
     #[cfg(test)]
     pub(crate) fn take_dirty(&self) -> bool {
-        self.dirty.swap(false, Ordering::AcqRel)
+        self.frame_state.fetch_and(!DIRTY, Ordering::AcqRel) & DIRTY != 0
     }
 
     pub(crate) fn set_active(self: &Arc<Self>, active: bool) {
-        if self.active.swap(active, Ordering::AcqRel) == active {
-            return;
-        }
-        self.generation.fetch_add(1, Ordering::AcqRel);
-        self.dirty.store(false, Ordering::Release);
-        self.scheduled.store(false, Ordering::Release);
-        if active {
+        if self.active.swap(active, Ordering::AcqRel) != active && active {
             self.schedule_render();
         }
     }
 
     pub(crate) fn schedule_render(self: &Arc<Self>) {
-        self.dirty.store(true, Ordering::Release);
-        if !self.active.load(Ordering::Acquire) || self.scheduled.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        let generation = self.generation.load(Ordering::Acquire);
-        let renderer = Arc::clone(self);
-        if !self
-            .vsync
-            .request_animation_frame(move |target| renderer.on_vsync(generation, target))
-            && self.generation.load(Ordering::Acquire) == generation
-        {
-            self.scheduled.store(false, Ordering::Release);
+        if self.frame_state.fetch_or(DIRTY, Ordering::AcqRel) & SCHEDULED == 0 {
+            self.request_frame_if_dirty();
         }
     }
 
-    fn on_vsync(self: &Arc<Self>, generation: u64, target: i64) {
-        if self.generation.load(Ordering::Acquire) != generation {
-            return;
-        }
-        if !self.active.load(Ordering::Acquire)
-            || target <= 0
-            || !self.dirty.swap(false, Ordering::AcqRel)
-        {
-            self.scheduled.store(false, Ordering::Release);
-            self.schedule_if_dirty();
-            return;
-        }
-        // Keep `scheduled` set while the UI task is pending, so another grid
-        // update cannot queue a second render.
-        let renderer = Arc::clone(self);
-        post_task_to_ui(move || renderer.render_scheduled(generation, target));
+    fn can_render(&self) -> bool {
+        self.active.load(Ordering::Acquire) && self.foreground.load(Ordering::Acquire)
     }
 
-    fn render_scheduled(self: &Arc<Self>, generation: u64, target: i64) {
-        if self.generation.load(Ordering::Acquire) != generation {
-            return;
+    fn request_frame_if_dirty(self: &Arc<Self>) {
+        while self.can_render()
+            && self
+                .frame_state
+                .compare_exchange(DIRTY, SCHEDULED, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            let renderer = Arc::clone(self);
+            if self
+                .vsync
+                .request_animation_frame(move |target| renderer.on_vsync(target))
+            {
+                return;
+            }
+            // Runtime attach may have requested a frame while this slot was busy.
+            self.frame_state.swap(DIRTY, Ordering::AcqRel);
+            if !self.vsync.is_attached() {
+                return;
+            }
         }
-        if !self.active.load(Ordering::Acquire) {
-            self.scheduled.store(false, Ordering::Release);
+    }
+
+    fn on_vsync(self: &Arc<Self>, target: i64) {
+        if target <= 0 || !self.can_render() {
+            self.finish_frame(RenderOutcome::Idle);
             return;
         }
         if expired(target) {
-            self.scheduled.store(false, Ordering::Release);
-            self.dirty.store(true, Ordering::Release);
-            self.schedule_render();
+            self.finish_frame(RenderOutcome::Retry);
             return;
         }
-        if !self.foreground.load(Ordering::Acquire) {
-            self.scheduled.store(false, Ordering::Release);
-            self.dirty.store(true, Ordering::Release);
+        let renderer = Arc::clone(self);
+        post_task_to_ui(move || renderer.render_scheduled(target));
+    }
+
+    fn render_scheduled(self: &Arc<Self>, target: i64) {
+        if !self.can_render() || expired(target) {
+            self.finish_frame(RenderOutcome::Retry);
             return;
         }
+        // This frame reads the current view and covers all updates up to here.
+        // Updates arriving during the draw set DIRTY for the next frame.
+        self.frame_state.fetch_and(!DIRTY, Ordering::AcqRel);
         let mut outcome = RenderOutcome::Idle;
         if let Some(view) = &self.target
             && let Err(error) = view.dispatch(|view| {
@@ -119,16 +114,15 @@ impl Renderer {
             eprintln!("Terminal frame: {error:#}");
             outcome = RenderOutcome::Retry;
         }
-        self.scheduled.store(false, Ordering::Release);
-        if outcome == RenderOutcome::Retry {
-            self.dirty.store(true, Ordering::Release);
-        }
-        self.schedule_if_dirty();
+        self.finish_frame(outcome);
     }
 
-    fn schedule_if_dirty(self: &Arc<Self>) {
-        if self.dirty.load(Ordering::Acquire) {
-            self.schedule_render();
+    fn finish_frame(self: &Arc<Self>, outcome: RenderOutcome) {
+        if outcome == RenderOutcome::Retry {
+            self.frame_state.fetch_or(DIRTY, Ordering::Release);
+        }
+        if self.frame_state.fetch_and(!SCHEDULED, Ordering::AcqRel) & DIRTY != 0 {
+            self.request_frame_if_dirty();
         }
     }
 }

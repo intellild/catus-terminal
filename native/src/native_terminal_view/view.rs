@@ -1,9 +1,10 @@
 use anyhow::{Context, Result, ensure};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::sync::watch;
 
 use crate::{
     binding::{
@@ -30,10 +31,9 @@ impl ViewFactory for NativeTerminalView {
             Arc::clone(&extension.foreground),
             Some(target.clone()),
         );
-        let platform = create_terminal_platform(view, &handle, target.clone())?;
+        let platform = create_terminal_platform(view, &handle, target)?;
         Ok(Self {
-            attached_element: Arc::clone(&extension.attached_element),
-            target,
+            resume_task: Cell::default(),
             handle,
             platform,
             renderer,
@@ -43,12 +43,33 @@ impl ViewFactory for NativeTerminalView {
             mouse: RefCell::default(),
             repaint: true.into(),
             viewport: None.into(),
-            state: RefCell::new(State::default()),
+            state: RefCell::new(State::new(extension.resume.subscribe())),
         })
     }
 }
 
 impl NativeTerminalView {
+    fn listen_for_resume(&self, mut resume: watch::Receiver<()>) {
+        // Attach already requests a frame for changes made while detached.
+        resume.mark_unchanged();
+        let renderer = Arc::downgrade(&self.renderer);
+        let task = napi::bindgen_prelude::spawn(async move {
+            while resume.changed().await.is_ok() {
+                let Some(renderer) = renderer.upgrade() else {
+                    break;
+                };
+                renderer.schedule_render();
+            }
+        });
+        self.resume_task.set(Some(task));
+    }
+
+    fn stop_listening_for_resume(&self) {
+        if let Some(task) = self.resume_task.take() {
+            task.abort();
+        }
+    }
+
     pub(crate) fn session(&self) -> Result<Arc<Session>> {
         self.content
             .borrow()
@@ -141,7 +162,10 @@ impl NativeTerminalView {
             return Ok(RenderOutcome::Idle);
         }
         let mut drawing = self.drawing.borrow_mut();
-        if self.repaint.replace(false) {
+        // The listener requests the frame. The UI receiver tracks which resume
+        // notifications this view has actually repainted.
+        if self.repaint.replace(false) || state.resume.has_changed().unwrap_or(false) {
+            state.resume.mark_unchanged();
             drawing.invalidate();
         }
         let prepared = self.renderer.prepare_frame(
@@ -237,15 +261,17 @@ impl NativeView for NativeTerminalView {
     fn on_attach(&self) -> Result<()> {
         self.platform.attach();
         let mut state = self.state.borrow_mut();
+        if !state.attached {
+            self.listen_for_resume(state.resume.clone());
+        }
         state.attached = true;
-        self.attached_element.attach(&self.target);
         self.attach_session();
         self.update_frames(&state);
         self.invalidate_frame();
         Ok(())
     }
     fn on_detach(&self) -> Result<()> {
-        self.attached_element.detach(&self.target);
+        self.stop_listening_for_resume();
         self.platform.detach();
         self.detach_session();
         let mut state = self.state.borrow_mut();
@@ -254,7 +280,7 @@ impl NativeView for NativeTerminalView {
         Ok(())
     }
     fn on_destroy(&self) -> Result<()> {
-        self.attached_element.detach(&self.target);
+        self.stop_listening_for_resume();
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
@@ -406,6 +432,7 @@ impl NativeView for NativeTerminalView {
 }
 impl Drop for NativeTerminalView {
     fn drop(&mut self) {
+        self.stop_listening_for_resume();
         self.renderer.set_active(false);
         self.detach_session();
     }

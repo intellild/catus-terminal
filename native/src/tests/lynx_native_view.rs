@@ -110,35 +110,6 @@ fn probe(state: Rc<ProbeState>) -> (View, Handle, Target<Probe>) {
     (view, handle, target)
 }
 
-#[test]
-fn lifecycle_events_follow_the_attached_element_across_replacement_and_detach() {
-    let attached = AttachedTarget::default();
-    let first = Rc::new(ProbeState::default());
-    let second = Rc::new(ProbeState::default());
-    let (_first_view, _, first_target) = probe(first.clone());
-    let (_second_view, _, second_target) = probe(second.clone());
-    let resume = || {
-        if let Some(target) = attached.current() {
-            target
-                .dispatch(|view: &Probe| {
-                    view.state.events.borrow_mut().push("resume".into());
-                    Ok(())
-                })
-                .unwrap();
-        }
-    };
-    attached.attach(&first_target);
-    resume();
-    attached.attach(&second_target);
-    attached.detach(&first_target);
-    resume();
-    attached.detach(&second_target);
-    resume();
-    assert!(attached.current().is_none());
-    assert_eq!(*first.events.borrow(), ["resume"]);
-    assert_eq!(*second.events.borrow(), ["resume"]);
-}
-
 unsafe fn invoke(raw: *mut RawView, method: &CStr, params: Value) {
     let (callbacks, data) = unsafe { host::callbacks(raw) };
     let params = params.into_raw();
