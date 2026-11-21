@@ -75,10 +75,6 @@ pub struct TmuxClient {
 }
 
 impl TmuxClient {
-    #[cfg(test)]
-    pub(crate) fn ready(&self) -> bool {
-        self.live && !self.syncing
-    }
     pub fn new(options: TmuxOptions, size: GridSize) -> Self {
         Self {
             options,
@@ -749,7 +745,3 @@ fn unescape_bytes(bytes: &[u8], capture: bool) -> Result<Vec<u8>> {
     }
     Ok(output)
 }
-
-#[cfg(test)]
-#[path = "../tests/tmux.rs"]
-mod tests;

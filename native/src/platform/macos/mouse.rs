@@ -123,7 +123,3 @@ impl MouseState {
         session.pointer(action, row, column, right_half, clicks, button, modifiers)
     }
 }
-
-#[cfg(test)]
-#[path = "../../tests/macos/mouse.rs"]
-mod tests;

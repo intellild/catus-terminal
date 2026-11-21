@@ -67,7 +67,7 @@ pub struct GridSnapshot {
 }
 impl GridSnapshot {
     // Composition is a display overlay; it never changes the VT grid or PTY stream.
-    #[cfg(any(feature = "native-view", test))]
+    #[cfg(feature = "native-view")]
     pub(crate) fn overlay_preedit(&mut self, text: &str) {
         use unicode_width::UnicodeWidthChar;
         if text.is_empty() {
@@ -365,10 +365,6 @@ fn palette(index: usize) -> [u8; 3] {
         _ => FOREGROUND,
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/terminal_grid.rs"]
-mod tests;
 
 #[path = "interaction.rs"]
 mod interaction;

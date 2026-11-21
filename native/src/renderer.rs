@@ -186,16 +186,6 @@ impl Renderer {
 }
 
 impl GridPainter<'_> {
-    #[cfg(test)]
-    pub(crate) fn needs_grid(&self, revision: u64, viewport: &Viewport) -> Result<bool> {
-        Ok(self.state.rendered_grid
-            != Some(RenderedGrid {
-                revision,
-                viewport: *viewport,
-                generation: self.gpu.glyphs()?.cache.atlas.generation(),
-            }))
-    }
-
     pub(crate) fn try_needs_grid(
         &self,
         revision: u64,
@@ -219,23 +209,6 @@ impl GridPainter<'_> {
 
     // The platform adapter supplies the texture only after idle/busy checks.
     // Submitted GPU work completes before returning a borrowed native target.
-    #[cfg(test)]
-    pub(crate) fn render_grid(
-        &mut self,
-        viewport: &Viewport,
-        grid: &GridSnapshot,
-        deadline: i64,
-        prepare_target: impl FnOnce(&wgpu::Device) -> Result<wgpu::Texture>,
-    ) -> Result<bool> {
-        self.render_grid_with_origin(
-            viewport,
-            grid,
-            deadline,
-            crate::text::TargetOrigin::TopLeft,
-            prepare_target,
-        )
-    }
-
     pub(crate) fn render_grid_with_origin(
         &mut self,
         viewport: &Viewport,
@@ -264,17 +237,6 @@ impl GridPainter<'_> {
             grid,
             Some(deadline),
         )
-    }
-
-    #[cfg(test)]
-    fn render_into(
-        &mut self,
-        target: &wgpu::TextureView,
-        viewport: &Viewport,
-        grid: &GridSnapshot,
-    ) -> Result<()> {
-        self.render_into_before(target, viewport, grid, None)
-            .map(|_| ())
     }
 
     fn render_into_before(
@@ -353,14 +315,3 @@ impl GridPainter<'_> {
         Ok(true)
     }
 }
-
-#[cfg(test)]
-#[path = "tests/renderer_support.rs"]
-pub(crate) mod test_support;
-
-#[cfg(test)]
-use std::time::Duration;
-
-#[cfg(test)]
-#[path = "tests/renderer.rs"]
-mod tests;

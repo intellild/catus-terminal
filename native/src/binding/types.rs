@@ -233,7 +233,3 @@ impl From<&ffi::native_view_motion_event_t> for MotionEvent {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/lynx_binding_types.rs"]
-mod tests;

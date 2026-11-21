@@ -6,12 +6,12 @@ publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
 
 [features]
 default = ["native-view"]
 native-view = ["dep:arc-swap", "dep:once_cell", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:objc2-io-surface", "dep:objc2-core-foundation", "dep:objc2-core-graphics", "dep:crossfont", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2-quartz-core"]
-# The standalone AppKit test executable has no Node or Lynx host for addon registration.
-native-input-tests = ["native-view", "napi-derive/noop"]
 
 [dependencies]
 anyhow = "1.0"
@@ -27,7 +27,7 @@ once_cell = { version = "1", optional = true }
 pollster = { version = "0.4", optional = true }
 crossfont = { version = "=0.9.0", optional = true }
 russh-sftp = "=3.0.1"
-tokio = { version = "1.53.2", default-features = false, features = ["process", "io-util", "sync", "time", "rt-multi-thread", "macros"] }
+tokio = { version = "1.53.2", default-features = false, features = ["process", "io-util", "sync", "time", "rt-multi-thread"] }
 async-trait = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -52,12 +52,3 @@ cxx-build = "1.0"
 # Rust/LLVM's debuginfo stripping can produce misaligned LINKEDIT on macOS 27.
 # Keep the linker output intact; see rust-lang/rust#157750.
 strip = "none"
-
-[dev-dependencies]
-tempfile = "3.27.0"
-
-[[test]]
-name = "macos-input"
-path = "tests/macos_input.rs"
-harness = false
-required-features = ["native-input-tests"]

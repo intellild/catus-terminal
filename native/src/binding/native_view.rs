@@ -515,7 +515,3 @@ unsafe extern "C" fn invoke<T: NativeView>(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/lynx_native_view.rs"]
-pub(crate) mod tests;

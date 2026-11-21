@@ -42,7 +42,7 @@ pub(crate) fn build_views(package_root: &Path, out_dir: &Path) -> Result<()> {
         .arg("catus_native"))?;
 
     // Only the Node-API cdylib needs Lynx views. Keep their host-specific
-    // symbols out of Rust unit-test executables and downstream rlib users.
+    // symbols out of downstream rlib users.
     // force_load also retains the constructor-only registration object.
     println!(
         "cargo:rustc-cdylib-link-arg=-Wl,-force_load,{}",

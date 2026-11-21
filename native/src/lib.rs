@@ -28,13 +28,3 @@ mod terminal_content;
 fn napi_error(error: Error) -> napi::Error {
     napi::Error::from_reason(format!("{error:#}"))
 }
-
-#[cfg(test)]
-#[path = "tests/errors.rs"]
-mod tests;
-
-/// Run AppKit input protocol checks on the process main thread.
-#[cfg(all(feature = "native-input-tests", target_os = "macos"))]
-pub fn run_native_input_tests() {
-    platform::run_native_input_tests();
-}

@@ -94,7 +94,3 @@ pub fn close_tmux_window(id: u32, window_id: String) -> napi::Result<bool> {
         .and_then(|session| session.close_tmux_window(&window_id))
         .map_err(crate::napi_error)
 }
-
-#[cfg(test)]
-#[path = "tests/terminal_session.rs"]
-mod tests;

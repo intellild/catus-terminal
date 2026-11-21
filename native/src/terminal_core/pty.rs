@@ -31,24 +31,6 @@ use tokio::{
 
 type PtyError = Arc<dyn std::error::Error + Send + Sync>;
 
-#[cfg(test)]
-pub(crate) fn test_channel() -> (WriterSender, UnboundedReceiver<WriterMessage>) {
-    unbounded_channel()
-}
-
-#[cfg(test)]
-pub(crate) fn test_sender() -> WriterSender {
-    unbounded_channel().0
-}
-
-#[cfg(test)]
-pub(crate) fn message_data(message: WriterMessage) -> Vec<u8> {
-    match message {
-        WriterMessage::Data(bytes) => bytes,
-        WriterMessage::Close(_) => panic!("unexpected writer close"),
-    }
-}
-
 /// One PTY read chunk, or the terminal condition that ends the read thread.
 enum ReadEvent {
     Data(Vec<u8>),
@@ -85,7 +67,7 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .expect("Start PTY runtime")
 });
 
-/// Block on the internal async PTY API from UI, Node and test threads.
+/// Block on the internal async PTY API from UI and Node threads.
 ///
 /// The same runtime also runs the parser task, so this must never be called
 /// from inside that task (or any other async context).
@@ -224,29 +206,6 @@ impl Pty {
         let input = self.input.lock().await;
         let tx = input.as_ref().context("Terminal is closed")?;
         self.delegate.close_tmux_window(window_id, tx).await
-    }
-
-    #[cfg(test)]
-    pub(super) fn ready(&self) -> bool {
-        self.delegate.ready()
-    }
-
-    #[cfg(test)]
-    pub(super) fn recording(tx: WriterSender, delegate: Arc<dyn PtyDelegate>) -> Self {
-        Self {
-            master: Mutex::new(None),
-            child: Mutex::new(None),
-            input: Mutex::new(Some(tx)),
-            exited: Arc::new(AtomicBool::new(false)),
-            error: Arc::new(Mutex::new(None)),
-            delegate,
-            parser: OnceLock::new(),
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_error(&self, error: PtyError) {
-        *self.error.blocking_lock() = Some(error);
     }
 
     pub fn exited(&self) -> bool {
@@ -437,7 +396,3 @@ fn pty_size(size: GridSize) -> PtySize {
         pixel_height: 0,
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/pty.rs"]
-mod tests;

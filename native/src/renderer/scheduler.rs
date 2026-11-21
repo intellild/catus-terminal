@@ -31,20 +31,6 @@ impl Renderer {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn offscreen() -> Arc<Self> {
-        Self::new(
-            VsyncObserver::default(),
-            Arc::new(AtomicBool::new(true)),
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn take_dirty(&self) -> bool {
-        self.frame_state.fetch_and(!DIRTY, Ordering::AcqRel) & DIRTY != 0
-    }
-
     pub(crate) fn set_active(self: &Arc<Self>, active: bool) {
         if self.active.swap(active, Ordering::AcqRel) != active && active {
             self.schedule_render();
@@ -75,9 +61,8 @@ impl Renderer {
             {
                 return;
             }
-            // Runtime attach may have requested a frame while this slot was busy.
-            self.frame_state.swap(DIRTY, Ordering::AcqRel);
-            if !self.vsync.is_attached() {
+            // Retry only if another update arrived while this request was in flight.
+            if self.frame_state.swap(DIRTY, Ordering::AcqRel) & DIRTY == 0 {
                 return;
             }
         }

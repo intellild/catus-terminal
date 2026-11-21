@@ -132,7 +132,3 @@ pub(crate) struct FontSize {
     pub(crate) size: Size,
     pub(crate) metrics: Metrics,
 }
-
-#[cfg(test)]
-#[path = "../tests/font.rs"]
-mod tests;

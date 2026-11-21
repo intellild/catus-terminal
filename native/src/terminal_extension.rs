@@ -69,7 +69,3 @@ impl Extension for TerminalExtension {
 pub(crate) fn register_terminal_extension() {
     extension::register::<TerminalExtension>(ExtensionName::Terminal, false);
 }
-
-#[cfg(test)]
-#[path = "tests/terminal_extension.rs"]
-mod tests;

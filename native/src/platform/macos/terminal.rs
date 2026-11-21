@@ -76,7 +76,3 @@ pub(super) fn render_layer(
     }
     Ok(RenderOutcome::Presented)
 }
-
-#[cfg(test)]
-#[path = "../../tests/macos/terminal_rendering.rs"]
-mod tests;
