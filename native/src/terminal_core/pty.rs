@@ -25,22 +25,23 @@ use tokio::{
     sync::{
         Mutex,
         mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender, channel, unbounded_channel},
+        oneshot,
     },
     task::AbortHandle,
 };
 
 type PtyError = Arc<dyn std::error::Error + Send + Sync>;
 
-/// One PTY read chunk, or the terminal condition that ends the read thread.
-enum ReadEvent {
+enum ParserEvent {
     Data(Vec<u8>),
     Eof,
     Error(PtyError),
+    Resize(PtySize, Option<oneshot::Sender<Result<()>>>),
 }
 
 /// Channels for consuming PTY output and sending parser replies.
 pub(super) struct PtyOutput {
-    events: Receiver<ReadEvent>,
+    events: Receiver<ParserEvent>,
     replies: UnboundedReceiver<GridReply>,
     writer: WriterSender,
 }
@@ -77,6 +78,7 @@ pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 pub(crate) struct Pty {
+    events: Sender<ParserEvent>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
     input: Mutex<Option<WriterSender>>,
@@ -122,7 +124,8 @@ impl Pty {
 
         // Bound the read bridge so a fast producer applies PTY backpressure
         // instead of growing an unbounded queue in memory.
-        let (read_tx, read_rx) = channel::<ReadEvent>(16);
+        let (events, read_rx) = channel(16);
+        let read_tx = events.clone();
         let read_exited = exited.clone();
         thread::Builder::new()
             .name("terminal-pty-reader".into())
@@ -135,6 +138,7 @@ impl Pty {
             writer: write_tx.clone(),
         };
         let pty = Self {
+            events,
             master: Mutex::new(Some(pair.master)),
             child: Mutex::new(Some(child)),
             input: Mutex::new(Some(write_tx)),
@@ -191,6 +195,24 @@ impl Pty {
         let input = self.input.lock().await;
         let tx = input.as_ref().context("Terminal is closed")?;
         self.delegate.input(bytes, tx).await
+    }
+
+    pub(super) fn resize_and_wait(&self, window: PtySize) -> Result<()> {
+        let (done, result) = oneshot::channel();
+        self.events
+            .blocking_send(ParserEvent::Resize(window, Some(done)))
+            .map_err(|_| anyhow!("Terminal parser has stopped"))?;
+        result.blocking_recv().context("Wait for terminal resize")?
+    }
+
+    #[cfg(feature = "native-view")]
+    pub(crate) fn try_resize(&self, window: PtySize) -> Result<bool> {
+        use tokio::sync::mpsc::error::TrySendError;
+        match self.events.try_send(ParserEvent::Resize(window, None)) {
+            Ok(()) => Ok(true),
+            Err(TrySendError::Full(_)) => Ok(false),
+            Err(TrySendError::Closed(_)) => Err(anyhow!("Terminal parser has stopped")),
+        }
     }
 
     pub(super) async fn resize(
@@ -346,17 +368,17 @@ fn write_loop(
     }
 }
 
-fn read_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ReadEvent>, exited: Arc<AtomicBool>) {
+fn read_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ParserEvent>, exited: Arc<AtomicBool>) {
     let mut buffer = [0; 16384];
     loop {
         match reader.read(&mut buffer) {
             Ok(0) => {
-                let _ = tx.blocking_send(ReadEvent::Eof);
+                let _ = tx.blocking_send(ParserEvent::Eof);
                 break;
             }
             Ok(count) => {
                 if tx
-                    .blocking_send(ReadEvent::Data(buffer[..count].to_vec()))
+                    .blocking_send(ParserEvent::Data(buffer[..count].to_vec()))
                     .is_err()
                 {
                     break;
@@ -364,11 +386,11 @@ fn read_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ReadEvent>, exited: Ar
             }
             Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(err) if crate::platform::pty_reader_closed(&err) => {
-                let _ = tx.blocking_send(ReadEvent::Eof);
+                let _ = tx.blocking_send(ParserEvent::Eof);
                 break;
             }
             Err(err) => {
-                let _ = tx.blocking_send(ReadEvent::Error(
+                let _ = tx.blocking_send(ParserEvent::Error(
                     anyhow::Error::new(err)
                         .context("Read PTY output")
                         .into_boxed_dyn_error()
@@ -383,13 +405,23 @@ fn read_loop(mut reader: Box<dyn Read + Send>, tx: Sender<ReadEvent>, exited: Ar
 
 impl PtyOutput {
     async fn parse(mut self, session: Weak<TerminalSession>) {
-        loop {
-            let event = self.events.recv().await;
+        let mut reading = true;
+        while let Some(event) = self.events.recv().await {
             let Some(session) = session.upgrade() else {
                 return;
             };
             let error = match event {
-                Some(ReadEvent::Data(bytes)) => {
+                ParserEvent::Resize(window, completion) => {
+                    let result = session.apply_resize(window, reading).await;
+                    if let Some(completion) = completion {
+                        let _ = completion.send(result);
+                    } else if let Err(error) = result {
+                        eprintln!("Resize terminal: {error:#}");
+                    }
+                    continue;
+                }
+                _ if !reading => continue,
+                ParserEvent::Data(bytes) => {
                     let result = session.process_output(&bytes, &self.writer).await;
                     session
                         .pty
@@ -404,15 +436,16 @@ impl PtyOutput {
                         ),
                     }
                 }
-                Some(ReadEvent::Error(err)) => Some(err),
-                Some(ReadEvent::Eof) | None => None,
+                ParserEvent::Error(err) => Some(err),
+                ParserEvent::Eof => None,
             };
             if let Some(error) = error {
                 *session.pty.error.lock().await = Some(error);
             }
             let _ = self.writer.send(WriterMessage::Close(Duration::ZERO));
             session.pty.exited.store(true, Ordering::Release);
-            return;
+            // Keep the final screen resizable until the session is closed.
+            reading = false;
         }
     }
 }
