@@ -87,10 +87,7 @@ impl NativeTerminalView {
             content.session.detach(&Arc::downgrade(&self.renderer));
         }
     }
-    fn bind(&self, next: Option<Arc<Session>>, attached: bool) -> Result<()> {
-        if let (Some(session), Some(viewport)) = (&next, self.viewport.get()) {
-            self.resize_to_viewport(session, &viewport)?;
-        }
+    fn bind(&self, next: Option<Arc<Session>>, attached: bool) {
         self.detach_session();
         self.content.replace(next.map(TerminalContent::new));
         self.mouse.replace(Default::default());
@@ -98,7 +95,6 @@ impl NativeTerminalView {
             self.attach_session();
         }
         self.invalidate_frame();
-        Ok(())
     }
     pub(crate) fn invalidate_frame(&self) {
         self.repaint.set(true);
@@ -112,33 +108,41 @@ impl NativeTerminalView {
             self.invalidate_frame();
         }
     }
-    fn cells_for(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
-        if let Some(cells) = self.cells.get() {
-            return Ok(cells);
-        }
-        let cells = self.renderer.measure_cells(viewport)?;
-        self.cells.set(Some(cells));
-        Ok(cells)
-    }
-
     pub(crate) fn cell_geometry(&self) -> Option<crate::frame::CellGeometry> {
         self.cells.get().map(|cells| cells.geometry)
     }
-    fn resize_to_viewport(&self, session: &Session, viewport: &Viewport) -> Result<()> {
-        let cells = self.cells_for(viewport)?;
+    fn try_resize_to_viewport(&self, viewport: &Viewport) -> Result<bool> {
+        let content = self.content.borrow();
+        let Some(content) = content.as_ref() else {
+            return Ok(true);
+        };
+        let cells = match self.cells.get() {
+            Some(cells) => cells,
+            None => {
+                let Some(cells) = self.renderer.try_measure_cells(viewport)? else {
+                    return Ok(false);
+                };
+                self.cells.set(Some(cells));
+                cells
+            }
+        };
         let cell_width = (cells.geometry.width * viewport.pixel_ratio).round();
         let cell_height = (cells.geometry.height * viewport.pixel_ratio).round();
-        session.resize_with_pixels(
+        content.session.try_resize_with_pixels(
             cells.size,
             (cell_width * cells.size.columns as f32) as u16,
             (cell_height * cells.size.rows as f32) as u16,
         )
     }
-    fn resize_session(&self, viewport: &Viewport) -> Result<()> {
-        if let Some(content) = self.content.borrow().as_ref() {
-            self.resize_to_viewport(&content.session, viewport)?;
-        }
-        Ok(())
+    fn request_resize(&self, state: &mut State, viewport: &Viewport) {
+        state.renderer_retry = match self.try_resize_to_viewport(viewport) {
+            Ok(true) => None,
+            Ok(false) => Some(Instant::now()),
+            Err(error) => {
+                state.error = format!("{error:#}");
+                Some(Instant::now() + Duration::from_secs(1))
+            }
+        };
     }
 
     fn update_frames(&self, state: &State) {
@@ -164,9 +168,10 @@ impl NativeTerminalView {
             if now < retry {
                 return Ok(RenderOutcome::Retry);
             }
-            state.renderer_retry = Some(now + Duration::from_secs(1));
-            self.resize_session(&viewport)?;
-            state.renderer_retry = None;
+            self.request_resize(state, &viewport);
+            if state.renderer_retry.is_some() {
+                return Ok(RenderOutcome::Retry);
+            }
         }
         if !self.platform.can_present(force) {
             return Ok(RenderOutcome::Idle);
@@ -294,7 +299,7 @@ impl NativeView for NativeTerminalView {
         self.platform.destroy();
         let mut state = self.state.borrow_mut();
         state.attached = false;
-        self.bind(None, false)?;
+        self.bind(None, false);
         state.id = 0;
         self.update_frames(&state);
         Ok(())
@@ -331,11 +336,7 @@ impl NativeView for NativeTerminalView {
         if self.viewport.replace(Some(viewport)) != Some(viewport) {
             self.cells.set(None);
         }
-        state.renderer_retry = None;
-        if let Err(error) = self.resize_session(&viewport) {
-            state.error = format!("{error:#}");
-            state.renderer_retry = Some(Instant::now() + Duration::from_secs(1));
-        }
+        self.request_resize(&mut state, &viewport);
         self.update_frames(&state);
         self.renderer.schedule_render();
         Ok(())
@@ -357,18 +358,24 @@ impl NativeView for NativeTerminalView {
             return Ok(());
         }
         let next = if id == 0 {
-            Ok(None)
+            None
         } else {
-            session(id).map(Some)
+            match session(id) {
+                Ok(session) => Some(session),
+                Err(error) => {
+                    state.error = format!("{error:#}");
+                    return Ok(());
+                }
+            }
         };
-        if let Err(error) = next.and_then(|next| self.bind(next, state.attached)) {
-            state.error = format!("{error:#}");
-            return Ok(());
-        }
+        self.bind(next, state.attached);
         state.id = id;
         state.last_scroll = None;
         state.renderer_retry = None;
         state.error.clear();
+        if let Some(viewport) = self.viewport.get() {
+            self.request_resize(&mut state, &viewport);
+        }
         self.platform.set_bound(id != 0);
         self.update_frames(&state);
         self.renderer.schedule_render();

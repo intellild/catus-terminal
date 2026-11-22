@@ -152,27 +152,35 @@ impl TerminalSession {
         Ok(())
     }
     pub fn resize(&self, size: GridSize) -> Result<()> {
-        self.resize_with_pixels(size, 0, 0)
+        self.pty.resize_and_wait(size.into())
     }
-    pub(crate) fn resize_with_pixels(
+    #[cfg(feature = "native-view")]
+    pub(crate) fn try_resize_with_pixels(
         &self,
         size: GridSize,
         pixel_width: u16,
         pixel_height: u16,
-    ) -> Result<()> {
-        self.update_grid(|grid| {
-            let window = PtySize {
-                pixel_width,
-                pixel_height,
-                ..size.into()
-            };
-            block_on(
-                self.pty
-                    .resize(window, (grid.size() != size).then_some(size)),
-            )?;
-            grid.resize(size);
-            Ok(())
+    ) -> Result<bool> {
+        self.pty.try_resize(PtySize {
+            pixel_width,
+            pixel_height,
+            ..size.into()
         })
+    }
+
+    pub(super) async fn apply_resize(&self, window: PtySize, running: bool) -> Result<()> {
+        let size = GridSize::new(window.cols.into(), window.rows.into());
+        // Only the parser changes the grid dimensions.
+        let changed = self.grid.lock().await.size() != size;
+        if running {
+            self.pty.resize(window, changed.then_some(size)).await?;
+        }
+        if changed {
+            self.grid.lock().await.resize(size);
+            #[cfg(feature = "native-view")]
+            self.schedule_render();
+        }
+        Ok(())
     }
     pub fn tmux_info(&self) -> Option<TmuxSessionInfo> {
         block_on(self.pty.tmux_info())
@@ -231,6 +239,11 @@ impl TerminalSession {
             return;
         }
         drop(grid);
+        self.schedule_render();
+    }
+
+    #[cfg(feature = "native-view")]
+    fn schedule_render(&self) {
         if let Some(renderer) = self.renderer.load().upgrade() {
             renderer.schedule_render();
         }

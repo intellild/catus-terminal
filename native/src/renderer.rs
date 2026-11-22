@@ -62,9 +62,14 @@ impl GpuContext {
             glyphs: Mutex::new(glyphs),
         })
     }
-    fn measure_cells(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
-        let mut shared = self.glyphs()?;
-        GlyphRenderer::measure_cells(&mut shared, viewport)
+    fn try_glyphs(&self) -> Result<Option<MutexGuard<'_, SharedGlyphs>>> {
+        match self.glyphs.try_lock() {
+            Ok(shared) => Ok(Some(shared)),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(anyhow!("Shared glyph cache lock poisoned"))
+            }
+        }
     }
     fn glyphs(&self) -> Result<MutexGuard<'_, SharedGlyphs>> {
         self.glyphs
@@ -173,9 +178,15 @@ impl Renderer {
         }))
     }
 
-    pub(crate) fn measure_cells(&self, viewport: &Viewport) -> Result<crate::frame::CellLayout> {
-        GPU.get_or_try_init(GpuContext::new)?
-            .measure_cells(viewport)
+    pub(crate) fn try_measure_cells(
+        &self,
+        viewport: &Viewport,
+    ) -> Result<Option<crate::frame::CellLayout>> {
+        let gpu = GPU.get_or_try_init(GpuContext::new)?;
+        let Some(mut shared) = gpu.try_glyphs()? else {
+            return Ok(None);
+        };
+        GlyphRenderer::measure_cells(&mut shared, viewport).map(Some)
     }
     pub(crate) fn painter<'a>(&self, state: &'a mut DrawState) -> Result<GridPainter<'a>> {
         Ok(GridPainter {
@@ -191,20 +202,14 @@ impl GridPainter<'_> {
         revision: u64,
         viewport: &Viewport,
     ) -> Result<Option<bool>> {
-        match self.gpu.glyphs.try_lock() {
-            Ok(shared) => Ok(Some(
-                self.state.rendered_grid
-                    != Some(RenderedGrid {
-                        revision,
-                        viewport: *viewport,
-                        generation: shared.cache.atlas.generation(),
-                    }),
-            )),
-            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                Err(anyhow!("Shared glyph cache lock poisoned"))
-            }
-        }
+        Ok(self.gpu.try_glyphs()?.map(|shared| {
+            self.state.rendered_grid
+                != Some(RenderedGrid {
+                    revision,
+                    viewport: *viewport,
+                    generation: shared.cache.atlas.generation(),
+                })
+        }))
     }
 
     // The platform adapter supplies the texture only after idle/busy checks.
@@ -248,13 +253,10 @@ impl GridPainter<'_> {
     ) -> Result<bool> {
         let gpu = self.gpu;
         let mut shared = if deadline.is_some() {
-            match gpu.glyphs.try_lock() {
-                Ok(shared) => shared,
-                Err(std::sync::TryLockError::WouldBlock) => return Ok(false),
-                Err(std::sync::TryLockError::Poisoned(_)) => {
-                    return Err(anyhow!("Shared glyph cache lock poisoned"));
-                }
-            }
+            let Some(shared) = gpu.try_glyphs()? else {
+                return Ok(false);
+            };
+            shared
         } else {
             gpu.glyphs()?
         };
