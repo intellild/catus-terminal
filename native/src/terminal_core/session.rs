@@ -5,7 +5,7 @@ use super::{
     tmux::TmuxSessionInfo,
 };
 use anyhow::{Result, anyhow};
-use portable_pty::CommandBuilder;
+use portable_pty::{CommandBuilder, PtySize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 #[cfg(feature = "native-view")]
@@ -152,11 +152,25 @@ impl TerminalSession {
         Ok(())
     }
     pub fn resize(&self, size: GridSize) -> Result<()> {
+        self.resize_with_pixels(size, 0, 0)
+    }
+    pub(crate) fn resize_with_pixels(
+        &self,
+        size: GridSize,
+        pixel_width: u16,
+        pixel_height: u16,
+    ) -> Result<()> {
         self.update_grid(|grid| {
-            if grid.size() != size {
-                block_on(self.pty.resize(size))?;
-                grid.resize(size);
-            }
+            let window = PtySize {
+                pixel_width,
+                pixel_height,
+                ..size.into()
+            };
+            block_on(
+                self.pty
+                    .resize(window, (grid.size() != size).then_some(size)),
+            )?;
+            grid.resize(size);
             Ok(())
         })
     }

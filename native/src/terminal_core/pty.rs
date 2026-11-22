@@ -2,7 +2,7 @@
 mod delegate;
 mod plain;
 mod tmux;
-use super::grid::{GridSize, TerminalGrid};
+use super::grid::{GridReply, GridSize, TerminalGrid};
 use super::session::TerminalSession;
 use super::tmux::TmuxSessionInfo;
 use anyhow::{Context, Result, anyhow};
@@ -41,6 +41,7 @@ enum ReadEvent {
 /// Channels for consuming PTY output and sending parser replies.
 pub(super) struct PtyOutput {
     events: Receiver<ReadEvent>,
+    replies: UnboundedReceiver<GridReply>,
     writer: WriterSender,
 }
 
@@ -93,7 +94,7 @@ impl Pty {
     ) -> Result<(Self, TerminalGrid, PtyOutput)> {
         delegate.configure_command(&mut command);
         let pair = native_pty_system()
-            .openpty(pty_size(size))
+            .openpty(size.into())
             .context("Open terminal PTY")?;
         let reader = pair
             .master
@@ -106,15 +107,9 @@ impl Pty {
             .with_context(|| format!("Spawn terminal process {shell}"))?;
         drop(pair.slave);
         let (write_tx, write_rx) = unbounded_channel::<WriterMessage>();
-        // A backend that answers VT queries must not receive duplicate replies
-        // from the local rendering grid as user input.
-        let replies = if delegate.answers_queries() {
-            // Keep the sender valid but discard replies: drop the receiver.
-            unbounded_channel().0
-        } else {
-            write_tx.clone()
-        };
-        let grid = TerminalGrid::new(size, replies);
+        let (reply_tx, replies) = unbounded_channel();
+        // tmux answers VT queries on the host.
+        let grid = TerminalGrid::new(size, (!delegate.answers_queries()).then_some(reply_tx));
         let exited = Arc::new(AtomicBool::new(false));
         let error: Arc<Mutex<Option<PtyError>>> = Arc::new(Mutex::new(None));
 
@@ -136,6 +131,7 @@ impl Pty {
 
         let output = PtyOutput {
             events: read_rx,
+            replies,
             writer: write_tx.clone(),
         };
         let pty = Self {
@@ -164,6 +160,30 @@ impl Pty {
         self.delegate.advance(bytes, grid, writer).await
     }
 
+    async fn send_replies(
+        &self,
+        replies: &mut UnboundedReceiver<GridReply>,
+        writer: &WriterSender,
+    ) {
+        while let Ok(reply) = replies.try_recv() {
+            let text = match reply {
+                GridReply::Text(text) => text,
+                GridReply::TextAreaSize => {
+                    let size = self
+                        .master
+                        .lock()
+                        .await
+                        .as_ref()
+                        .and_then(|master| master.get_size().ok())
+                        .unwrap_or_default();
+                    // XTWINOPS reports the text area's pixel height before its width.
+                    format!("\x1b[4;{};{}t", size.pixel_height, size.pixel_width)
+                }
+            };
+            let _ = writer.send(WriterMessage::Data(text.into_bytes()));
+        }
+    }
+
     pub(super) async fn write(&self, bytes: Vec<u8>) -> Result<()> {
         if self.exited.load(Ordering::Acquire) {
             return Err(anyhow!("Shell has exited"));
@@ -173,15 +193,21 @@ impl Pty {
         self.delegate.input(bytes, tx).await
     }
 
-    pub(super) async fn resize(&self, size: GridSize) -> Result<()> {
+    pub(super) async fn resize(
+        &self,
+        window: PtySize,
+        grid_resize: Option<GridSize>,
+    ) -> Result<()> {
         let input = self.input.lock().await;
         if let Some(tx) = input.as_ref() {
-            if let Some(master) = self.master.lock().await.as_deref() {
-                master
-                    .resize(pty_size(size))
-                    .context("Resize terminal PTY")?;
+            if let Some(master) = self.master.lock().await.as_deref()
+                && master.get_size().ok() != Some(window)
+            {
+                master.resize(window).context("Resize terminal PTY")?;
             }
-            self.delegate.resize(size, tx).await?;
+            if let Some(size) = grid_resize {
+                self.delegate.resize(size, tx).await?;
+            }
         }
         Ok(())
     }
@@ -299,25 +325,23 @@ fn write_loop(
     error: Arc<Mutex<Option<PtyError>>>,
     exited: Arc<AtomicBool>,
 ) {
-    loop {
-        match rx.blocking_recv() {
-            Some(WriterMessage::Data(bytes)) => {
-                if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
-                    *error.blocking_lock() = Some(
-                        anyhow::Error::new(err)
-                            .context("Write PTY input")
-                            .into_boxed_dyn_error()
-                            .into(),
-                    );
-                    exited.store(true, Ordering::Release);
-                    break;
-                }
-            }
-            Some(WriterMessage::Close(linger)) => {
+    while let Some(message) = rx.blocking_recv() {
+        let bytes = match message {
+            WriterMessage::Data(bytes) => bytes,
+            WriterMessage::Close(linger) => {
                 thread::sleep(linger);
                 break;
             }
-            None => break,
+        };
+        if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
+            *error.blocking_lock() = Some(
+                anyhow::Error::new(err)
+                    .context("Write PTY input")
+                    .into_boxed_dyn_error()
+                    .into(),
+            );
+            exited.store(true, Ordering::Release);
+            break;
         }
     }
 }
@@ -366,7 +390,12 @@ impl PtyOutput {
             };
             let error = match event {
                 Some(ReadEvent::Data(bytes)) => {
-                    match session.process_output(&bytes, &self.writer).await {
+                    let result = session.process_output(&bytes, &self.writer).await;
+                    session
+                        .pty
+                        .send_replies(&mut self.replies, &self.writer)
+                        .await;
+                    match result {
                         Ok(()) => continue,
                         Err(err) => Some(
                             err.context("Process terminal output")
@@ -388,11 +417,13 @@ impl PtyOutput {
     }
 }
 
-fn pty_size(size: GridSize) -> PtySize {
-    PtySize {
-        rows: size.rows as u16,
-        cols: size.columns as u16,
-        pixel_width: 0,
-        pixel_height: 0,
+impl From<GridSize> for PtySize {
+    fn from(size: GridSize) -> Self {
+        Self {
+            rows: size.rows as u16,
+            cols: size.columns as u16,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
     }
 }
