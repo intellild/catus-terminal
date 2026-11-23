@@ -15,8 +15,6 @@
 
 在 macOS 上构建需要 Node.js 22.18+/24/26、pnpm 和 Rust 工具链。
 
-Turborepo 会先构建 `@catus/native`，再启动或构建桌面应用。各 Git 工作树的任务缓存独立保存在各自的 `.turbo/cache`，远程缓存已关闭。
-
 ```sh
 pnpm install
 pnpm dev          # 启动开发环境

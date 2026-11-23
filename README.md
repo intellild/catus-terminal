@@ -15,8 +15,6 @@ A desktop terminal for macOS with local and SSH sessions, tmux and SFTP.
 
 Building on macOS requires Node.js 22.18+/24/26, pnpm and a Rust toolchain.
 
-Turborepo builds `@catus/native` before starting or bundling the desktop app. Each Git worktree keeps its own local task cache in `.turbo/cache`. Remote caching is disabled.
-
 ```sh
 pnpm install
 pnpm dev          # start the dev environment
