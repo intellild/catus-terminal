@@ -36,15 +36,45 @@
     "//#clean:desktop": {
       "cache": false
     },
-    "//#build:desktop": {
+    "//#build:lynx": {
       "dependsOn": ["@catus/native#build", "//#clean:desktop"],
       "env": ["CATUS_WEB"],
-      "outputs": ["output/bundle/lynx/**", "dist/desktop/**"]
+      "outputs": ["output/bundle/lynx/**"]
     },
-    "//#dev:desktop": {
+    "//#build:desktop": {
+      "dependsOn": ["//#build:lynx"],
+      "outputs": ["dist/desktop/**"]
+    },
+    "//#dev:prepare": {
       "dependsOn": ["@catus/native#build"],
+      "cache": false
+    },
+    "//#dev:lynx": {
+      "dependsOn": ["//#dev:prepare"],
       "cache": false,
       "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "//#dev:ready": {
+      "dependsOn": ["//#dev:prepare"],
+      "cache": false
+    },
+    "//#dev:desktop": {
+      "dependsOn": ["//#dev:ready"],
+      "with": ["//#dev:lynx"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "//#start:desktop": {
+      "dependsOn": ["//#build:desktop"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "//#pack:desktop": {
+      "dependsOn": ["//#build:desktop"],
+      "cache": false,
       "passThroughEnv": ["*"]
     },
     "//#build:web": {
@@ -61,6 +91,11 @@
     "//#lint": {},
     "//#format:check": {},
     "//#test:ui": {},
-    "//#test:node": {}
+    "//#test:node": {},
+    "//#test:desktop": {
+      "dependsOn": ["//#build:desktop"],
+      "cache": false,
+      "passThroughEnv": ["*"]
+    }
   }
 }
