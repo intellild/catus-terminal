@@ -1,9 +1,6 @@
 packages:
   - native
 
-# Keep predev/prebuild compiling the native workspace before the JS bundles.
-enablePrePostScripts: true
-
 # Lynxtron builder's patch-package script addresses these from the project root.
 publicHoistPattern:
   - app-builder-lib

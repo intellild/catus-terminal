@@ -5,6 +5,7 @@ output/
 build/
 **/shared/third_party/
 .tmp/
+.turbo/
 .rstack/cache/
 *.log
 .DS_Store
