@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/turbo/schema.json",
+  "cacheDir": ".turbo/cache",
+  "remoteCache": { "enabled": false },
+  "globalEnv": ["NODE_ENV", "npm_config_user_agent"],
+  "tasks": {
+    "@catus/native#build": {
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.mjs",
+        "build.rs",
+        "cxx/**",
+        "src/**",
+        "$TURBO_ROOT$/scripts/rust-target.mjs",
+        "$TURBO_ROOT$/rstack.config.ts"
+      ],
+      "env": [
+        "BINDGEN_EXTRA_CLANG_ARGS*",
+        "CARGO_*",
+        "CC",
+        "CFLAGS",
+        "CMAKE_*",
+        "CXX",
+        "CXXFLAGS",
+        "DEVELOPER_DIR",
+        "LDFLAGS",
+        "LIBCLANG_PATH",
+        "MACOSX_DEPLOYMENT_TARGET",
+        "RUST*",
+        "SDKROOT"
+      ],
+      "passThroughEnv": ["CATUS_RUST_TARGET_DIR"],
+      "outputs": ["dist/**", "index.d.ts"]
+    },
+    "//#clean:desktop": {
+      "cache": false
+    },
+    "//#build:desktop": {
+      "dependsOn": ["@catus/native#build", "//#clean:desktop"],
+      "env": ["CATUS_WEB"],
+      "outputs": ["output/bundle/lynx/**", "dist/desktop/**"]
+    },
+    "//#dev:desktop": {
+      "dependsOn": ["@catus/native#build"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "//#build:web": {
+      "outputs": ["dist/web/**"]
+    },
+    "//#dev:web": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "//#tsc": {
+      "outputs": [".tmp/typecheck/**"]
+    },
+    "//#lint": {},
+    "//#format:check": {},
+    "//#test:ui": {},
+    "//#test:node": {}
+  }
+}
